@@ -147,6 +147,7 @@ struct	opts {
 	int		 no_motd;		/* --no-motd */
 	int		 numeric_ids;		/* --numeric-ids */
 	int		 one_file_system;	/* -x */
+	int		 ignore_times;		/* -I --ignore-times */
 	int		 alt_base_mode;
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */

@@ -98,6 +98,8 @@ and
 .Em rules
 from
 .Em file .
+.It Fl I -ignore-times
+Do not skip based on file size and modification time.
 .It Fl -include Ar pattern
 Include files matching
 .Em pattern .
@@ -216,7 +218,7 @@ Do not cross filesystem boundaries.
 If this option is repeated, all mount point directories from the copy are
 omitted.
 Otherwise, it includes an empty directory at each mount point it encounters.
-.It Fl -version
+.It Fl V , -version
 Print version and exit.
 .El
 .Pp
