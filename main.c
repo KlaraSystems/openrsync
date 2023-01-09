@@ -293,14 +293,15 @@ static struct opts	 opts;
 #define OP_TIMEOUT	1003
 #define OP_VERSION	1004
 #define OP_EXCLUDE	1005
-#define OP_INCLUDE	1006
-#define OP_EXCLUDE_FROM	1007
-#define OP_INCLUDE_FROM	1008
-#define OP_COMP_DEST	1009
-#define OP_COPY_DEST	1010
-#define OP_LINK_DEST	1011
-#define OP_MAX_SIZE	1012
-#define OP_MIN_SIZE	1013
+#define OP_IGNORE_TIMES	1006
+#define OP_INCLUDE	1007
+#define OP_EXCLUDE_FROM	1008
+#define OP_INCLUDE_FROM	1009
+#define OP_COMP_DEST	1010
+#define OP_COPY_DEST	1011
+#define OP_LINK_DEST	1012
+#define OP_MAX_SIZE	1013
+#define OP_MIN_SIZE	1014
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -321,6 +322,7 @@ const struct option	 lopts[] = {
     { "group",		no_argument,	&opts.preserve_gids,	1 },
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
     { "help",		no_argument,	NULL,			'h' },
+    { "ignore-times",	no_argument,	NULL,			OP_IGNORE_TIMES },
     { "include",	required_argument, NULL,		OP_INCLUDE },
     { "include-from",	required_argument, NULL,		OP_INCLUDE_FROM },
     { "links",		no_argument,	&opts.preserve_links,	1 },
@@ -374,7 +376,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "Dae:ghlnoprtvxz", lopts, &lidx))
+	while ((c = getopt_long(argc, argv, "Dae:ghlnoprtvxzIV", lopts, &lidx))
 	    != -1) {
 		switch (c) {
 		case 'D':
@@ -424,6 +426,9 @@ main(int argc, char *argv[])
 		case 'z':
 			fprintf(stderr, "%s: -z not supported yet\n", getprogname());
 			break;
+		case 'I':
+			opts.ignore_times++;
+			break;
 		case 0:
 			/* Non-NULL flag values (e.g., --sender). */
 			break;
@@ -451,6 +456,9 @@ main(int argc, char *argv[])
 			if (parse_rule(optarg, RULE_EXCLUDE) == -1)
 				errx(ERR_SYNTAX, "syntax error in exclude: %s",
 				    optarg);
+			break;
+		case OP_IGNORE_TIMES:
+			opts.one_file_system++;
 			break;
 		case OP_INCLUDE:
 			if (parse_rule(optarg, RULE_INCLUDE) == -1)
@@ -508,6 +516,7 @@ basedir:
 				err(1, "bad min-size");
 			opts.min_size = tmpint;
 			break;
+		case 'V':
 		case OP_VERSION:
 			fprintf(stderr, "openrsync: protocol version %u\n",
 			    RSYNC_PROTOCOL);
