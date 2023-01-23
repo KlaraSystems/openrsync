@@ -27,7 +27,7 @@
 
 #include "extern.h"
 
-#define	RSYNC_PATH	"rsync"
+#define	RSYNC_PATH	"openrsync"
 
 const char *
 alt_base_mode(int mode)
