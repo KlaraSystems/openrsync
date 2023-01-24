@@ -117,6 +117,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-r");
 	if (sess->opts->preserve_times)
 		addargs(&args, "-t");
+	if (sess->opts->sparse)
+		addargs(&args, "-S");
 	if (verbose > 3)
 		addargs(&args, "-v");
 	if (verbose > 2)

@@ -224,7 +224,7 @@ download_free(struct download *p)
  * Returns zero on failure, non-zero on success.
  */
 static int
-buf_copy(const char *buf, size_t sz, struct download *p)
+buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 {
 	size_t	 rem, tocopy;
 	ssize_t	 ssz;
@@ -258,12 +258,19 @@ buf_copy(const char *buf, size_t sz, struct download *p)
 		assert(p->obufmax);
 		assert(p->obufsz <= p->obufmax);
 		assert(p->obuf != NULL);
-		if ((ssz = write(p->fd, p->obuf, p->obufsz)) < 0) {
-			ERR("%s: write", p->fname);
-			return 0;
-		} else if ((size_t)ssz != p->obufsz) {
-			ERRX("%s: short write", p->fname);
-			return 0;
+		if (sess->opts->sparse && iszero(p->obuf, p->obufsz)) {
+			if (lseek(p->fd, p->obufsz, SEEK_CUR) == -1) {
+				ERR("%s: lseek", p->fname);
+				return 0;
+		        }
+		} else {
+			if ((ssz = write(p->fd, p->obuf, p->obufsz)) < 0) {
+				ERR("%s: write", p->fname);
+				return 0;
+			} else if ((size_t)ssz != p->obufsz) {
+				ERRX("%s: short write", p->fname);
+				return 0;
+			}
 		}
 		p->obufsz = 0;
 	}
@@ -468,7 +475,7 @@ again:
 		if (!io_read_buf(sess, p->fdin, buf, sz)) {
 			ERRX1("io_read_int");
 			goto out;
-		} else if (!buf_copy(buf, sz, p)) {
+		} else if (!buf_copy(buf, sz, p, sess)) {
 			ERRX1("buf_copy");
 			goto out;
 		}
@@ -508,7 +515,7 @@ again:
 		 */
 
 		assert(p->map != MAP_FAILED);
-		if (!buf_copy(buf, sz, p)) {
+		if (!buf_copy(buf, sz, p, sess)) {
 			ERRX1("buf_copy");
 			goto out;
 		}
@@ -527,7 +534,7 @@ again:
 		return 1;
 	}
 
-	if (!buf_copy(NULL, 0, p)) {
+	if (!buf_copy(NULL, 0, p, sess)) {
 		ERRX1("buf_copy");
 		goto out;
 	}

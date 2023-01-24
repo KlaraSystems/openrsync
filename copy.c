@@ -30,7 +30,7 @@
  * Return true if all bytes in buffer are zero.
  * A buffer of zero lenght is also considered a zero buffer.
  */
-static int
+int
 iszero(const void *b, size_t len)
 {
 	const unsigned char *c = b;
