@@ -302,6 +302,7 @@ static struct opts	 opts;
 #define OP_LINK_DEST	1012
 #define OP_MAX_SIZE	1013
 #define OP_MIN_SIZE	1014
+#define OP_SPARSE	1015
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -343,6 +344,7 @@ const struct option	 lopts[] = {
     { "sender",		no_argument,	&opts.sender,		1 },
     { "server",		no_argument,	&opts.server,		1 },
     { "specials",	no_argument,	&opts.specials,		1 },
+    { "sparse",		no_argument,	&opts.sparse,		OP_SPARSE },
 #if 0
     { "sync-file",	required_argument, NULL,		6 },
 #endif
@@ -376,7 +378,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "Dae:ghlnoprtvxzIV", lopts, &lidx))
+	while ((c = getopt_long(argc, argv, "Dae:ghlnoprtvxzIVS", lopts, &lidx))
 	    != -1) {
 		switch (c) {
 		case 'D':
@@ -428,6 +430,9 @@ main(int argc, char *argv[])
 			break;
 		case 'I':
 			opts.ignore_times++;
+			break;
+		case 'S':
+			opts.sparse++;
 			break;
 		case 0:
 			/* Non-NULL flag values (e.g., --sender). */
@@ -505,6 +510,9 @@ basedir:
 				errx(1, "too many --%s directories specified",
 				    lopts[lidx].name);
 			opts.basedir[basedir_cnt++] = optarg;
+			break;
+		case OP_SPARSE:
+			opts.sparse++;
 			break;
 		case OP_MAX_SIZE:
 			if (scan_scaled(optarg, &tmpint) == -1)
