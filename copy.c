@@ -31,7 +31,7 @@
  * A buffer of zero lenght is also considered a zero buffer.
  */
 int
-iszero(const void *b, size_t len)
+iszerobuf(const void *b, size_t len)
 {
 	const unsigned char *c = b;
 
@@ -49,7 +49,7 @@ copy_internal(int fromfd, int tofd)
 	ssize_t r, w;
 
 	while ((r = read(fromfd, buf, sizeof(buf))) > 0) {
-		if (iszero(buf, sizeof(buf))) {
+		if (iszerobuf(buf, sizeof(buf))) {
 			if (lseek(tofd, r, SEEK_CUR) == -1)
 				return -1;
 		} else {
