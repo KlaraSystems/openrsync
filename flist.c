@@ -962,6 +962,17 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			nxdev++;
 		}
 
+#ifdef __APPLE__
+		/*
+		 * This is for macOS fts, which returns "foo//bar" -- we only
+		 * strip up to the first slash, which naturally ends up
+		 * interpreted as an absolute path.
+		 */
+		if (ent->fts_path[stripdir] == '/') {
+			stripdir++;
+		}
+#endif
+
 		/* filter files */
 		if (rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D)) == -1) {
