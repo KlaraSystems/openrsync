@@ -962,6 +962,10 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			nxdev++;
 		}
 
+		/* This is for macOS fts, which returns "foo//bar" */
+		if (ent->fts_path[stripdir] == '/') {
+			stripdir++;
+		}
 		/* filter files */
 		if (rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D)) == -1) {
