@@ -258,7 +258,7 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 		assert(p->obufmax);
 		assert(p->obufsz <= p->obufmax);
 		assert(p->obuf != NULL);
-		if (sess->opts->sparse && iszero(p->obuf, p->obufsz)) {
+		if (sess->opts->sparse && iszerobuf(p->obuf, p->obufsz)) {
 			if (lseek(p->fd, p->obufsz, SEEK_CUR) == -1) {
 				ERR("%s: lseek", p->fname);
 				return 0;

@@ -433,6 +433,6 @@ int		 idents_recv(struct sess *, int, struct ident **, size_t *);
 void		 idents_remap(struct sess *, int, struct ident *, size_t);
 int		 idents_send(struct sess *, int, const struct ident *, size_t);
 
-int		iszero(const void *b, size_t len);
+int		iszerobuf(const void *b, size_t len);
 
 #endif /*!EXTERN_H*/
