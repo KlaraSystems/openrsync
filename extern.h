@@ -127,14 +127,16 @@ struct	fargs {
  * (There are some parts we don't use yet.)
  */
 struct	flstat {
-	mode_t		 mode;	/* mode */
-	uid_t		 uid;	/* user */
-	gid_t		 gid;	/* group */
-	dev_t		 rdev;	/* device type */
-	off_t		 size;	/* size */
-	time_t		 mtime;	/* modification */
+	mode_t		 mode;	 /* mode */
+	uid_t		 uid;	 /* user */
+	gid_t		 gid;	 /* group */
+	dev_t		 rdev;	 /* device type */
+	off_t		 size;	 /* size */
+	time_t		 mtime;	 /* modification */
 	unsigned int	 flags;
-#define	FLSTAT_TOP_DIR	 0x01	/* a top-level directory */
+	int64_t		 device; /* device number, for hardlink detection */
+	int64_t		 inode;  /* inode number, for hardlink detection */
+#define	FLSTAT_TOP_DIR	 0x01	 /* a top-level directory */
 
 };
 
@@ -182,6 +184,7 @@ struct	opts {
 	int		 relative;		/* --relative */
 	int		 dirs;			/* -d --dirs */
 	int		 dlupdates;             /* --delay-updates */
+	int		 hard_links;		/* -H --hard-links */
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */
@@ -307,6 +310,10 @@ void	freeargs(arglist *);
 struct	download;
 struct	upload;
 
+struct hardlinks;
+const struct flist *find_hl(const struct flist *this,
+			    const struct hardlinks *hl);
+
 extern int verbose;
 
 #define MINIMUM(a, b) (((a) < (b)) ? (a) : (b))
@@ -405,12 +412,14 @@ int	rsync_client(const struct opts *, int, const struct fargs *);
 int	rsync_connect(const struct opts *, int *, const struct fargs *);
 int	rsync_socket(const struct opts *, int, const struct fargs *);
 int	rsync_server(const struct opts *, size_t, char *[]);
-int	rsync_downloader(struct download *, struct sess *, int *, int);
+int	rsync_downloader(struct download *, struct sess *, int *, int,
+	    const struct hardlinks *);
 int	rsync_set_metadata(struct sess *, int, int, const struct flist *,
 	    const char *);
 int	rsync_set_metadata_at(struct sess *, int, int, const struct flist *,
 	    const char *);
-int	rsync_uploader(struct upload *, int *, struct sess *, int *);
+int	rsync_uploader(struct upload *, int *, struct sess *, int *,
+		       const struct hardlinks *);
 int	rsync_uploader_tail(struct upload *, struct sess *);
 
 struct download	*download_alloc(struct sess *, int, const struct flist *,

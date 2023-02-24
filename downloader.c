@@ -462,11 +462,12 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
  * success (more data to be read from the sender).
  */
 int
-rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz)
+rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
+    const struct hardlinks *hl)
 {
 	int		 c;
 	int32_t		 idx, rawtok;
-	const struct flist *f;
+	const struct flist *f, *hl_p = NULL;
 	size_t		 sz, tok;
 	struct stat	 st, st2;
 	char		*buf = NULL;
@@ -587,6 +588,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz)
 			WARNX("%s: not regular", f->path);
 			goto out;
 		}
+
+		hl_p = find_hl(f, hl);
 
 		if (p->ofd != -1 && st.st_size > 0) {
 			p->mapsz = st.st_size;
@@ -854,18 +857,23 @@ again:
 		usethis = buf2;
 	} else
 		usethis = f->path;
+	if (sess->opts->hard_links)
+		hl_p = find_hl(f, hl);
 	if (!sess->opts->inplace &&
 	    renameat(p->rootfd, p->fname, p->rootfd, usethis) == -1) {
 		ERR("%s: renameat: %s", p->fname, usethis);
 		goto out;
 	}
-	if (sess->opts->dlupdates) {
-		renamer->entries[renamer->n - 1].from = strdup(usethis);
-		if (renamer->entries[renamer->n - 1].from == NULL) {
-			ERR("strdup");
-			goto out;
+	if (hl_p != 0) {
+		if (unlinkat(p->rootfd, f->path, 0) == -1)
+			if (errno != ENOENT)
+				ERRX1("unlink");
+
+		if (linkat(p->rootfd, hl_p->path, p->rootfd, f->path, 0) == -1) {
+			LOG0("While hard linking '%s' to '%s' ",
+			    hl_p->path, f->path);
+			ERRX1("linkat");
 		}
-		renamer->entries[renamer->n - 1].to = f->path;
 	}
 
 	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size);
