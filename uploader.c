@@ -846,7 +846,7 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
  */
 static int
 check_file(int rootfd, const struct flist *f, struct stat *st,
-    struct sess *sess)
+    struct sess *sess, const struct hardlinks *const hl)
 {
 	if (fstatat(rootfd, f->path, st, AT_SYMLINK_NOFOLLOW) == -1) {
 		if (errno == ENOENT) {
@@ -865,6 +865,31 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		return 0;
 	}
 
+
+	if (sess->opts->hard_links) {
+		/*
+		 * This covers the situation where a hardlink is sent,
+		 * but non-hardlinked files with identical contents
+		 * already exist.  They need to be replaced by a hardlink.
+		 */
+		if (find_hl(f, hl)) {
+			if (st->st_nlink == 1)
+				return 3;
+		} else if (st->st_nlink > 1)
+			return 3;
+		/*
+		 * This covers the situation where two separate identical,
+		 * files are sent but they already exist as hardlink in
+		 * the destination.  They need to be un-hardlinked.
+		 *
+		 * TODO: write tests that try to send a 3-way hardlink,
+		 * overriding a 2-way hardlink and a plain file, all with
+		 * identical contents.
+		 */
+		if (!find_hl(f, hl) && st->st_nlink > 1) {
+			return 3;
+		}
+	}
 
 	/* non-regular file needs attention */
 	if (!S_ISREG(st->st_mode))
@@ -890,7 +915,7 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
  */
 static int
 pre_file(const struct upload *p, int *filefd, off_t *size,
-    struct sess *sess)
+    struct sess *sess, const struct hardlinks *hl)
 {
 	const struct flist *f;
 	struct stat st;
@@ -925,7 +950,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 	*size = 0;
 	*filefd = -1;
 
-	rc = check_file(p->rootfd, f, &st, sess);
+	rc = check_file(p->rootfd, f, &st, sess, hl);
 	if (rc == -1)
 		return -1;
 	if (rc == 2 && !S_ISREG(st.st_mode)) {
@@ -981,7 +1006,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 		dfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY);
 		if (dfd == -1)
 			err(ERR_FILE_IO, "%s: openat", root);
-		x = check_file(dfd, f, &st, sess);
+		x = check_file(dfd, f, &st, sess, hl);
 		/* found a match */
 		if (x == 0) {
 			if (rc >= 0) {
@@ -1105,7 +1130,7 @@ upload_free(struct upload *p)
  */
 int
 rsync_uploader(struct upload *u, int *fileinfd,
-	struct sess *sess, int *fileoutfd)
+	struct sess *sess, int *fileoutfd, const struct hardlinks *const hl)
 {
 	struct blkset	    blk;
 	void		   *mbuf, *bufp;
@@ -1180,7 +1205,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			else if (S_ISLNK(u->fl[u->idx].st.mode))
 				c = pre_symlink(u, sess);
 			else if (S_ISREG(u->fl[u->idx].st.mode))
-				c = pre_file(u, fileinfd, &filesize, sess);
+				c = pre_file(u, fileinfd, &filesize, sess, hl);
 			else if (S_ISBLK(u->fl[u->idx].st.mode) ||
 			    S_ISCHR(u->fl[u->idx].st.mode))
 				c = pre_dev(u, sess);

@@ -351,6 +351,7 @@ const struct option	 lopts[] = {
     { "exclude-from",	required_argument, NULL,		OP_EXCLUDE_FROM },
     { "group",		no_argument,	&opts.preserve_gids,	1 },
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
+    { "hard-links",	no_argument,	&opts.hard_links,	'H' },
     { "help",		no_argument,	NULL,			'h' },
     { "ignore-existing", no_argument,	NULL,			OP_IGNORE_EXISTING },
     { "ignore-non-existing", no_argument, NULL,			OP_IGNORE_NON_EXISTING },
@@ -420,12 +421,15 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "adDe:ghklLnoprtvxzIVS", lopts, &lidx))
-	    != -1) {
+	while ((c = getopt_long(argc, argv, "DHISVade:ghklLnoprtvxz", lopts,
+	    &lidx)) != -1) {
 		switch (c) {
 		case 'D':
 			opts.devices = 1;
 			opts.specials = 1;
+			break;
+		case 'H':
+			opts.hard_links = 1;
 			break;
 		case 'a':
 			opts.recursive = 1;

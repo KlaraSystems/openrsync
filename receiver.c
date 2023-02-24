@@ -176,6 +176,86 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	return 1;
 }
 
+struct info_for_hardlink {
+	int64_t device;
+	int64_t inode;
+	const struct flist *ref; /* Points to full entry */
+};
+struct hardlinks {
+	struct info_for_hardlink *infos;
+	int n;
+};
+
+static int
+info_for_hardlink_compare(const void *onep, const void *twop)
+{
+	const struct info_for_hardlink *one = onep;
+	const struct info_for_hardlink *two = twop;
+
+	if (one->inode == two->inode) {
+		if (one->device < two->device)
+			return -1;
+		if (one->device > two->device)
+			return 1;
+	}
+	if (one->inode < two->inode)
+		return -1;
+	if (one->inode > two->inode)
+		return 1;
+	assert(one->inode == two->inode);
+	return 0;
+}
+
+/* Important: this needs to happen after fl is sorted. */
+static void
+build_for_hardlinks(struct info_for_hardlink *hl,
+	const struct flist *const fl, const size_t flsz)
+{
+	size_t i;
+	for (i = 0; i < flsz; i++) {
+		hl[i].device = fl[i].st.device;
+		hl[i].inode = fl[i].st.inode;
+		hl[i].ref = &fl[i];
+	}
+	qsort(hl, flsz, sizeof(struct info_for_hardlink),
+		info_for_hardlink_compare);
+}
+
+const struct flist *
+find_hl(const struct flist *const this, const struct hardlinks *const hl)
+{
+	/*
+	 * How does the hardlink handling work?
+	 * The first file with identical device/inode is written
+	 * to disk.  Every subsequent one is not is not written
+	 * and later hardlinked.
+	 * For this function that means we return NULL when "our"
+	 * flist entry is the first with same device/inode.  If it isn't
+	 * that first one is returned.  We don't ever mess with subsequent
+	 * ones.
+	 */
+	int i;
+	int n_seen = 0;
+	const struct flist *returnthis = NULL;
+
+	/* TODO: use binary search here, it is already sorted */
+	for (i = 0; i < hl->n; i++) {
+		if (this->st.inode == hl->infos[i].inode &&
+			this->st.device == hl->infos[i].device) {
+			n_seen++;
+			if (n_seen == 1) {
+				if (this == hl->infos[i].ref)
+					return NULL;
+				else
+					returnthis = hl->infos[i].ref;
+			}
+			if (n_seen == 2)
+				return returnthis;
+		}
+	}
+	return NULL;
+}
+
 /*
  * Pledges: unveil, unix, rpath, cpath, wpath, stdio, fattr, chown.
  * Pledges (dry-run): -unix, -cpath, -wpath, -fattr, -chown.
@@ -195,6 +275,8 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 	struct download	*dl = NULL;
 	struct upload	*ul = NULL;
 	mode_t		 oumask;
+	struct info_for_hardlink *hl = NULL;
+	struct hardlinks hls;
 
 	if (pledge("stdio unix rpath wpath cpath dpath fattr chown getpw unveil", NULL) == -1)
 		err(ERR_IPC, "pledge");
@@ -254,6 +336,15 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 		ERRX1("flist_recv");
 		goto out;
 	}
+	hl = reallocarray(NULL, flsz, sizeof(*hl));
+	if (hl == NULL) {
+		ERRX1("reallocarray");
+		goto out;
+	}
+	build_for_hardlinks(hl, fl, flsz); /* Size is same */
+	hls.n = flsz;
+	hls.infos = hl;
+		
 
 	/* The IO error is sent after the file list. */
 
@@ -418,7 +509,7 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 		    (pfd[PFD_SENDER_OUT].revents & POLLOUT)) {
 			c = rsync_uploader(ul,
 				&pfd[PFD_UPLOADER_IN].fd,
-				sess, &pfd[PFD_SENDER_OUT].fd);
+				sess, &pfd[PFD_SENDER_OUT].fd, &hls);
 			if (c < 0) {
 				ERRX1("rsync_uploader");
 				goto out;
@@ -437,7 +528,7 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 		if ((pfd[PFD_SENDER_IN].revents & POLLIN) ||
 		    (pfd[PFD_DOWNLOADER_IN].revents & POLLIN)) {
 			c = rsync_downloader(dl, sess,
-				&pfd[PFD_DOWNLOADER_IN].fd, flsz);
+				&pfd[PFD_DOWNLOADER_IN].fd, flsz, &hls);
 			if (c < 0) {
 				ERRX1("rsync_downloader");
 				goto out;
@@ -524,6 +615,8 @@ out:
 	delayed_renames(sess);
 	free(sess->dlrename);
 	sess->dlrename = NULL;
+	free(hl);
+	hl = NULL;
 	if (dfd != -1)
 		close(dfd);
 	upload_free(ul);

@@ -237,6 +237,8 @@ flist_copy_stat(struct flist *f, const struct stat *st)
 	f->st.size = st->st_size;
 	f->st.mtime = st->st_mtime;
 	f->st.rdev = st->st_rdev;
+	f->st.device = st->st_dev;
+	f->st.inode = st->st_ino;
 }
 
 void
@@ -373,7 +375,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			}
 		}
 
-		/* Conditional part: link. */
+		/* Conditional part: symbolic link. */
 
 		if (S_ISLNK(f->st.mode) &&
 		    sess->opts->preserve_links) {
@@ -386,6 +388,26 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			}
 			if (!io_write_buf(sess, fdout, fn, sz)) {
 				ERRX1("io_write_buf");
+				goto out;
+			}
+		}
+
+		/*
+		 * Conditional part: hard link. 
+		 * All plain files send this info.
+		 */
+
+		if (S_ISREG(f->st.mode) && sess->opts->hard_links) {
+			/*
+			 * We do not talk to older versions of the protocol,
+			 * so we can always send 64 bits here.
+			 */
+			if (!io_write_long(sess, fdout, f->st.device)) {
+				ERRX1("io_write_long");
+				goto out;
+			}
+			if (!io_write_long(sess, fdout, f->st.inode)) {
+				ERRX1("io_write_long");
 				goto out;
 			}
 		}
@@ -788,7 +810,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 				ff->st.rdev = fflast->st.rdev;
 		}
 
-		/* Conditional part: link. */
+		/* Conditional part: symbolic link. */
 
 		if (S_ISLNK(ff->st.mode) &&
 		    sess->opts->preserve_links) {
@@ -806,6 +828,26 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 			}
 			if (!io_read_buf(sess, fd, ff->link, lsz)) {
 				ERRX1("io_read_buf");
+				goto out;
+			}
+		}
+
+		/*
+		 * Conditional part: hard link. 
+		 * All plain files send this info.
+		 */
+
+		if (S_ISREG(ff->st.mode) && sess->opts->hard_links) {
+			/*
+			 * We do not talk to older versions of the protocol,
+			 * so we can always read 64 bits here.
+			 */
+			if (!io_read_long(sess, fd, &ff->st.device)) {
+				ERRX1("io_read_long");
+				goto out;
+			}
+			if (!io_read_long(sess, fd, &ff->st.inode)) {
+				ERRX1("io_read_long");
 				goto out;
 			}
 		}

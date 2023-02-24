@@ -45,4 +45,7 @@
 
   TODO: see how much of this is tested in the original GNU rsync
   testsuite.
+
+  TODO: make sure un-hardlinking works
+
   */
