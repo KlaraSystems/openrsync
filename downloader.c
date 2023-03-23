@@ -360,6 +360,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd)
 		p->state = DOWNLOAD_READ_LOCAL;
 		f = &p->fl[idx];
 		p->ofd = openat(p->rootfd, f->path, O_RDONLY | O_NONBLOCK);
+		fprintf(stderr, "%s\n", f->path);
 
 		if (p->ofd == -1 && errno != ENOENT) {
 			ERR("%s: openat", f->path);
@@ -456,6 +457,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd)
 	 */
 
 again:
+	fprintf(stderr, "Maybe print time '%s' %10.0f %10.0f\r"
+	    , f->path, (double) p->total, (double)p->downloaded);
 	assert(p->state == DOWNLOAD_READ_REMOTE);
 	assert(p->fname != NULL);
 	assert(p->fd != -1);
@@ -574,6 +577,7 @@ again:
 		goto out;
 	}
 
+	fprintf(stderr, "\n");
 	log_file(sess, p, f);
 	download_cleanup(p, 0);
 	return 1;
