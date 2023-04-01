@@ -148,6 +148,7 @@ struct	opts {
 	int		 numeric_ids;		/* --numeric-ids */
 	int		 one_file_system;	/* -x */
 	int		 ignore_times;		/* -I --ignore-times */
+	int              progress;              /* --progress */
 	int		 alt_base_mode;
 	int		 sparse;		/* -S --sparse */
 	off_t		 max_size;		/* --max-size */
@@ -246,6 +247,7 @@ struct	sess {
 	int		   mplex_reads; /* multiplexing reads? */
 	size_t		   mplex_read_remain; /* remaining bytes */
 	int		   mplex_writes; /* multiplexing writes? */
+	double             last_time; /* last time printed --progress */  
 };
 
 /*
