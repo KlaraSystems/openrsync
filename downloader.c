@@ -293,6 +293,61 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 }
 
 /*
+ * Print time as hh:mm:ss
+ */
+static void
+print_time(FILE *f, double time)
+{
+	int i = time;
+	fprintf(f, "   %02d:%02d:%02d",
+	    i / 3600, (i - i / 3600 * 3600) / 60,
+	    (i - i / 60 * 60));
+}
+
+/*
+ * Maybe print progress in current file.
+ */
+static void
+progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
+{
+	struct timeval tv;
+	double now;
+	double rate;
+	double remaining_time;
+
+	if (!sess->opts->progress)
+		return;
+
+	gettimeofday(&tv, NULL);
+	now = tv.tv_sec + (double)tv.tv_usec / 1000000.0;
+
+	if (sess->last_time == 0) {
+		sess->last_time = now;
+		return;
+	}
+	if (now - sess->last_time < 0.1)
+		return;
+	fprintf(stderr, " %14lu", so_far);
+	fprintf(stderr, " %3.0f%%", (double)so_far / 
+	    (double)total_bytes * 100.0);
+	rate = (double)so_far / (now - sess->last_time);
+	if (rate > 1024.0 * 1024.0 * 1024.0) {
+		fprintf(stderr, " %7.2fGB/s", rate / 
+		    1024.0 / 1024.0 / 1024.0);
+	} else if (rate > 1024.0 * 1024.0) {
+		fprintf(stderr, " %7.2fMB/s", rate / 
+		    1024.0 / 1024.0);
+	} else if (rate > 1024.0) {
+		fprintf(stderr, " %7.2fKB/s", rate / 
+		    1024.0);
+	}
+	remaining_time = (total_bytes - so_far) / rate;
+	print_time(stderr, remaining_time);
+	fprintf(stderr, "\r");
+	sess->last_time = now;
+}
+
+/*
  * The downloader waits on a file the sender is going to give us, opens
  * and mmaps the existing file, opens a temporary file, dumps the file
  * (or metadata) into the temporary file, then renames.
@@ -360,7 +415,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd)
 		p->state = DOWNLOAD_READ_LOCAL;
 		f = &p->fl[idx];
 		p->ofd = openat(p->rootfd, f->path, O_RDONLY | O_NONBLOCK);
-		fprintf(stderr, "%s\n", f->path);
+		if (sess->opts->progress && !verbose)
+			fprintf(stderr, "%s\n", f->path);
 
 		if (p->ofd == -1 && errno != ENOENT) {
 			ERR("%s: openat", f->path);
@@ -457,8 +513,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd)
 	 */
 
 again:
-	fprintf(stderr, "Maybe print time '%s' %10.0f %10.0f\r"
-	    , f->path, (double) p->total, (double)p->downloaded);
+	progress(sess, p->fl[p->idx].st.size, p->downloaded);
+
 	assert(p->state == DOWNLOAD_READ_REMOTE);
 	assert(p->fname != NULL);
 	assert(p->fd != -1);
@@ -577,7 +633,9 @@ again:
 		goto out;
 	}
 
-	fprintf(stderr, "\n");
+	progress(sess, p->fl[p->idx].st.size, p->downloaded);
+	if (sess->opts->progress)
+		fprintf(stderr, "\n");
 	log_file(sess, p, f);
 	download_cleanup(p, 0);
 	return 1;

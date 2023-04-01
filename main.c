@@ -303,6 +303,7 @@ static struct opts	 opts;
 #define OP_MAX_SIZE	1013
 #define OP_MIN_SIZE	1014
 #define OP_SPARSE	1015
+#define OP_PROGRESS	1016
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -354,6 +355,7 @@ const struct option	 lopts[] = {
     { "no-times",	no_argument,	&opts.preserve_times,	0 },
     { "verbose",	no_argument,	&verbose,		1 },
     { "no-verbose",	no_argument,	&verbose,		0 },
+    { "progress",	no_argument,	NULL,			OP_PROGRESS },
     { "version",	no_argument,	NULL,			OP_VERSION },
     { NULL,		0,		NULL,			0 }
 };
@@ -523,6 +525,9 @@ basedir:
 			if (scan_scaled(optarg, &tmpint) == -1)
 				err(1, "bad min-size");
 			opts.min_size = tmpint;
+			break;
+		case OP_PROGRESS:
+		        opts.progress++;
 			break;
 		case 'V':
 		case OP_VERSION:
