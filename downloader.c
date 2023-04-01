@@ -647,7 +647,7 @@ again:
 		goto out;
 	}
 
-	progress(sess, p->fl[p->idx].st.size, p->downloaded);
+	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size);
 	if (sess->opts->progress)
 		fprintf(stderr, "\n");
 	log_file(sess, p, f);
