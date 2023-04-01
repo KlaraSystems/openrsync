@@ -151,6 +151,7 @@ struct	opts {
 	int              progress;              /* --progress */
 	int		 alt_base_mode;
 	int		 sparse;		/* -S --sparse */
+	int		 backup;		/* --backup */
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */

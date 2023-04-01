@@ -304,6 +304,7 @@ static struct opts	 opts;
 #define OP_MIN_SIZE	1014
 #define OP_SPARSE	1015
 #define OP_PROGRESS	1016
+#define OP_BACKUP	1017
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -356,6 +357,7 @@ const struct option	 lopts[] = {
     { "verbose",	no_argument,	&verbose,		1 },
     { "no-verbose",	no_argument,	&verbose,		0 },
     { "progress",	no_argument,	NULL,			OP_PROGRESS },
+    { "backup",		no_argument,	NULL,			OP_BACKUP },
     { "version",	no_argument,	NULL,			OP_VERSION },
     { NULL,		0,		NULL,			0 }
 };
@@ -528,6 +530,9 @@ basedir:
 			break;
 		case OP_PROGRESS:
 		        opts.progress++;
+			break;
+		case OP_BACKUP:
+		        opts.backup++;
 			break;
 		case 'V':
 		case OP_VERSION:

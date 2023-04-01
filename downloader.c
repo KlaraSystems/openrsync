@@ -29,6 +29,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "md4.h"
 
@@ -362,11 +363,11 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd)
 	int32_t		 idx, rawtok;
 	const struct flist *f;
 	size_t		 sz, tok;
-	struct stat	 st;
+	struct stat	 st, st2;
 	char		*buf = NULL;
 	unsigned char	 ourmd[MD4_DIGEST_LENGTH],
 			 md[MD4_DIGEST_LENGTH];
-
+	char             buf2[PATH_MAX];
 	/*
 	 * If we don't have a download already in session, then the next
 	 * one is coming in.
@@ -617,6 +618,19 @@ again:
 	} else if (memcmp(md, ourmd, MD4_DIGEST_LENGTH)) {
 		ERRX("%s: hash does not match", p->fname);
 		goto out;
+	}
+
+	if (sess->opts->backup) {
+		if (fstatat(p->rootfd, f->path, &st2, 0) != -1) {
+			if (S_ISREG(st2.st_mode)) {
+				snprintf(buf2, sizeof(buf2), "%s~", f->path);
+				if (renameat(p->rootfd, f->path,
+					p->rootfd, buf2) == -1) {
+					ERR("%s: renameat: %s", f->path, buf2);
+					goto out;
+				}
+			}
+		}
 	}
 
 	/* Adjust our file metadata (uid, mode, etc.). */
