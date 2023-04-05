@@ -467,7 +467,7 @@ main(int argc, char *argv[])
 				    optarg);
 			break;
 		case OP_IGNORE_TIMES:
-			opts.one_file_system++;
+			opts.ignore_times++;
 			break;
 		case OP_INCLUDE:
 			if (parse_rule(optarg, RULE_INCLUDE) == -1)
