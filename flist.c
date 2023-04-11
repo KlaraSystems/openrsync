@@ -375,7 +375,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		}
 
 		/* Conditional part: link. */
-
+		// ,,,,
 		if (S_ISLNK(f->st.mode) &&
 		    sess->opts->preserve_links) {
 			fn = f->link;
@@ -801,6 +801,8 @@ out:
 	return 0;
 }
 
+static int copy_symlinks = 1;
+
 /*
  * Generate a flist possibly-recursively given a file root, which may
  * also be a regular file or symlink.
@@ -819,6 +821,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 	size_t		 i, flsz = 0, nxdev = 0, stripdir;
 	dev_t		*newxdev, *xdev = NULL;
 	struct stat	 st;
+	int              ret;
 
 	cargv[0] = root;
 	cargv[1] = NULL;
@@ -828,8 +831,13 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 	 * the non-recursive scan.
 	 */
 
-	if (lstat(root, &st) == -1) {
-		ERR("%s: lstat", root);
+	if (copy_symlinks)
+		ret = stat(root, &st);
+	else			
+		ret = lstat(root, &st);
+
+	if (ret == -1) {
+		ERR("%s: (l)stat", root);
 		return 0;
 	} else if (S_ISREG(st.st_mode)) {
 		/* filter files */
@@ -850,8 +858,9 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		}
 		return 1;
 	} else if (S_ISLNK(st.st_mode)) {
+	        // ,,,,
 		if (!sess->opts->preserve_links) {
-			WARNX("%s: skipping symlink", root);
+			WARNX("%s: skipping symlink 1", root);
 			return 1;
 		}
 		/* filter files */
@@ -904,7 +913,9 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 	 * We'll make sense of it in flist_send.
 	 */
 
-	if ((fts = fts_open(cargv, FTS_PHYSICAL, NULL)) == NULL) {
+	if ((fts = fts_open(cargv,
+		    copy_symlinks ? FTS_LOGICAL: FTS_PHYSICAL, 
+		    NULL)) == NULL) {
 		ERR("fts_open");
 		return 0;
 	}
@@ -921,7 +932,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		assert(ent->fts_statp != NULL);
 		if (S_ISLNK(ent->fts_statp->st_mode) &&
 		    !sess->opts->preserve_links) {
-			WARNX("%s: skipping symlink", ent->fts_path);
+			WARNX("%s: skipping symlink 2", ent->fts_path);
 			continue;
 		}
 
@@ -1003,7 +1014,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		flist_copy_stat(f, ent->fts_statp);
 
 		/* Optionally copy link information. */
-
+		// ,,,,
 		if (S_ISLNK(ent->fts_statp->st_mode)) {
 			f->link = symlink_read(ent->fts_accpath);
 			if (f->link == NULL) {
@@ -1070,6 +1081,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 	struct flist	*fl = NULL, *f;
 	size_t		 i, flsz = 0;
 	struct stat	 st;
+	int              ret;
 
 	assert(argc);
 
@@ -1081,8 +1093,13 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 	for (i = 0; i < argc; i++) {
 		if (argv[i][0] == '\0')
 			continue;
-		if (lstat(argv[i], &st) == -1) {
-			ERR("%s: lstat", argv[i]);
+		if (copy_symlinks)
+			ret = stat(argv[i], &st);
+		else			
+			ret = lstat(argv[i], &st);
+
+		if (ret == -1) {
+			ERR("%s: (l)stat", argv[i]);
 			goto out;
 		}
 
@@ -1098,7 +1115,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 			continue;
 		} else if (S_ISLNK(st.st_mode)) {
 			if (!sess->opts->preserve_links) {
-				WARNX("%s: skipping symlink", argv[i]);
+				WARNX("%s: skipping symlink 3", argv[i]);
 				continue;
 			}
 		} else if (!S_ISREG(st.st_mode)) {
@@ -1227,7 +1244,7 @@ flist_gen_syncfile(struct sess *sess, size_t argc, char **argv,
 				continue;
 			} else if (S_ISLNK(st.st_mode)) {
 				if (!sess->opts->preserve_links) {
-					WARNX("%s: skipping symlink", path);
+					WARNX("%s: skipping symlink 4", path);
 					continue;
 				}
 			} else if (!S_ISREG(st.st_mode)) {
