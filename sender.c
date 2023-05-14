@@ -640,7 +640,10 @@ rsync_sender(struct sess *sess, int fdin,
 			up.stat.fd = open(fl[up.cur->idx].path,
 				O_RDONLY|O_NONBLOCK, 0);
 			if (up.stat.fd == -1) {
-				ERR("%s: open", fl[up.cur->idx].path);
+				char buf[8192];
+				ERR("%s: open (2) in %s",
+				    fl[up.cur->idx].path,
+				    getcwd(buf, sizeof(buf)));
 				goto out;
 			}
 			pfd[2].fd = up.stat.fd;

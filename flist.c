@@ -803,6 +803,7 @@ out:
 
 static int copy_symlinks = 0;
 static int copy_dirlinks = 1;
+static char *ocwd = NULL;
 
 /*
  * Generate a flist possibly-recursively given a file root, which may
@@ -824,9 +825,14 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 	struct stat	 st, st2;
 	int              ret;
 	char             buf[PATH_MAX];
+	char             buf2[PATH_MAX];
+	char            *recurse;
 
 	cargv[0] = root;
 	cargv[1] = NULL;
+
+	if (!ocwd)
+		ocwd = getcwd(buf2, sizeof(buf2));
 
 	/*
 	 * If we're a file, then revert to the same actions we use for
@@ -837,7 +843,6 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		ret = stat(root, &st);
 	else			
 		ret = lstat(root, &st);
-
 	if (ret == -1) {
 		ERR("%s: (l)stat", root);
 		return 0;
@@ -878,8 +883,9 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 					ERR("%s: readlink", root);
 					return 0;
 				}
-				fprintf(stderr, "FOO: recursing '%s' -> '%s'\n", root, buf);
-				flist_gen_dirent(sess, buf, fl, sz, max);
+				snprintf(buf2, sizeof(buf2), "%s/.", root);
+				fprintf(stderr, "FOO: recursing '%s' -> '%s'\n", root, buf2);
+				flist_gen_dirent(sess, buf2, fl, sz, max);
 				return 1;
 			}
 		}
@@ -945,7 +951,9 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 	}
 
 	errno = 0;
+	fprintf(stderr, "pwd-1: %s\n", getcwd(buf2, sizeof(buf2)));
 	while ((ent = fts_read(fts)) != NULL) {
+		fprintf(stderr, "pwd0: %s\n", getcwd(buf2, sizeof(buf2)));
 		if (!flist_fts_check(sess, ent)) {
 			errno = 0;
 			continue;
@@ -954,10 +962,43 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		/* We don't allow symlinks without -l. */
 
 		assert(ent->fts_statp != NULL);
-		if (S_ISLNK(ent->fts_statp->st_mode) &&
-		    !sess->opts->preserve_links) {
-			WARNX("%s: skipping symlink (2)", ent->fts_path);
-			continue;
+		if (S_ISLNK(ent->fts_statp->st_mode)) {
+			recurse = ent->fts_path;
+			if (copy_dirlinks) {
+				/* We did lstat, now we need stat */
+				if (stat(ent->fts_accpath, &st2) == -1) {
+					ERR("%s: stat", recurse);
+					goto out;
+				}
+				if (S_ISDIR(st2.st_mode)) {
+					if (readlink(ent->fts_accpath, buf,
+						sizeof(buf)) == -1) {
+						ERR("%s: readlink",
+						    recurse);
+						continue;
+					}
+					fprintf(stderr, 
+					    "FOO0b: recursing '%s' -> '%s'\n",
+					    recurse, buf);
+
+					chdir(ocwd);
+					fprintf(stderr, "pwd1: %s\n", 
+					    getcwd(buf2, sizeof(buf2)));
+					flist_gen_dirent(sess, recurse, fl, sz,
+					    max);
+					chdir(buf2);
+					fprintf(stderr, "pwd2: %s\n", 
+					    getcwd(buf2, sizeof(buf2)));
+					continue;
+				}
+			} else {
+				if (!sess->opts->preserve_links) {
+					// ,,,,
+					WARNX("%s: skipping symlink (2)",
+					    ent->fts_path);
+					continue;
+				}
+			}
 		}
 
 		/*
@@ -1196,7 +1237,7 @@ flist_gen_syncfile(struct sess *sess, size_t argc, char **argv,
 	const char	*cp;
 
 	if ((fd = open(sess->opts->syncfile, O_RDONLY, 0)) == -1) {
-		ERR("%s", sess->opts->syncfile);
+		ERR("%s (1)", sess->opts->syncfile);
 		return 0;
 	}
 
