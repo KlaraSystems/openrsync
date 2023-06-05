@@ -138,6 +138,8 @@ struct	opts {
 	int		 dry_run;		/* -n */
 	int		 preserve_times;	/* -t */
 	int		 preserve_perms;	/* -p */
+	int		 copy_links;		/* -L */
+	int		 copy_dirlinks;		/* -k */
 	int		 preserve_links;	/* -l */
 	int		 preserve_gids;		/* -g */
 	int		 preserve_uids;		/* -u */

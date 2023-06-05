@@ -21,10 +21,12 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl aDglnoprtvx
+.Op Fl aDgklLnoprtvx
 .Op Fl e Ar program
 .Op Fl -address Ns = Ns Ar sourceaddr
 .Op Fl -compare-dest Ns = Ns Ar directory
+.Op Fl -copy-links
+.Op Fl -copy-dirlinks
 .Op Fl -del
 .Op Fl -exclude Ar pattern
 .Op Fl -exclude-from Ns = Ns Ar file
@@ -76,6 +78,10 @@ directories may be provided.
 If
 .Ar directory
 is a relative path, it is relative to the destination directory.
+.It Fl -copy-links
+Copy targets of symbolic links.
+.It Fl -copy-dirlinks
+Copy targets of symbolic links that point to directories only.
 .It Fl D
 Also transfer device and special files.
 Shorthand for
