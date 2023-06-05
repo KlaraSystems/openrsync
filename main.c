@@ -315,6 +315,8 @@ const struct option	 lopts[] = {
     { "link-dest",	required_argument, NULL,		OP_LINK_DEST },
 #endif
     { "compress",	no_argument,	NULL,			'z' },
+    { "copy-dirlinks",	no_argument,	&opts.copy_dirlinks,	'k' },
+    { "copy-links",	no_argument,	&opts.copy_links,	'L' },
     { "del",		no_argument,	&opts.del,		1 },
     { "delete",		no_argument,	&opts.del,		1 },
     { "devices",	no_argument,	&opts.devices,		1 },
@@ -382,7 +384,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "Dae:ghlnoprtvxzIVS", lopts, &lidx))
+	while ((c = getopt_long(argc, argv, "aDe:ghklLnoprtvxzIVS", lopts, &lidx))
 	    != -1) {
 		switch (c) {
 		case 'D':
@@ -405,8 +407,14 @@ main(int argc, char *argv[])
 		case 'g':
 			opts.preserve_gids = 1;
 			break;
+		case 'k':
+			opts.copy_dirlinks = 1;
+			break;
 		case 'l':
 			opts.preserve_links = 1;
+			break;
+		case 'L':
+			opts.copy_links = 1;
 			break;
 		case 'n':
 			opts.dry_run = 1;
@@ -676,7 +684,7 @@ basedir:
 	exit(rc);
 usage:
 	fprintf(stderr, "usage: %s"
-	    " [-aDglnoprtvx] [-e program] [--address=sourceaddr]\n"
+	    " [-aDgklLnoprtvx] [-e program] [--address=sourceaddr]\n"
 	    "\t[--compare-dest=dir] [--del] [--exclude] [--exclude-from=file]\n"
 	    "\t[--include] [--include-from=file] [--no-motd] [--numeric-ids]\n"
 	    "\t[--port=portnumber] [--rsync-path=program] [--timeout=seconds]\n"
