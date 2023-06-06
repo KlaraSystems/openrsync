@@ -131,6 +131,10 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--progress");
 	if (sess->opts->backup > 0)
 		addargs(&args, "--backup");
+	if (sess->opts->ign_exist > 0)
+		addargs(&args, "--ignore-existing");
+	if (sess->opts->ign_non_exist > 0)
+		addargs(&args, "--ignore-non-existing");
 	if (sess->opts->one_file_system > 1)
 		addargs(&args, "-x");
 	if (sess->opts->one_file_system > 0)
