@@ -117,6 +117,15 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	gid_t		 gid = (gid_t)-1;
 	mode_t		 mode;
 	struct timespec	 ts[2];
+	struct stat      st;
+
+	// FIXME - check that the right thing happens for 
+	// sess->opts->ign_non_exist.  I.e. that it doesn't toch times
+	// or owners.
+	if (sess->opts->ign_non_exist)
+		if (fstatat(rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW) == -1)
+			if (errno == ENOENT)
+				return 1;
 
 	/* Conditionally adjust file modification time. */
 
@@ -125,7 +134,7 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 		ts[1].tv_sec = f->st.mtime;
 		ts[1].tv_nsec = 0;
 		if (utimensat(rootfd, path, ts, AT_SYMLINK_NOFOLLOW) == -1) {
-			ERR("%s: utimensat", path);
+			ERR("%s: utimensat (2)", path);
 			return 0;
 		}
 		LOG4("%s: updated date", f->path);

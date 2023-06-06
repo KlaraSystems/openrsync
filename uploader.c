@@ -619,7 +619,7 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
 		tv[1].tv_nsec = 0;
 		rc = utimensat(u->rootfd, f->path, tv, 0);
 		if (rc == -1) {
-			ERR("%s: utimensat", f->path);
+			ERR("%s: utimensat (1)", f->path);
 			return 0;
 		}
 		LOG4("%s: updated date", f->path);
@@ -658,12 +658,22 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
     struct sess *sess)
 {
 	if (fstatat(rootfd, f->path, st, AT_SYMLINK_NOFOLLOW) == -1) {
-		if (errno == ENOENT)
-			return 3;
+		if (errno == ENOENT) {
+			if (sess->opts->ign_non_exist) {
+				LOG1("Skip non existing '%s'", f->path);
+				return 0;
+			} else
+				return 3;
+		}
 
 		ERR("%s: fstatat", f->path);
 		return -1;
 	}
+	if (sess->opts->ign_exist) {
+		LOG1("Skip existing '%s'", f->path);
+		return 0;
+	}
+
 
 	/* non-regular file needs attention */
 	if (!S_ISREG(st->st_mode))

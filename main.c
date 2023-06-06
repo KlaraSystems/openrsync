@@ -305,6 +305,8 @@ static struct opts	 opts;
 #define OP_SPARSE	1015
 #define OP_PROGRESS	1016
 #define OP_BACKUP	1017
+#define OP_IGNORE_EXISTING	1018
+#define OP_IGNORE_NON_EXISTING	1019
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -327,6 +329,8 @@ const struct option	 lopts[] = {
     { "group",		no_argument,	&opts.preserve_gids,	1 },
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
     { "help",		no_argument,	NULL,			'h' },
+    { "ignore-existing", no_argument,	NULL,			OP_IGNORE_EXISTING },
+    { "ignore-non-existing", no_argument, NULL,			OP_IGNORE_NON_EXISTING },
     { "ignore-times",	no_argument,	NULL,			OP_IGNORE_TIMES },
     { "include",	required_argument, NULL,		OP_INCLUDE },
     { "include-from",	required_argument, NULL,		OP_INCLUDE_FROM },
@@ -541,6 +545,12 @@ basedir:
 			break;
 		case OP_BACKUP:
 		        opts.backup++;
+			break;
+		case OP_IGNORE_EXISTING:
+		        opts.ign_exist++;
+			break;
+		case OP_IGNORE_NON_EXISTING:
+		        opts.ign_non_exist++;
 			break;
 		case 'V':
 		case OP_VERSION:
