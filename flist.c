@@ -549,7 +549,7 @@ flist_realloc(struct flist **fl, size_t *sz, size_t *max)
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_append(struct flist *f, struct stat *st, const char *path)
+flist_append(struct flist *f, const struct stat *st, const char *path)
 {
 
 	/*
@@ -800,6 +800,31 @@ out:
 	return 0;
 }
 
+static int
+flist_gen_dirent_file(const char *type, char *root, struct flist **fl,
+    size_t *sz, size_t *max, const struct stat *st)
+{
+	struct flist	*f;
+
+	/* filter files */
+	if (rules_match(root, 0) == -1) {
+		WARNX("%s: skipping excluded %s", root, type);
+		return 1;
+	}
+	if (!flist_realloc(fl, sz, max)) {
+		ERRX1("flist_realloc");
+		return 0;
+	}
+	f = &(*fl)[(*sz) - 1];
+	assert(f != NULL);
+
+	if (!flist_append(f, st, root)) {
+		ERRX1("flist_append");
+		return 0;
+	}
+	return 1;
+}
+
 /*
  * Generate a flist possibly-recursively given a file root, which may
  * also be a regular file or symlink.
@@ -838,23 +863,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		ERR("%s: (l)stat", root);
 		return 0;
 	} else if (S_ISREG(st.st_mode)) {
-		/* filter files */
-		if (rules_match(root, 0) == -1) {
-			WARNX("%s: skipping excluded file", root);
-			return 1;
-		}
-		if (!flist_realloc(fl, sz, max)) {
-			ERRX1("flist_realloc");
-			return 0;
-		}
-		f = &(*fl)[(*sz) - 1];
-		assert(f != NULL);
-
-		if (!flist_append(f, &st, root)) {
-			ERRX1("flist_append");
-			return 0;
-		}
-		return 1;
+		return flist_gen_dirent_file("file", root, fl, sz, max, &st);
 	} else if (S_ISLNK(st.st_mode)) {
 		/*
 		 * How does this work?
@@ -883,23 +892,14 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			WARNX("%s: skipping symlink (1)", root);
 			return 1;
 		}
-		/* filter files */
-		if (rules_match(root, 0) == -1) {
-			WARNX("%s: skipping excluded symlink", root);
-			return 1;
-		}
-		if (!flist_realloc(fl, sz, max)) {
-			ERRX1("flist_realloc");
-			return 0;
-		}
-		f = &(*fl)[(*sz) - 1];
-		assert(f != NULL);
 
-		if (!flist_append(f, &st, root)) {
-			ERRX1("flist_append");
-			return 0;
-		}
-		return 1;
+		return flist_gen_dirent_file("symlink", root, fl, sz, max, &st);
+	} else if (sess->opts->devices &&
+	    (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
+		return flist_gen_dirent_file("special", root, fl, sz, max, &st);
+	} else if (sess->opts->specials &&
+	    (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode))) {
+		return flist_gen_dirent_file("special", root, fl, sz, max, &st);
 	} else if (!S_ISDIR(st.st_mode)) {
 		WARNX("%s: skipping special", root);
 		return 1;
@@ -1158,7 +1158,8 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 		 * File type checks.
 		 * In non-recursive mode, we don't accept directories.
 		 * We also skip symbolic links without -l.
-		 * Beyond that, we only accept regular files.
+		 * Beyond that, we only accept regular files unless we're
+		 * allowing specials or devices.
 		 */
 
 		if (S_ISDIR(st.st_mode)) {
@@ -1169,6 +1170,12 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 				WARNX("%s: skipping symlink (3)", argv[i]);
 				continue;
 			}
+		} else if (sess->opts->devices &&
+		    (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
+			/* Valid. */
+		} else if (sess->opts->specials &&
+		    (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode))) {
+			/* Valid. */
 		} else if (!S_ISREG(st.st_mode)) {
 			WARNX("%s: skipping special", argv[i]);
 			continue;
