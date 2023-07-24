@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <math.h>
+#include <search.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,6 +59,9 @@ struct	upload {
 	int		    fdout; /* write descriptor to sender */
 	const struct flist *fl; /* file list */
 	size_t		    flsz; /* size of file list */
+	struct flist	   *dfl; /* delayed delete file list */
+	size_t		    dflsz; /* size of delayed delete list */
+	size_t		    dflmax; /* allocated size of delayed delete list */
 	int		   *newdir; /* non-zero if mkdir'd */
 };
 
@@ -512,12 +516,156 @@ pre_sock(struct upload *p, struct sess *sess)
 }
 
 /*
+ * Called before we update a directory to see if we need to delete any files
+ * inside in the process.
+ * Return 0 on failure, 1 on success.
+ */
+static int
+pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
+{
+	const struct flist *f;
+	char *dirpath, *parg[2];
+	FTS *fts;
+	FTSENT *ent;
+	size_t stripdir;
+	ENTRY hent, *hentp;
+	int ret;
+
+	fts = NULL;
+	ret = 0;
+	f = &p->fl[p->idx];
+	if (asprintf(&dirpath, "%s/%s", p->root, f->path) == -1) {
+		ERRX1("%s: asprintf", f->path);
+		return (ret);
+	}
+
+	if (!hcreate(p->flsz)) {
+		ERR("hcreate");
+		goto out;
+	}
+
+	/*
+	 * Generate a list of just the paths in this directory that should exist.
+	 */
+	stripdir = strlen(f->path) + 1;
+	for (size_t i = p->idx; i < p->flsz; i++) {
+		char *slp;
+		size_t slpos;
+
+		/*
+		 * Stop scanning once we're backed out of the directory we're
+		 * looking at.
+		 */
+		if (strncmp(f->path, p->fl[i].wpath, stripdir - 1) != 0)
+			break;
+
+		/* Omit subdirectories' contents */
+		slp = strrchr(p->fl[i].wpath, '/');
+		slpos = (slp != NULL ? slp - p->fl[i].wpath : 0);
+		if (slpos >= stripdir)
+			continue;
+
+		memset(&hent, 0, sizeof(hent));
+		if ((hent.key = strdup(p->fl[i].wpath)) == NULL) {
+			ERR("strdup");
+			goto out;
+		}
+
+		if ((hentp = hsearch(hent, ENTER)) == NULL) {
+			ERR("hsearch");
+			goto out;
+		} else if (hentp->key != hent.key) {
+			ERRX("%s: duplicate", p->fl[i].wpath);
+			free(hent.key);
+			goto out;
+		}
+	}
+
+	parg[0] = dirpath;
+	parg[1] = NULL;
+
+	if ((fts = fts_open(parg, FTS_PHYSICAL, NULL)) == NULL) {
+		ERR("fts_open");
+		goto out;
+	}
+
+	stripdir = strlen(p->root) + 1;
+	while ((ent = fts_read(fts)) != NULL) {
+		if (ent->fts_info == FTS_NS) {
+			continue;
+		} else if (ent->fts_info == FTS_D) {
+			/* Skip non-root directories */
+			if (strcmp(ent->fts_path, parg[0]) != 0)
+				fts_set(fts, ent, FTS_SKIP);
+		} else if (stripdir >= ent->fts_pathlen) {
+			continue;
+		}
+
+		if (!flist_fts_check(sess, ent)) {
+			errno = 0;
+			continue;
+		}
+
+		assert(ent->fts_statp != NULL);
+
+		if (!sess->opts->del_excl && rules_match(ent->fts_path + stripdir,
+		    (ent->fts_info == FTS_D)) == -1) {
+			WARNX("skip excluded file %s",
+			    ent->fts_path + stripdir);
+			fts_set(fts, ent, FTS_SKIP);
+			continue;
+		}
+
+		/* Look up in the hashtable. */
+		memset(&hent, 0, sizeof(hent));
+		hent.key = ent->fts_path + stripdir;
+		if (hsearch(hent, FIND) != NULL)
+			continue;
+
+		if (delmode == DMODE_DURING) {
+			int flag = 0;
+
+			LOG1("%s: deleting", ent->fts_path + stripdir);
+
+			if (sess->opts->dry_run)
+				continue;
+
+			if (ent->fts_info == FTS_D)
+				flag |= AT_REMOVEDIR;
+			if (unlinkat(p->rootfd, ent->fts_path + stripdir,
+			    flag) == -1 && errno != ENOENT) {
+				ERR("%s: unlinkat", ent->fts_path + stripdir);
+				goto out;
+			}
+		} else {
+			assert(delmode == DMODE_DELAY);
+			flist_add_del(sess, ent->fts_path, stripdir, &p->dfl, &p->dflsz,
+			    &p->dflmax, ent->fts_statp);
+		}
+	}
+
+	ret = 1;
+out:
+	fts_close(fts);
+	free(dirpath);
+	hdestroy();
+	return (ret);
+}
+
+int
+upload_del(struct upload *p, struct sess *sess)
+{
+
+	return (flist_del(sess, p->rootfd, p->dfl, p->dflsz));
+}
+
+/*
  * If not found, create the destination directory in prefix order.
  * Create directories using the existing umask.
  * Return <0 on failure 0 on success.
  */
 static int
-pre_dir(const struct upload *p, struct sess *sess)
+pre_dir(struct upload *p, struct sess *sess)
 {
 	struct stat	 st;
 	int		 rc;
@@ -552,6 +700,11 @@ pre_dir(const struct upload *p, struct sess *sess)
 		 * directory and that doesn't work.
 		 */
 		LOG3("%s: updating directory", f->path);
+
+		if (sess->opts->del == DMODE_DURING || sess->opts->del == DMODE_DELAY) {
+			pre_dir_delete(p, sess, sess->opts->del);
+		}
+
 		return 0;
 	}
 

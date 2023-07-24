@@ -307,6 +307,11 @@ static struct opts	 opts;
 #define OP_BACKUP	1017
 #define OP_IGNORE_EXISTING	1018
 #define OP_IGNORE_NON_EXISTING	1019
+#define OP_DEL			1020
+#define OP_DEL_BEFORE	1021
+#define OP_DEL_DURING	1022
+#define OP_DEL_DELAY	1023
+#define OP_DEL_AFTER	1024
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -319,8 +324,13 @@ const struct option	 lopts[] = {
     { "compress",	no_argument,	NULL,			'z' },
     { "copy-dirlinks",	no_argument,	&opts.copy_dirlinks,	'k' },
     { "copy-links",	no_argument,	&opts.copy_links,	'L' },
-    { "del",		no_argument,	&opts.del,		1 },
-    { "delete",		no_argument,	&opts.del,		1 },
+    { "del",		no_argument,	NULL,			OP_DEL },
+    { "delete",		no_argument,	NULL,			OP_DEL },
+    { "delete-before",	no_argument,	NULL,		OP_DEL_BEFORE },
+    { "delete-during",	no_argument,	NULL,		OP_DEL_DURING },
+    { "delete-delay",	no_argument,	NULL,		OP_DEL_DELAY },
+    { "delete-after",	no_argument,	NULL,		OP_DEL_AFTER },
+    { "delete-excluded",	no_argument,	&opts.del_excl,	1 },
     { "devices",	no_argument,	&opts.devices,		1 },
     { "no-devices",	no_argument,	&opts.devices,		0 },
     { "dry-run",	no_argument,	&opts.dry_run,		1 },
@@ -511,6 +521,37 @@ main(int argc, char *argv[])
 			}
 			opts.alt_base_mode = BASE_MODE_COPY;
 			goto basedir;
+#endif
+		case OP_DEL:
+			/* nop if a --delete-* option has already been specified. */
+			if (opts.del == DMODE_NONE)
+				opts.del = DMODE_UNSPECIFIED;
+			break;
+		case OP_DEL_BEFORE:
+			if (opts.del > DMODE_UNSPECIFIED)
+				errx(1, "may only specify one --delete-* option");
+
+			opts.del = DMODE_BEFORE;
+			break;
+		case OP_DEL_DURING:
+			if (opts.del > DMODE_UNSPECIFIED)
+				errx(1, "may only specify one --delete-* option");
+
+			opts.del = DMODE_DURING;
+			break;
+		case OP_DEL_DELAY:
+			if (opts.del > DMODE_UNSPECIFIED)
+				errx(1, "may only specify one --delete-* option");
+
+			opts.del = DMODE_DELAY;
+			break;
+		case OP_DEL_AFTER:
+			if (opts.del > DMODE_UNSPECIFIED)
+				errx(1, "may only specify one --delete-* option");
+
+			opts.del = DMODE_AFTER;
+			break;
+#if 0
 		case OP_LINK_DEST:
 			if (opts.alt_base_mode !=0 &&
 			    opts.alt_base_mode != BASE_MODE_LINK) {
@@ -579,6 +620,13 @@ basedir:
 		poll_timeout = -1;
 	else
 		poll_timeout *= 1000;
+
+	/*
+	 * XXX rsync started defaulting to --delete-during in later versions of the
+	 * protocol (30 and up).
+	 */
+	if (opts.del == DMODE_UNSPECIFIED)
+		opts.del = DMODE_BEFORE;
 
 	/*
 	 * This is what happens when we're started with the "hidden"
@@ -695,8 +743,9 @@ basedir:
 usage:
 	fprintf(stderr, "usage: %s"
 	    " [-aDgklLnoprtvx] [-e program] [--address=sourceaddr]\n"
-	    "\t[--compare-dest=dir] [--del] [--exclude] [--exclude-from=file]\n"
-	    "\t[--include] [--include-from=file] [--no-motd] [--numeric-ids]\n"
+	    "\t[--compare-dest=dir] [--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
+	    "\t[--exclude] [--exclude-from=file] [--include]\n"
+	    "\t[--include-from=file] [--no-motd] [--numeric-ids]\n"
 	    "\t[--port=portnumber] [--rsync-path=program] [--timeout=seconds]\n"
 	    "\t[--version] source ... directory\n",
 	    getprogname());

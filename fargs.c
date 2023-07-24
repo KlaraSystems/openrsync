@@ -97,8 +97,29 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 
 	/* Shared arguments. */
 
-	if (sess->opts->del)
-		addargs(&args, "--delete");
+	if (sess->opts->del) {
+		switch (sess->opts->del) {
+		case DMODE_UNSPECIFIED:
+			addargs(&args, "--delete");
+			break;
+		case DMODE_BEFORE:
+			addargs(&args, "--delete-before");
+			break;
+		case DMODE_DURING:
+			addargs(&args, "--delete-during");
+			break;
+		case DMODE_DELAY:
+			addargs(&args, "--delete-delay");
+			break;
+		case DMODE_AFTER:
+			addargs(&args, "--delete-after");
+			break;
+		default:
+			errx(1, "bogus delete mode %d\n", sess->opts->del);
+		}
+	}
+	if (sess->opts->del_excl)
+		addargs(&args, "--delete-excluded");
 	if (sess->opts->numeric_ids)
 		addargs(&args, "--numeric-ids");
 	if (sess->opts->preserve_gids)
