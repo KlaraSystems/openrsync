@@ -29,6 +29,11 @@
 .Op Fl -copy-links
 .Op Fl -copy-dirlinks
 .Op Fl -del
+.Op Fl -delete-before
+.Op Fl -delete-during
+.Op Fl -delete-delay
+.Op Fl -delete-after
+.Op Fl -delete-excluded
 .Op Fl -exclude Ar pattern
 .Op Fl -exclude-from Ns = Ns Ar file
 .Op Fl -ignore-existing
@@ -99,6 +104,53 @@ not found in
 directories.
 Only applicable with
 .Fl r .
+.It Fl -delete-before
+Execute the above described
+.Fl -delete
+behavior before the transfer begins.
+This is the default timing when
+.It Fl -delete
+is used.
+This option is mutually exclusive with
+.Fl -delete-during ,
+.Fl -delete-delay,
+and
+.Fl -delete-after .
+.It Fl -delete-during
+Execute the above described
+.Fl -delete
+behavior as the transfer happens, right before each directory to be transferred
+is checked for updates.
+This option is mutually exclusive with
+.Fl -delete-before,
+.Fl -delete-delay,
+and
+.Fl -delete-after .
+.It Fl -delete-delay
+Execute the above described
+.Fl -delete
+behavior after the transfer happens, but collect the list to be deleted right
+before each directory to be transferred is checked for updates.
+This option is mutually exclusive with
+.Fl -delete-before,
+.Fl -delete-during,
+and
+.Fl -delete-after .
+.It Fl -delete-after
+Execute the above described
+.Fl -delete
+behavior after the transfer has completed.
+This option is mutually exclusive with
+.Fl -delete-before,
+.Fl -delete-during,
+and
+.Fl -delete-delay .
+.It Fl -delete-excluded
+When used in combination with any one of the above
+.Fl -delete
+options, supplied
+.Fl -exclude
+patterns will not prevent a file from being deleted.
 .It Fl -exclude Ar pattern
 Exclude files matching
 .Em pattern .

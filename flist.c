@@ -188,7 +188,7 @@ flist_topdirs(struct sess *sess, struct flist *fl, size_t flsz)
  * Everything else is skipped and possibly warned about.
  * Return zero to skip, non-zero to examine.
  */
-static int
+int
 flist_fts_check(struct sess *sess, FTSENT *ent)
 {
 
@@ -1571,8 +1571,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		}
 
 		/* filter files on delete */
-		/* TODO handle --delete-excluded */
-		if (rules_match(ent->fts_path + stripdir,
+		if (!sess->opts->del_excl && rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D)) == -1) {
 			WARNX("skip excluded file %s",
 			    ent->fts_path + stripdir);
@@ -1619,6 +1618,32 @@ out:
 	free(cargv);
 	hdestroy();
 	return rc;
+}
+
+/*
+ * Add a file to be deleted after transfers are complete.
+ */
+int
+flist_add_del(struct sess *sess, const char *path, size_t stripdir,
+    struct flist **fl, size_t *sz, size_t *flmax, const struct stat *st)
+{
+	struct flist *f;
+
+	if (!flist_realloc(fl, sz, flmax)) {
+		ERRX1("flist_realloc");
+		return (0);
+	}
+
+	f = &(*fl)[*sz - 1];
+	if ((f->path = strdup(path)) == NULL) {
+		ERR("strdup");
+		return (0);
+	}
+
+	f->wpath = f->path + stripdir;
+	flist_copy_stat(f, st);
+
+	return (1);
 }
 
 /*

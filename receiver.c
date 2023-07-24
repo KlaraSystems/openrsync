@@ -329,19 +329,18 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 	 * Begin by conditionally getting all files we have currently
 	 * available in our destination.
 	 */
+	/* XXX --dirs should also do deletion of dirs whose contents are copied. */
+	if (sess->opts->del == DMODE_BEFORE && sess->opts->recursive) {
+		if (!flist_gen_dels(sess, root, &dfl, &dflsz, fl, flsz)) {
+			ERRX1("flist_gen_local");
+			goto out;
+		}
 
-	if (sess->opts->del &&
-	    sess->opts->recursive &&
-	    !flist_gen_dels(sess, root, &dfl, &dflsz, fl, flsz)) {
-		ERRX1("flist_gen_local");
-		goto out;
-	}
-
-	/* If we have a local set, go for the deletion. */
-
-	if (!flist_del(sess, dfd, dfl, dflsz)) {
-		ERRX1("flist_del");
-		goto out;
+		/* If we have a local set, go for the deletion. */
+		if (!flist_del(sess, dfd, dfl, dflsz)) {
+			ERRX1("flist_del");
+			goto out;
+		}
 	}
 
 	/* Initialise poll events to listen from the sender. */
@@ -472,6 +471,28 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 		}
 		if (ioerror != -1) {
 			ERRX("expected phase ack");
+			goto out;
+		}
+	}
+
+	/*
+	 * Following transfers, we'll take care of --delete-after.
+	 */
+	/* XXX --dirs should also do deletion of dirs whose contents are copied. */
+	if (sess->opts->del == DMODE_AFTER && sess->opts->recursive) {
+		if (!flist_gen_dels(sess, root, &dfl, &dflsz, fl, flsz)) {
+				ERRX1("flist_gen_local");
+				goto out;
+		}
+
+		/* If we have a local set, go for the deletion. */
+		if (!flist_del(sess, dfd, dfl, dflsz)) {
+			ERRX1("flist_del");
+			goto out;
+		}
+	} else if (sess->opts->del == DMODE_DELAY) {
+		if (!upload_del(ul, sess)) {
+			ERRX1("upload_del");
 			goto out;
 		}
 	}

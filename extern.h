@@ -17,6 +17,8 @@
 #ifndef EXTERN_H
 #define EXTERN_H
 
+#include <fts.h>
+
 #if !HAVE_PLEDGE
 # define pledge(x, y) (1)
 #endif
@@ -88,6 +90,25 @@ enum	fmode {
 };
 
 /*
+ * Delete modes:
+ * - unspecified: transforms into one of the below after option processing,
+ *    i.e., --del / --delete.
+ * - before: delete files up-front
+ * - during: delete files during transfer
+ * - delay:  gather deletions and delete after after
+ * - after: delete after transfer
+ * - excluded: delete excluded files, too
+ */
+enum	delmode {
+	DMODE_NONE,
+	DMODE_UNSPECIFIED,
+	DMODE_BEFORE,
+	DMODE_DURING,
+	DMODE_DELAY,
+	DMODE_AFTER,
+};
+
+/*
  * File arguments given on the command line.
  * See struct opts.
  */
@@ -143,7 +164,8 @@ struct	opts {
 	int		 preserve_links;	/* -l */
 	int		 preserve_gids;		/* -g */
 	int		 preserve_uids;		/* -u */
-	int		 del;			/* --delete */
+	enum delmode	 del;			/* --delete */
+	int		 del_excl;		/* --delete-excluded */
 	int		 devices;		/* --devices */
 	int		 specials;		/* --specials */
 	int		 no_motd;		/* --no-motd */
@@ -325,6 +347,7 @@ void	rsync_errx(const char *, ...)
 void	rsync_errx1(const char *, ...)
 			__attribute__((format(printf, 1, 2)));
 
+int	flist_fts_check(struct sess *, FTSENT *);
 int	flist_del(struct sess *, int, const struct flist *, size_t);
 int	flist_gen(struct sess *, size_t, char **, struct flist **, size_t *);
 int	flist_gen_local(struct sess *, const char *, struct flist **, size_t *);
@@ -333,6 +356,8 @@ int	flist_recv(struct sess *, int, struct flist **, size_t *);
 int	flist_send(struct sess *, int, int, const struct flist *, size_t);
 int	flist_gen_dels(struct sess *, const char *, struct flist **, size_t *,
 	    const struct flist *, size_t);
+int	flist_add_del(struct sess *, const char *, size_t, struct flist **,
+	    size_t *, size_t *, const struct stat *st);
 
 const char	 *alt_base_mode(int);
 char		**fargs_cmdline(struct sess *, const struct fargs *, size_t *);
@@ -386,6 +411,7 @@ void		 download_free(struct download *);
 struct upload	*upload_alloc(const char *, int, int, size_t,
 		    const struct flist *, size_t, mode_t);
 void		upload_free(struct upload *);
+int		upload_del(struct upload *, struct sess *);
 
 struct blktab	*blkhash_alloc(void);
 int		 blkhash_set(struct blktab *, const struct blkset *);
