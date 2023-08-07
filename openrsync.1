@@ -40,6 +40,7 @@
 .Op Fl -ignore-non-existing
 .Op Fl -include Ar pattern
 .Op Fl -include-from Ns = Ns Ar file
+.Op Fl -inplace
 .Op Fl -max-size Ns = Ns size
 .Op Fl -min-size Ns = Ns size
 .Op Fl -no-motd
@@ -197,6 +198,13 @@ set the numeric group ID to match the source instead.
 Also transfer symbolic links.
 The link is transferred as a standalone file: if the destination does
 not exist, it will be broken.
+.It Fl -inplace
+Avoid creating temporary files, instead operating on files directly in place
+in the destination.
+This option has some notable trade-offs that must be considered prior to using
+it.
+For example, hardlinks will not be broken even if a file is no longer hardlinked
+in the source directory.
 .It Fl -max-size Ar size
 Don't transfer any file that is larger than
 .Ar size

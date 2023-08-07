@@ -206,9 +206,10 @@ pre_symlink(struct upload *p, struct sess *sess)
 		ERR("%s: fstatat", f->path);
 		return -1;
 	}
-	if (rc != -1 && !S_ISLNK(st.st_mode)) {
-		if (S_ISDIR(st.st_mode) &&
-		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
+	if (rc != -1 && (sess->opts->inplace || !S_ISLNK(st.st_mode))) {
+		if ((sess->opts->inplace || S_ISDIR(st.st_mode)) &&
+		    unlinkat(p->rootfd, f->path,
+		    S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0) == -1) {
 			ERR("%s: unlinkat", f->path);
 			return -1;
 		}
@@ -242,23 +243,32 @@ pre_symlink(struct upload *p, struct sess *sess)
 	 */
 
 	if (rc == -1 || updatelink) {
-		LOG3("%s: creating symlink: %s", f->path, f->link);
-		if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
-			ERRX1("mktemplate");
-			return -1;
+		if (sess->opts->inplace) {
+			LOG3("%s: creating symlink in-place: %s", f->path, f->link);
+			if (symlinkat(f->link, p->rootfd, f->path) == -1) {
+				ERR("symlinkat");
+				return -1;
+			}
+		} else {
+				LOG3("%s: creating symlink: %s", f->path, f->link);
+			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
+				ERRX1("mktemplate");
+				return -1;
+			}
+			if (mkstemplinkat(f->link, p->rootfd, temp) == NULL) {
+				ERR("mkstemplinkat");
+				free(temp);
+				return -1;
+			}
 		}
-		if (mkstemplinkat(f->link, p->rootfd, temp) == NULL) {
-			ERR("mkstemplinkat");
-			free(temp);
-			return -1;
-		}
+
 		newlink = 1;
 	}
 
 	rsync_set_metadata_at(sess, newlink,
-		p->rootfd, f, newlink ? temp : f->path);
+		p->rootfd, f, newlink && temp != NULL ? temp : f->path);
 
-	if (newlink) {
+	if (newlink && temp != NULL) {
 		if (renameat(p->rootfd, temp, p->rootfd, f->path) == -1) {
 			ERR("%s: renameat %s", temp, f->path);
 			(void)unlinkat(p->rootfd, temp, 0);
@@ -331,23 +341,32 @@ pre_dev(struct upload *p, struct sess *sess)
 	}
 
 	if (rc == -1 || updatedev) {
+		if (sess->opts->inplace) {
+			if (mknodat(p->rootfd, f->path, f->st.mode & (S_IFCHR|S_IFBLK),
+			    f->st.rdev) == -1) {
+				ERR("mknodat");
+				return -1;
+			}
+		} else {
+			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
+				ERRX1("mktemplate");
+				return -1;
+			}
+			if (mkstempnodat(p->rootfd, temp,
+				f->st.mode & (S_IFCHR|S_IFBLK), f->st.rdev) == NULL) {
+				ERR("mkstempnodat");
+				free(temp);
+				return -1;
+			}
+		}
+
 		newdev = 1;
-		if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
-			ERRX1("mktemplate");
-			return -1;
-		}
-		if (mkstempnodat(p->rootfd, temp,
-		    f->st.mode & (S_IFCHR|S_IFBLK), f->st.rdev) == NULL) {
-			ERR("mkstempnodat");
-			free(temp);
-			return -1;
-		}
 	}
 
 	rsync_set_metadata_at(sess, newdev,
-	    p->rootfd, f, newdev ? temp : f->path);
+	    p->rootfd, f, newdev && temp != NULL ? temp : f->path);
 
-	if (newdev) {
+	if (newdev && temp != NULL) {
 		if (renameat(p->rootfd, temp, p->rootfd, f->path) == -1) {
 			ERR("%s: renameat %s", temp, f->path);
 			(void)unlinkat(p->rootfd, temp, 0);
@@ -409,22 +428,30 @@ pre_fifo(struct upload *p, struct sess *sess)
 	}
 
 	if (rc == -1) {
+		if (sess->opts->inplace) {
+			if (mkfifoat(p->rootfd, f->path, S_IRUSR|S_IWUSR) == -1) {
+				ERR("mkfifoat");
+				return -1;
+			}
+		} else {
+			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
+				ERRX1("mktemplate");
+				return -1;
+			}
+			if (mkstempfifoat(p->rootfd, temp) == NULL) {
+				ERR("mkstempfifoat");
+				free(temp);
+				return -1;
+			}
+		}
+
 		newfifo = 1;
-		if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
-			ERRX1("mktemplate");
-			return -1;
-		}
-		if (mkstempfifoat(p->rootfd, temp) == NULL) {
-			ERR("mkstempfifoat");
-			free(temp);
-			return -1;
-		}
 	}
 
 	rsync_set_metadata_at(sess, newfifo,
-		p->rootfd, f, newfifo ? temp : f->path);
+		p->rootfd, f, newfifo && temp != NULL ? temp : f->path);
 
-	if (newfifo) {
+	if (newfifo && temp != NULL) {
 		if (renameat(p->rootfd, temp, p->rootfd, f->path) == -1) {
 			ERR("%s: renameat %s", temp, f->path);
 			(void)unlinkat(p->rootfd, temp, 0);
@@ -486,22 +513,30 @@ pre_sock(struct upload *p, struct sess *sess)
 	}
 
 	if (rc == -1) {
+		if (sess->opts->inplace) {
+			if (mksock(temp, p->root) == -1) {
+				ERR("mksock");
+				return -1;
+			}
+		} else {
+			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
+				ERRX1("mktemplate");
+				return -1;
+			}
+			if (mkstempsock(p->root, temp) == NULL) {
+				ERR("mkstempsock");
+				free(temp);
+				return -1;
+			}
+		}
+
 		newsock = 1;
-		if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
-			ERRX1("mktemplate");
-			return -1;
-		}
-		if (mkstempsock(p->root, temp) == NULL) {
-			ERR("mkstempsock");
-			free(temp);
-			return -1;
-		}
 	}
 
 	rsync_set_metadata_at(sess, newsock,
-		p->rootfd, f, newsock ? temp : f->path);
+		p->rootfd, f, newsock && temp != NULL ? temp : f->path);
 
-	if (newsock) {
+	if (newsock && temp != NULL) {
 		if (renameat(p->rootfd, temp, p->rootfd, f->path) == -1) {
 			ERR("%s: renameat %s", temp, f->path);
 			(void)unlinkat(p->rootfd, temp, 0);

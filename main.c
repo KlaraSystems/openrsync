@@ -344,6 +344,8 @@ const struct option	 lopts[] = {
     { "ignore-times",	no_argument,	NULL,			OP_IGNORE_TIMES },
     { "include",	required_argument, NULL,		OP_INCLUDE },
     { "include-from",	required_argument, NULL,		OP_INCLUDE_FROM },
+    /* XXX --inplace should also imply --partial */
+    { "inplace",	no_argument,	&opts.inplace,			1 },
     { "links",		no_argument,	&opts.preserve_links,	1 },
     { "max-size",	required_argument, NULL,		OP_MAX_SIZE },
     { "min-size",	required_argument, NULL,		OP_MIN_SIZE },
@@ -745,7 +747,7 @@ usage:
 	    " [-aDgklLnoprtvx] [-e program] [--address=sourceaddr]\n"
 	    "\t[--compare-dest=dir] [--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--exclude] [--exclude-from=file] [--include]\n"
-	    "\t[--include-from=file] [--no-motd] [--numeric-ids]\n"
+	    "\t[--include-from=file] [--inplace] [--no-motd] [--numeric-ids]\n"
 	    "\t[--port=portnumber] [--rsync-path=program] [--timeout=seconds]\n"
 	    "\t[--version] source ... directory\n",
 	    getprogname());

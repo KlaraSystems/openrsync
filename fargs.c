@@ -128,6 +128,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-l");
 	if (sess->opts->dry_run)
 		addargs(&args, "-n");
+	if (sess->opts->inplace)
+		addargs(&args, "--inplace");
 	if (sess->opts->preserve_uids)
 		addargs(&args, "-o");
 	if (sess->opts->preserve_perms)
