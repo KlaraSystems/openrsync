@@ -157,6 +157,7 @@ struct	opts {
 	int		 server;		/* --server */
 	int		 recursive;		/* -r */
 	int		 dry_run;		/* -n */
+	int		 inplace;		/* --inplace */
 	int		 preserve_times;	/* -t */
 	int		 preserve_perms;	/* -p */
 	int		 copy_links;		/* -L */
@@ -434,6 +435,7 @@ void		 hash_file(const void *, size_t, unsigned char *,
 void		 copy_file(int, const char *, const struct flist *);
 
 int		 mkpath(char *);
+int		 mksock(const char *, char *);
 
 int		 mkstempat(int, char *);
 char		*mkstemplinkat(char*, int, char *);

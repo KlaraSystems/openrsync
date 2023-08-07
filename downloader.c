@@ -35,6 +35,10 @@
 
 #include "extern.h"
 
+#ifndef ACCESSPERMS
+#define ACCESSPERMS	(S_IRWXU|S_IRWXG|S_IRWXO)
+#endif
+
 /*
  * A small optimisation: have a 1 MB pre-write buffer.
  * Disable the pre-write buffer by having this be zero.
@@ -479,27 +483,51 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd)
 		*ofd = -1;
 
 		/* Create the temporary file. */
+		if (sess->opts->inplace) {
+			char *basename;
 
-		if (mktemplate(&p->fname, f->path, sess->opts->recursive) ==
-		    -1) {
-			ERRX1("mktemplate");
-			goto out;
+			p->fd = openat(p->rootfd, f->path, O_RDWR | O_CREAT | O_NONBLOCK,
+			    f->st.mode & ACCESSPERMS);
+			if (p->fd == -1) {
+				ERRX1("%s: open", f->path);
+				goto out;
+			}
+
+			basename = strrchr(f->path, '/');
+			if (basename == NULL)
+				basename = f->path;
+			else
+				basename++;
+			p->fname = strdup(basename);
+			if (p->fname == NULL) {
+				ERRX1("strdup");
+				goto out;
+			}
+
+			LOG3("%s: writing inplace", f->path);
+		} else {
+			if (mktemplate(&p->fname, f->path, sess->opts->recursive) ==
+				-1) {
+				ERRX1("mktemplate");
+				goto out;
+			}
+
+			if ((p->fd = mkstempat(p->rootfd, p->fname)) == -1) {
+				ERR("mkstempat");
+				goto out;
+			}
+
+			/*
+			 * FIXME: we can technically wait until the temporary
+			 * file is writable, but since it's guaranteed to be
+			 * empty, I don't think this is a terribly expensive
+			 * operation as it doesn't involve reading the file into
+			 * memory beforehand.
+			 */
+
+			LOG3("%s: temporary: %s", f->path, p->fname);
 		}
 
-		if ((p->fd = mkstempat(p->rootfd, p->fname)) == -1) {
-			ERR("mkstempat");
-			goto out;
-		}
-
-		/*
-		 * FIXME: we can technically wait until the temporary
-		 * file is writable, but since it's guaranteed to be
-		 * empty, I don't think this is a terribly expensive
-		 * operation as it doesn't involve reading the file into
-		 * memory beforehand.
-		 */
-
-		LOG3("%s: temporary: %s", f->path, p->fname);
 		p->state = DOWNLOAD_READ_REMOTE;
 		return 1;
 	}
@@ -644,7 +672,8 @@ again:
 
 	/* Finally, rename the temporary to the real file. */
 
-	if (renameat(p->rootfd, p->fname, p->rootfd, f->path) == -1) {
+	if (!sess->opts->inplace &&
+	    renameat(p->rootfd, p->fname, p->rootfd, f->path) == -1) {
 		ERR("%s: renameat: %s", p->fname, f->path);
 		goto out;
 	}

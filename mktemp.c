@@ -88,9 +88,8 @@ mktemp_internalat(int pfd, char *path, int slen, enum tmpmode mode,
 	const char	 tempchars[] = TEMPCHARS;
 	unsigned int	 tries;
 	struct stat	 sb;
-	struct sockaddr_un sun;
 	size_t		 len;
-	int		 fd, saved_errno;
+	int		 fd;
 
 	len = strlen(path);
 	if (len < MIN_X || slen < 0 || (size_t)slen > len - MIN_X) {
@@ -175,51 +174,10 @@ mktemp_internalat(int pfd, char *path, int slen, enum tmpmode mode,
 				return(-1);
 			break;
 		case MKTEMP_SOCK:
-			memset(&sun, 0, sizeof(sun));
-			sun.sun_family = AF_UNIX;
-			if ((len = strlcpy(sun.sun_path, link,
-			    sizeof(sun.sun_path))) >= sizeof(sun.sun_path)) {
-				errno = EINVAL;
-				return(-1);
-			}
-			if (sun.sun_path[len] != '/') {
-				if (strlcat(sun.sun_path, "/",
-				    sizeof(sun.sun_path)) >=
-				    sizeof(sun.sun_path)) {
-					errno = EINVAL;
-					return(-1);
-				}
-			}
-			if (strlcat(sun.sun_path, path, sizeof(sun.sun_path)) >=
-			    sizeof(sun.sun_path)) {
-				errno = EINVAL;
-				return(-1);
-			}
-#if HAVE_SOCK_NONBLOCK
-			if ((fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC |
-			    SOCK_NONBLOCK, 0)) == -1)
-				return -1;
-#else
-			if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
-				return -1;
-			if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) |
-			    O_NONBLOCK) == -1)
-				return -1;
-			if (fcntl(fd, F_SETFD, fcntl(fd, F_GETFD, 0) |
-			    FD_CLOEXEC) == -1)
-				return -1;
-#endif
-			if (bind(fd, (struct sockaddr *)&sun, sizeof(sun)) ==
-			    0) {
-				close(fd);
+			if (mksock(link, path) == 0)
 				return(0);
-			} else if (errno != EEXIST) {
-					saved_errno = errno;
-					close(fd);
-					errno = saved_errno;
-					return -1;
-			}
-			close(fd);
+			else if (errno != EEXIST)
+				return(-1);
 			break;
 		}
 	} while (--tries);
@@ -328,4 +286,60 @@ mktemplate(char **ret, const char *path, int recursive)
 	}
 
 	return n;
+}
+
+int
+mksock(const char *root, char *path)
+{
+	struct sockaddr_un sun;
+	size_t len;
+	int fd, saved_errno;
+
+	memset(&sun, 0, sizeof(sun));
+	sun.sun_family = AF_UNIX;
+	if ((len = strlcpy(sun.sun_path, root,
+		sizeof(sun.sun_path))) >= sizeof(sun.sun_path)) {
+		errno = EINVAL;
+		return(-1);
+	}
+	if (sun.sun_path[len] != '/') {
+		if (strlcat(sun.sun_path, "/",
+			sizeof(sun.sun_path)) >=
+			sizeof(sun.sun_path)) {
+			errno = EINVAL;
+			return(-1);
+		}
+	}
+	if (strlcat(sun.sun_path, path, sizeof(sun.sun_path)) >=
+		sizeof(sun.sun_path)) {
+		errno = EINVAL;
+		return(-1);
+	}
+#if HAVE_SOCK_NONBLOCK
+	if ((fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC |
+		SOCK_NONBLOCK, 0)) == -1)
+		return -1;
+#else
+	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
+		return -1;
+	if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) |
+		O_NONBLOCK) == -1)
+		return -1;
+	if (fcntl(fd, F_SETFD, fcntl(fd, F_GETFD, 0) |
+		FD_CLOEXEC) == -1)
+		return -1;
+#endif
+	if (bind(fd, (struct sockaddr *)&sun, sizeof(sun)) ==
+		0) {
+		close(fd);
+		return(0);
+	} else {
+		saved_errno = errno;
+		close(fd);
+		errno = saved_errno;
+		return -1;
+	}
+
+	close(fd);
+	return(0);
 }
