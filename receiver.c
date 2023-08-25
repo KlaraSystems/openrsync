@@ -120,7 +120,7 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	struct stat      st;
 
 	// FIXME - check that the right thing happens for 
-	// sess->opts->ign_non_exist.  I.e. that it doesn't toch times
+	// sess->opts->ign_exist.  I.e. that it doesn't touch times
 	// or owners.
 	if (sess->opts->ign_non_exist)
 		if (fstatat(rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW) == -1)
