@@ -630,6 +630,8 @@ again:
 					goto out;
 				}
 			}
+		} else {
+			ERRX("%s: stat during --backup", f->path);
 		}
 	}
 
