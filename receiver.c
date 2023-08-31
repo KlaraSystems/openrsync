@@ -294,7 +294,8 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 			ERR("%s: open", root);
 			goto out;
 		} else
-			WARN("%s: open", root);
+			if (!sess->opts->dry_run)
+				WARN("%s: open", root);
 	}
 #else
 	if ((dfd = open(root, O_RDONLY, 0)) == -1) {
