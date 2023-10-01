@@ -385,6 +385,23 @@ rsync_sender(struct sess *sess, int fdin,
 	up.stat.blktab = blkhash_alloc();
 
 	/*
+	 * Fill in from --files-from, if given.
+	 */
+	if (sess->opts->filesfrom != NULL) {
+		/* Only one argument allowed */
+		if (argc != 1) {
+			ERRX("Only one src dir allowed with --files-from");
+			goto out;
+		}
+		if (read_filesfrom(sess, argv[0]) == 0)
+			goto out;
+		else {
+			argc = sess->filesfrom_n;
+			argv = sess->filesfrom;
+		}
+	}
+
+	/*
 	 * Generate the list of files we want to send from our
 	 * command-line input.
 	 * This will also remove all invalid files.
@@ -681,5 +698,6 @@ out:
 	flist_free(fl, flsz);
 	free(wbuf);
 	blkhash_free(up.stat.blktab);
+	cleanup_filesfrom(sess);
 	return rc;
 }

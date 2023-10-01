@@ -41,11 +41,13 @@
 .Op Fl -include Ar pattern
 .Op Fl -include-from Ns = Ns Ar file
 .Op Fl -inplace
+.Op Fl -link-dest Ns = Ns Ar directory
 .Op Fl -max-size Ns = Ns size
 .Op Fl -min-size Ns = Ns size
 .Op Fl -no-motd
 .Op Fl -numeric-ids
 .Op Fl -port Ns = Ns Ar service
+.Op Fl -relative
 .Op Fl -rsync-path Ns = Ns Ar program
 .Op Fl -timeout Ns = Ns Ar seconds
 .Op Fl -version
@@ -205,6 +207,18 @@ This option has some notable trade-offs that must be considered prior to using
 it.
 For example, hardlinks will not be broken even if a file is no longer hardlinked
 in the source directory.
+.It Fl -link-dest Ns = Ns Ar directory
+Use directory as an alternate base directory to compare files against on the
+destination machine.
+If file in
+.Ar directory
+is found and identical to the sender's file, the file will be hardlinked.
+Multiple
+.Fl -compare-dest
+directories may be provided.
+If
+.Ar directory
+is a relative path, it is relative to the destination directory.
 .It Fl -max-size Ar size
 Don't transfer any file that is larger than
 .Ar size
@@ -269,6 +283,9 @@ directory itself.
 If
 .Ar source
 is a file, this has no effect.
+.It Fl -relative
+Normally, pathnames on the commandline omit the directory components.
+This option will include the dir components.
 .It Fl -rsync-path Ns = Ns Ar program
 Run
 .Ar program

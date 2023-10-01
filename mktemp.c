@@ -267,12 +267,12 @@ mkstempsock(const char *root, char *path)
  * (excluding the final '\0').
  */
 int
-mktemplate(char **ret, const char *path, int recursive)
+mktemplate(char **ret, const char *path, int hasdir)
 {
 	int		 n, dirlen;
 	const char	*cp;
 
-	if (recursive && (cp = strrchr(path, '/')) != NULL) {
+	if (hasdir && (cp = strrchr(path, '/')) != NULL) {
 		dirlen = cp - path;
 		n = asprintf(ret, "%.*s/.%s.XXXXXXXXXX",
 			dirlen, path, path + dirlen + 1);

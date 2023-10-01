@@ -544,28 +544,98 @@ flist_realloc(struct flist **fl, size_t *sz, size_t *max)
 }
 
 /*
+ * Copy all the elements of path that are directories.
+ * Note that flist_append_dirs expands flp, but
+ * flist_append does not.
+ */
+static int
+flist_append_dirs(struct flist *f, const char *path,
+    struct flist **flp, size_t *sz, size_t *max)
+{
+	char *begin;
+	char *wbegin;
+	char *pos;
+	struct stat st;
+
+	if ((begin = strdup(path)) == NULL) {
+		ERR("strdup");
+		return 0;
+	}
+	if (begin[0] == '/') {
+		wbegin = begin+1;
+		while (wbegin[0] == '/')
+			wbegin++;
+	} else
+		wbegin = begin;
+	if ((pos = strrchr(wbegin, '/')) != NULL) {
+		*pos = '\0';
+		if ((stat(begin, &st)) == -1) {
+			ERR("%s: stat", begin);
+			goto out;
+		}
+		if (!flist_realloc(flp, sz, max)) {
+			ERRX1("flist_realloc");
+			goto out;
+		}
+		f = &(*flp)[(*sz) - 1];
+		assert(f != NULL);
+		memset(f, 0, sizeof(struct flist));
+		f->path = begin;
+		f->wpath = wbegin;
+		flist_copy_stat(f, &st);
+		if (strchr(wbegin, '/') != NULL) {
+			if (!flist_append_dirs(f, begin, flp, sz, max)) {
+				ERRX1("flist_append_dirs");
+				goto out;
+			}
+		} else
+			free(begin);
+	}
+	return 1;
+
+	/* Error */
+	out:
+	free(begin);
+	return 0;
+}
+
+/*
  * Copy a regular or symbolic link file "path" into "f".
  * This handles the correct path creation and symbolic linking.
  * Returns zero on failure, non-zero on success.
- */
+*/
 static int
-flist_append(struct flist *f, const struct stat *st, const char *path)
+flist_append(struct sess *sess, struct flist *f, const struct stat *st,
+    const char *path, struct flist **flp, size_t *sz, size_t *max)
 {
-
+	size_t entry = *sz - 1;
 	/*
 	 * Copy the full path for local addressing and transmit
-	 * only the filename part for the receiver.
+	 * only the filename part for the receiver, unless
+	 * --relative is given.
 	 */
 
-	if ((f->path = strdup(path)) == NULL) {
+	if ((flp[entry]->path = strdup(path)) == NULL) {
 		ERR("strdup");
 		return 0;
 	}
 
-	if ((f->wpath = strrchr(f->path, '/')) == NULL)
-		f->wpath = f->path;
-	else
-		f->wpath++;
+	if (!sess->opts->relative) {
+		if ((flp[entry]->wpath = strrchr(flp[entry]->path, '/')) == NULL)
+			flp[entry]->wpath = flp[entry]->path;
+		else
+			flp[entry]->wpath++;
+	} else {
+		if (flp[entry]->path[0] == '/')
+			flp[entry]->wpath = flp[entry]->path + 1;
+		else
+			flp[entry]->wpath = flp[entry]->path;
+
+		if (!flist_append_dirs(flp[entry], flp[entry]->path, flp, sz, max)) {
+			ERR("flist_append_dirs");
+			return 0;
+		}
+	}
 
 	/*
 	 * On the receiving end, we'll strip out all bits on the
@@ -573,13 +643,13 @@ flist_append(struct flist *f, const struct stat *st, const char *path)
 	 * No need to warn about it here.
 	 */
 
-	flist_copy_stat(f, st);
+	flist_copy_stat(flp[entry], st);
 
 	/* Optionally copy link information. */
 
 	if (S_ISLNK(st->st_mode)) {
-		f->link = symlink_read(f->path);
-		if (f->link == NULL) {
+		flp[entry]->link = symlink_read(flp[entry]->path);
+		if (flp[entry]->link == NULL) {
 			ERRX1("symlink_read");
 			return 0;
 		}
@@ -801,8 +871,8 @@ out:
 }
 
 static int
-flist_gen_dirent_file(const char *type, char *root, struct flist **fl,
-    size_t *sz, size_t *max, const struct stat *st)
+flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
+    struct flist **fl, size_t *sz, size_t *max, const struct stat *st)
 {
 	struct flist	*f;
 
@@ -818,7 +888,7 @@ flist_gen_dirent_file(const char *type, char *root, struct flist **fl,
 	f = &(*fl)[(*sz) - 1];
 	assert(f != NULL);
 
-	if (!flist_append(f, st, root)) {
+	if (!flist_append(sess, f, st, root, fl, sz, max)) {
 		ERRX1("flist_append");
 		return 0;
 	}
@@ -863,7 +933,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		ERR("%s: (l)stat", root);
 		return 0;
 	} else if (S_ISREG(st.st_mode)) {
-		return flist_gen_dirent_file("file", root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "file", root, fl, sz, max, &st);
 	} else if (S_ISLNK(st.st_mode)) {
 		/*
 		 * How does this work?
@@ -893,13 +963,13 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			return 1;
 		}
 
-		return flist_gen_dirent_file("symlink", root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "symlink", root, fl, sz, max, &st);
 	} else if (sess->opts->devices &&
 	    (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
-		return flist_gen_dirent_file("special", root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "special", root, fl, sz, max, &st);
 	} else if (sess->opts->specials &&
 	    (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode))) {
-		return flist_gen_dirent_file("special", root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "special", root, fl, sz, max, &st);
 	} else if (!S_ISDIR(st.st_mode)) {
 		WARNX("%s: skipping special", root);
 		return 1;
@@ -1129,14 +1199,15 @@ static int
 flist_gen_files(struct sess *sess, size_t argc, char **argv,
     struct flist **flp, size_t *sz)
 {
-	struct flist	*fl = NULL, *f;
-	size_t		 i, flsz = 0;
+	struct flist	*f;
+	size_t		 i;
 	struct stat	 st;
 	int              ret;
+	size_t		 max = argc;
 
 	assert(argc);
 
-	if ((fl = calloc(argc, sizeof(struct flist))) == NULL) {
+	if ((*flp = calloc(argc, sizeof(struct flist))) == NULL) {
 		ERR("calloc");
 		return 0;
 	}
@@ -1163,8 +1234,10 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 		 */
 
 		if (S_ISDIR(st.st_mode)) {
-			WARNX("%s: skipping directory", argv[i]);
-			continue;
+			if (!sess->opts->dirs) {
+				WARNX("%s: skipping directory", argv[i]);
+				continue;
+			}
 		} else if (S_ISLNK(st.st_mode)) {
 			if (!sess->opts->preserve_links) {
 				WARNX("%s: skipping symlink (3)", argv[i]);
@@ -1187,23 +1260,21 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 			continue;
 		}
 
-		f = &fl[flsz++];
+		f = &(*flp[*sz]);
+		(*sz)++;
 		assert(f != NULL);
 
 		/* Add this file to our file-system worldview. */
-
-		if (!flist_append(f, &st, argv[i])) {
+		if (!flist_append(sess, f, &st, argv[i], flp, sz, &max)) {
 			ERRX1("flist_append");
 			goto out;
 		}
 	}
 
-	LOG2("non-recursively generated %zu filenames", flsz);
-	*sz = flsz;
-	*flp = fl;
+	LOG2("non-recursively generated %zu filenames", *sz);
 	return 1;
 out:
-	flist_free(fl, argc);
+	flist_free(*flp, argc);
 	*sz = 0;
 	*flp = NULL;
 	return 0;
@@ -1685,4 +1756,69 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 	}
 
 	return 1;
+}
+
+void
+cleanup_filesfrom(struct sess *sess)
+{
+	unsigned int i;
+
+	if (sess->opts->filesfrom != NULL) {
+		for (i = 0; i < sess->filesfrom_n; i++) {
+			free(sess->filesfrom[i]);
+		}
+	}
+	free(sess->filesfrom);
+	sess->filesfrom_n = 0;
+	sess->filesfrom = NULL;
+}
+
+int
+read_filesfrom(struct sess *sess, const char *basedir)
+{
+	FILE *f;
+	char buf[PATH_MAX];
+	size_t basedir_length = strlen(basedir);
+	size_t alloc;
+
+	if (strcmp(sess->opts->filesfrom, "-") == 0)
+		f = stdin;
+	else {
+		if ((f = fopen(sess->opts->filesfrom, "r")) == NULL) {
+			ERR("fopen ro: '%s'", sess->opts->filesfrom);
+			return 0;
+		}
+	}
+
+	sess->filesfrom_n = 0;
+	sess->filesfrom = NULL;
+	while (fgets(buf, PATH_MAX, f) != NULL) {
+		if (ferror(f)) {
+			ERR("fgets: '%s'", sess->opts->filesfrom);
+			return 0;
+		}
+		if ((sess->filesfrom = realloc(sess->filesfrom,
+				sizeof(char *) * sess->filesfrom_n + 1)) == 
+		    NULL) {
+			ERR("realloc");
+			return 0;
+		}
+		alloc = strlen(buf) + basedir_length + 1;
+		sess->filesfrom[sess->filesfrom_n] = 
+			malloc(alloc);
+		if (sess->filesfrom[sess->filesfrom_n] == NULL) {
+			ERR("alloc %zu bytes", alloc);
+			cleanup_filesfrom(sess);
+			return 0;
+		}
+		snprintf(sess->filesfrom[sess->filesfrom_n], alloc, "%s/%s",
+		    basedir, buf);
+		sess->filesfrom_n++;
+	}
+	if (f != stdin && fclose(f) == EOF) {
+		ERR("fclose: '%s'", sess->opts->filesfrom);
+		cleanup_filesfrom(sess);
+		return 0;
+	}
+	return 1;	
 }

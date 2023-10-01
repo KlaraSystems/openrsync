@@ -312,6 +312,11 @@ static struct opts	 opts;
 #define OP_DEL_DURING	1022
 #define OP_DEL_DELAY	1023
 #define OP_DEL_AFTER	1024
+#define OP_RELATIVE	1025
+#define OP_NO_RELATIVE	1026
+#define OP_DIRS		1027
+#define OP_NO_DIRS	1028
+#define OP_FILESFROM	1029
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -319,8 +324,8 @@ const struct option	 lopts[] = {
     { "compare-dest",	required_argument, NULL,		OP_COMP_DEST },
 #if 0
     { "copy-dest",	required_argument, NULL,		OP_COPY_DEST },
-    { "link-dest",	required_argument, NULL,		OP_LINK_DEST },
 #endif
+    { "link-dest",	required_argument, NULL,		OP_LINK_DEST },
     { "compress",	no_argument,	NULL,			'z' },
     { "copy-dirlinks",	no_argument,	&opts.copy_dirlinks,	'k' },
     { "copy-links",	no_argument,	&opts.copy_links,	'L' },
@@ -377,6 +382,11 @@ const struct option	 lopts[] = {
     { "progress",	no_argument,	NULL,			OP_PROGRESS },
     { "backup",		no_argument,	NULL,			OP_BACKUP },
     { "version",	no_argument,	NULL,			OP_VERSION },
+    { "relative",	no_argument,	NULL,			OP_RELATIVE },
+    { "no-relative",	no_argument,	NULL,			OP_NO_RELATIVE },
+    { "dirs",		no_argument,	NULL,			OP_DIRS },
+    { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
+    { "files-from",	required_argument,	NULL,		OP_FILESFROM },
     { NULL,		0,		NULL,			0 }
 };
 
@@ -391,6 +401,7 @@ main(int argc, char *argv[])
 	char		**args;
 	const char	*errstr;
 	long long 	 tmpint;
+	int		 opts_no_relative = 0, opts_no_dirs = 0;
 
 	/* Global pledge. */
 
@@ -400,7 +411,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "aDe:ghklLnoprtvxzIVS", lopts, &lidx))
+	while ((c = getopt_long(argc, argv, "adDe:ghklLnoprtvxzIVS", lopts, &lidx))
 	    != -1) {
 		switch (c) {
 		case 'D':
@@ -416,6 +427,9 @@ main(int argc, char *argv[])
 			opts.preserve_uids = 1;
 			opts.devices = 1;
 			opts.specials = 1;
+			break;
+		case 'd':
+			opts.dirs = 1;
 			break;
 		case 'e':
 			opts.ssh_prog = optarg;
@@ -512,8 +526,8 @@ main(int argc, char *argv[])
 				    alt_base_mode(opts.alt_base_mode));
 			}
 			opts.alt_base_mode = BASE_MODE_COMPARE;
-#if 0
 			goto basedir;
+#if 0
 		case OP_COPY_DEST:
 			if (opts.alt_base_mode !=0 &&
 			    opts.alt_base_mode != BASE_MODE_COPY) {
@@ -553,7 +567,6 @@ main(int argc, char *argv[])
 
 			opts.del = DMODE_AFTER;
 			break;
-#if 0
 		case OP_LINK_DEST:
 			if (opts.alt_base_mode !=0 &&
 			    opts.alt_base_mode != BASE_MODE_LINK) {
@@ -564,7 +577,6 @@ main(int argc, char *argv[])
 			opts.alt_base_mode = BASE_MODE_LINK;
 
 basedir:
-#endif
 			if (basedir_cnt >= MAX_BASEDIR)
 				errx(1, "too many --%s directories specified",
 				    lopts[lidx].name);
@@ -595,6 +607,21 @@ basedir:
 		case OP_IGNORE_NON_EXISTING:
 		        opts.ign_non_exist++;
 			break;
+		case OP_RELATIVE:
+		        opts.relative++;
+			break;
+		case OP_NO_RELATIVE:
+		        opts_no_relative++;
+			break;
+		case OP_DIRS:
+		        opts.dirs++;
+			break;
+		case OP_NO_DIRS:
+		        opts_no_dirs++;
+			break;
+		case OP_FILESFROM:
+		        opts.filesfrom = optarg;
+			break;
 		case 'V':
 		case OP_VERSION:
 			fprintf(stderr, "openrsync: protocol version %u\n",
@@ -622,6 +649,22 @@ basedir:
 		poll_timeout = -1;
 	else
 		poll_timeout *= 1000;
+
+	if (opts.filesfrom != NULL) {
+		if (opts_no_relative)
+			opts.relative = 0;
+		else
+			opts.relative = 1;
+		if (opts_no_dirs)
+			opts.dirs = 0;
+		else
+			opts.dirs = 1;
+	}
+
+	if (opts.relative && opts_no_relative)
+		ERRX1("Cannot use --relative and --no-relative at the same time");
+	if (opts.dirs && opts_no_dirs)
+		ERRX1("Cannot use --dirs and --no-dirs at the same time");
 
 	/*
 	 * XXX rsync started defaulting to --delete-during in later versions of the
@@ -744,11 +787,11 @@ basedir:
 	exit(rc);
 usage:
 	fprintf(stderr, "usage: %s"
-	    " [-aDgklLnoprtvx] [-e program] [--address=sourceaddr]\n"
+	    " [-adDgklLnoprtvx] [-e program] [--address=sourceaddr]\n"
 	    "\t[--compare-dest=dir] [--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
-	    "\t[--exclude] [--exclude-from=file] [--include]\n"
-	    "\t[--include-from=file] [--inplace] [--no-motd] [--numeric-ids]\n"
-	    "\t[--port=portnumber] [--rsync-path=program] [--timeout=seconds]\n"
+	    "\t[--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
+	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
+	    "\t[--port=portnumber] [--relative] [--rsync-path=program] [--timeout=seconds]\n"
 	    "\t[--version] source ... directory\n",
 	    getprogname());
 	exit(ERR_SYNTAX);

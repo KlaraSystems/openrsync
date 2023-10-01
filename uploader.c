@@ -32,6 +32,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "extern.h"
 
@@ -709,8 +710,9 @@ pre_dir(struct upload *p, struct sess *sess)
 	f = &p->fl[p->idx];
 	assert(S_ISDIR(f->st.mode));
 
-	if (!sess->opts->recursive) {
-		WARNX("%s: ignoring directory", f->path);
+	if (!sess->opts->recursive && !sess->opts->relative &&
+		!sess->opts->dirs) {
+		WARNX("%s: ignoring directory 1 %d", f->path, sess->opts->relative);
 		return 0;
 	}
 	if (sess->opts->dry_run) {
@@ -960,8 +962,25 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 					return -1;
 				}
 			}
-			LOG3("%s: skipping: up to date in %s", f->path, root);
-			/* TODO: depending on mode link or copy file */
+			/* TODO: implement --copy-dest */
+			if (sess->opts->alt_base_mode == BASE_MODE_LINK) {
+				LOG3("%s: hardlinking: up to date in %s",
+				    f->path, root);
+				if (linkat(dfd, f->path, p->rootfd,
+					f->path, 0) == -1) {
+					/*
+					 * GNU rsync falls back to copy here.
+					 * I think it is more correct to
+					 * fail since the user requested
+					 * --link-dest and the manpage states
+					 * that there will be hardlinking.
+					 */
+					ERR("hard link '%s/%s'", root, f->path);
+				}
+			} else {
+				LOG3("%s: skipping: up to date in %s", f->path,
+				    root);
+			}
 			close(dfd);
 			return 0;
 		} else if (x == 1 && match == -1) {
