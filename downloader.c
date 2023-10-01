@@ -507,14 +507,15 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd)
 
 			LOG3("%s: writing inplace", f->path);
 		} else {
-			if (mktemplate(&p->fname, f->path, sess->opts->recursive) ==
+			if (mktemplate(&p->fname, f->path,
+			    sess->opts->recursive || sess->opts->relative) ==
 				-1) {
 				ERRX1("mktemplate");
 				goto out;
 			}
 
 			if ((p->fd = mkstempat(p->rootfd, p->fname)) == -1) {
-				ERR("mkstempat");
+				ERR("mkstempat: '%s'", p->fname);
 				goto out;
 			}
 

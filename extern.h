@@ -179,6 +179,8 @@ struct	opts {
 	int		 backup;		/* --backup */
 	int		 ign_exist;		/* --ignore-existing */
 	int		 ign_non_exist;		/* --ignore-nonexisting */
+	int		 relative;		/* --relative */
+	int		 dirs;			/* -d --dirs */
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */
@@ -186,6 +188,7 @@ struct	opts {
 	char		*port;			/* --port */
 	char		*address;		/* --address */
 	char		*basedir[MAX_BASEDIR];
+	char            *filesfrom;             /* --files-from */
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif
@@ -276,6 +279,8 @@ struct	sess {
 	size_t		   mplex_read_remain; /* remaining bytes */
 	int		   mplex_writes; /* multiplexing writes? */
 	double             last_time; /* last time printed --progress */  
+	char             **filesfrom; /* Contents of files-from */
+	size_t             filesfrom_n; /* Number of lines for filesfrom */
 };
 
 /*
@@ -468,6 +473,9 @@ int		 idents_recv(struct sess *, int, struct ident **, size_t *);
 void		 idents_remap(struct sess *, int, struct ident *, size_t);
 int		 idents_send(struct sess *, int, const struct ident *, size_t);
 
-int		iszerobuf(const void *b, size_t len);
+int		 iszerobuf(const void *b, size_t len);
+
+int              read_filesfrom(struct sess *sess, const char *basedir);
+void		 cleanup_filesfrom(struct sess *sess);
 
 #endif /*!EXTERN_H*/
