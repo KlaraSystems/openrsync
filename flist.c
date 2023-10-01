@@ -1125,6 +1125,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			// Must not have "foo/." dir specs.
 			// If we do mkdir fails.
 			int sz2 = strlen(f->path);
+
 			if (sz2 >= 2 && f->path[sz2 - 1] == '.' && 
 			    f->path[sz2 - 2] == '/') {
 				(f->path)[sz2 - 2] = '\0';

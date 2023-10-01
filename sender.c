@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 
 #include "md4.h"
 
@@ -670,10 +671,11 @@ rsync_sender(struct sess *sess, int fdin,
 			 * This will be picked up in the state machine
 			 * block of not being primed.
 			 */
-			char buf[8192];
 			up.stat.fd = open(fl[up.cur->idx].path,
 				O_RDONLY|O_NONBLOCK, 0);
 			if (up.stat.fd == -1) {
+				char buf[PATH_MAX];
+
 				ERR("%s: open (2) in %s",
 				    fl[up.cur->idx].path,
 				    getcwd(buf, sizeof(buf)));
