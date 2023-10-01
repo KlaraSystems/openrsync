@@ -335,7 +335,7 @@ const struct option	 lopts[] = {
 #endif
     { "link-dest",	required_argument, NULL,		OP_LINK_DEST },
     { "compress",	no_argument,	NULL,			'z' },
-    { "copy-dirlinks",	no_argument,	&opts.copy_dirlinks,	'k' },
+    { "copy-dirlinks",	no_argument,	NULL,			'k' },
     { "copy-links",	no_argument,	&opts.copy_links,	'L' },
     { "del",		no_argument,	NULL,			OP_DEL },
     { "delete",		no_argument,	NULL,			OP_DEL },
@@ -809,7 +809,7 @@ basedir:
 	exit(rc);
 usage:
 	fprintf(stderr, "usage: %s"
-	    " [-adDgklLnoprtvx] [-e program] [--address=sourceaddr]\n"
+	    " [-DLadgklnoprtvx] [-e program] [--address=sourceaddr]\n"
 	    "\t[--compare-dest=dir] [--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
