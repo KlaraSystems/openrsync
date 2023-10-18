@@ -55,6 +55,7 @@
 .Op Fl -remove-source-files
 .Op Fl -relative
 .Op Fl -rsync-path Ns = Ns Ar program
+.Op Fl -super
 .Op Fl -timeout Ns = Ns Ar seconds
 .Op Fl -version
 .Ar source ...
@@ -398,6 +399,17 @@ on the remote host instead of the default
 .Pa rsync .
 .It Fl -specials
 Also transfer fifo and unix domain socket files.
+.It Fl -super
+Always attempt traditionally super-user activities.
+This flag mostly interacts with the
+.Fl -owner ,
+.Fl -group ,
+and
+.Fl -devices
+options, which may be permitted to unprivileged users on the receiving end in
+some configurations.
+.Fl -no-super
+is also supported to avoid them entirely.
 .It Fl -timeout Ns = Ns Ar seconds
 Set the I/O timeout in seconds.
 Exit if no data was transferred for the specified time.

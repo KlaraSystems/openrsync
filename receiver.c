@@ -77,7 +77,8 @@ rsync_set_metadata(struct sess *sess, int newfile,
 	 * means that we're mapping into an unknown (or disallowed)
 	 * group identifier.
 	 */
-	if (getuid() == 0 && sess->opts->preserve_uids)
+	if ((sess->opts->supermode == SMODE_ON || getuid() == 0) &&
+	    sess->opts->preserve_uids && sess->opts->supermode != SMODE_OFF)
 		uid = f->st.uid;
 	if (sess->opts->preserve_gids)
 		gid = f->st.gid;
@@ -144,7 +145,8 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	 * means that we're mapping into an unknown (or disallowed)
 	 * group identifier.
 	 */
-	if (getuid() == 0 && sess->opts->preserve_uids)
+	if ((sess->opts->supermode == SMODE_ON || getuid() == 0) &&
+	    sess->opts->preserve_uids && sess->opts->supermode != SMODE_OFF)
 		uid = f->st.uid;
 	if (sess->opts->preserve_gids)
 		gid = f->st.gid;

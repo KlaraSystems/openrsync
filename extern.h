@@ -141,6 +141,16 @@ enum	delmode {
 };
 
 /*
+ * Super modes; we can either force an attempt of super-user activities, write
+ * them into xattrs (fake), or we can disable super-user activities altogether.
+ */
+enum	smode {
+	SMODE_UNSET,
+	SMODE_ON,	/* --super */
+	SMODE_OFF,	/* --no-super */
+};
+
+/*
  * File arguments given on the command line.
  * See struct opts.
  */
@@ -238,6 +248,7 @@ struct	opts {
 	int		 dlupdates;             /* --delay-updates */
 	int		 hard_links;		/* -H --hard-links */
 	int		 remove_source;		/* --remove-source-files */
+	int		 supermode;		/* --{no-,}super */
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */

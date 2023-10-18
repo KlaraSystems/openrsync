@@ -250,6 +250,21 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 	if (sess->opts->bwlimit >= 0)
 		addargs(&args, "--bwlimit=%lldb", (long long)sess->opts->bwlimit);
 
+	if (sess->opts->supermode != SMODE_UNSET) {
+		switch (sess->opts->supermode) {
+		case SMODE_ON:
+			addargs(&args, "--super");
+			break;
+		case SMODE_OFF:
+			addargs(&args, "--no-super");
+			break;
+		default:
+			/* UNREACHABLE */
+			assert(0 && "Invalid value for supermode");
+			break;
+		}
+	}
+
 	/* only add --compare-dest, etc if this is the sender */
 	if (sess->opts->alt_base_mode != 0 &&
 	    f->mode == FARGS_SENDER) {
