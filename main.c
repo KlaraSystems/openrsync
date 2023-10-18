@@ -399,6 +399,7 @@ const struct option	 lopts[] = {
     { "no-links",	no_argument,	&opts.preserve_links,	0 },
     { "no-l",		no_argument,	&opts.preserve_links,	0 },
     { "no-motd",	no_argument,	&opts.no_motd,		1 },
+    { "no-super",	no_argument,	&opts.supermode,	SMODE_OFF },
     { "numeric-ids",	no_argument,	&opts.numeric_ids,	1 },
     { "owner",		no_argument,	NULL,			'o' },
     { "no-owner",	no_argument,	&opts.preserve_uids,	0 },
@@ -420,6 +421,7 @@ const struct option	 lopts[] = {
     { "server",		no_argument,	&opts.server,		1 },
     { "specials",	no_argument,	&opts.specials,		1 },
     { "sparse",		no_argument,	NULL,			'S' },
+    { "super",		no_argument,	&opts.supermode,	SMODE_ON },
 #if 0
     { "sync-file",	required_argument, NULL,		6 },
 #endif

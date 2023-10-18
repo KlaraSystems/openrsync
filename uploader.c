@@ -309,7 +309,8 @@ pre_dev(struct upload *p, struct sess *sess)
 	f = &p->fl[p->idx];
 	assert(S_ISBLK(f->st.mode) || S_ISCHR(f->st.mode));
 
-	if (!sess->opts->devices || getuid() != 0) {
+	if (!sess->opts->devices || sess->opts->supermode == SMODE_OFF ||
+	    (sess->opts->supermode != SMODE_ON && getuid() != 0)) {
 		WARNX("skipping non-regular file %s", f->path);
 		return 0;
 	}
