@@ -394,7 +394,6 @@ const struct option	 lopts[] = {
     { "ignore-times",	no_argument,	NULL,			'I' },
     { "include",	required_argument, NULL,		OP_INCLUDE },
     { "include-from",	required_argument, NULL,		OP_INCLUDE_FROM },
-    /* XXX --inplace should also imply --partial */
     { "inplace",	no_argument,	&opts.inplace,		1 },
     { "links",		no_argument,	NULL,			'l' },
     { "max-size",	required_argument, NULL,		OP_MAX_SIZE },
@@ -407,6 +406,8 @@ const struct option	 lopts[] = {
     { "no-owner",	no_argument,	&opts.preserve_uids,	0 },
     { "no-o",		no_argument,	&opts.preserve_uids,	0 },
     { "one-file-system",no_argument,	NULL,			'x' },
+    { "partial",	no_argument,	&opts.partial,		1 },
+    { "no-partial",	no_argument,	&opts.partial,		0 },
     { "perms",		no_argument,	NULL,			'p' },
     { "no-perms",	no_argument,	&opts.preserve_perms,	0 },
     { "no-p",		no_argument,	&opts.preserve_perms,	0 },
@@ -710,6 +711,9 @@ basedir:
 	if (argc < 2)
 		goto usage;
 
+	if (opts.inplace)
+		opts.partial = 1;
+
 	if (opts.port == NULL)
 		opts.port = (char *)"rsync";
 
@@ -877,7 +881,7 @@ usage:
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
-	    "\t[--port=portnumber] [--relative] [--rsync-path=program] [--timeout=seconds]\n"
+	    "\t[--partial] [--port=portnumber] [--relative] [--rsync-path=program] [--timeout=seconds]\n"
 	    "\t[--version] source ... directory\n",
 	    getprogname());
 	exit(ERR_SYNTAX);

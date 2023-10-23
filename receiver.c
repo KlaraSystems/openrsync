@@ -700,7 +700,7 @@ out:
 	if (dfd != -1)
 		close(dfd);
 	upload_free(ul);
-	download_free(dl);
+	download_free(sess, dl);
 	flist_free(fl, flsz);
 	flist_free(dfl, dflsz);
 	return rc;
