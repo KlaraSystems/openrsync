@@ -49,6 +49,7 @@
 .Op Fl -min-size Ns = Ns size
 .Op Fl -no-motd
 .Op Fl -numeric-ids
+.Op Fl -partial
 .Op Fl -port Ns = Ns Ar service
 .Op Fl -relative
 .Op Fl -rsync-path Ns = Ns Ar program
@@ -287,6 +288,11 @@ Only works if run as root.
 .It Fl p , -perms
 Set destination file or directory permissions to match the source when
 it is updated.
+.It Fl -partial
+Do not remove partially transferred files if
+.Nm
+is interrupted, which opens up the possibility for them to be easily resumed
+later.
 .It Fl -port Ns = Ns Ar service
 Specify an alternative TCP port number.
 The

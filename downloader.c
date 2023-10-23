@@ -153,7 +153,7 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
  * assuming that it has been opened in p->fd.
  */
 static void
-download_cleanup(struct download *p, int cleanup)
+download_cleanup(struct sess *sess, struct download *p, int cleanup)
 {
 
 	if (p->map != MAP_FAILED) {
@@ -168,8 +168,27 @@ download_cleanup(struct download *p, int cleanup)
 	}
 	if (p->fd != -1) {
 		close(p->fd);
-		if (cleanup && p->fname != NULL)
-			unlinkat(p->rootfd, p->fname, 0);
+		if (cleanup && p->fname != NULL) {
+			if (sess->opts->partial) {
+				const struct flist *f;
+
+				f = &p->fl[p->idx];
+
+				/*
+				 * For partial transfers, we need to move the
+				 * file into place if we're operating on a temp
+				 * file..
+				 */
+				if (!sess->opts->inplace &&
+				    renameat(p->rootfd, p->fname, p->rootfd,
+				    f->path) == -1) {
+					ERR("%s: renameat: %s", p->fname,
+					    f->path);
+				}
+			} else {
+				unlinkat(p->rootfd, p->fname, 0);
+			}
+		}
 		p->fd = -1;
 	}
 	free(p->fname);
@@ -224,12 +243,12 @@ download_needs_redo(struct download *p)
  * Passing a NULL to this function is ok.
  */
 void
-download_free(struct download *p)
+download_free(struct sess *sess, struct download *p)
 {
 
 	if (p == NULL)
 		return;
-	download_cleanup(p, 1);
+	download_cleanup(sess, p, 1);
 	free(p->obuf);
 	free(p);
 }
@@ -991,9 +1010,9 @@ done:
 	 * If we're redoing it, then we need to go ahead and clean up the file
 	 * or move it into a --partial-dir.
 	 */
-	download_cleanup(p, f->redo);
+	download_cleanup(sess, p, f->redo);
 	return 1;
 out:
-	download_cleanup(p, 1);
+	download_cleanup(sess, p, 1);
 	return -1;
 }

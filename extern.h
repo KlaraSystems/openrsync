@@ -170,6 +170,7 @@ struct	opts {
 	int		 recursive;		/* -r */
 	int		 dry_run;		/* -n */
 	int		 inplace;		/* --inplace */
+	int		 partial;		/* --partial */
 	int		 preserve_times;	/* -t */
 	int		 preserve_perms;	/* -p */
 	int		 copy_links;		/* -L */
@@ -465,7 +466,7 @@ int	rsync_uploader_tail(struct upload *, struct sess *);
 struct download	*download_alloc(struct sess *, int, struct flist *, size_t,
 		    int);
 size_t		 download_needs_redo(struct download *);
-void		 download_free(struct download *);
+void		 download_free(struct sess *, struct download *);
 struct upload	*upload_alloc(const char *, int, int, size_t,
 		    const struct flist *, size_t, mode_t);
 void		upload_next_phase(struct upload *);

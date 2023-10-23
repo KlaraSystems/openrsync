@@ -134,6 +134,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-n");
 	if (sess->opts->inplace)
 		addargs(&args, "--inplace");
+	if (sess->opts->partial && f->mode == FARGS_SENDER)
+		addargs(&args, "--partial");
 	if (sess->opts->preserve_uids)
 		addargs(&args, "-o");
 	if (sess->opts->preserve_perms)
