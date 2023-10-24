@@ -40,6 +40,8 @@
 
 #include "extern.h"
 
+extern struct cleanup_ctx *cleanup_ctx;
+
 int verbose;
 int poll_timeout;
 
@@ -741,6 +743,7 @@ basedir:
 
 	/* XXX Temporary, should move into the cleanup infrastructure */
 	signal(SIGUSR2, clean_exit);
+	cleanup_init(cleanup_ctx, &sess);
 
 	/*
 	 * XXX rsync started defaulting to --delete-during in later versions of the
@@ -756,7 +759,7 @@ basedir:
 	 */
 
 	if (opts.server)
-		exit(rsync_server(&opts, (size_t)argc, argv));
+		exit(rsync_server(cleanup_ctx, &opts, (size_t)argc, argv));
 
 	/*
 	 * Now we know that we're the client on the local machine
@@ -771,6 +774,8 @@ basedir:
 	fargs = fargs_parse(argc, argv, &opts);
 	assert(fargs != NULL);
 
+	cleanup_set_args(cleanup_ctx, fargs);
+
 	/*
 	 * If we're contacting an rsync:// daemon, then we don't need to
 	 * fork, because we won't start a server ourselves.
@@ -781,7 +786,7 @@ basedir:
 	if (fargs->remote && opts.ssh_prog == NULL) {
 		assert(fargs->mode == FARGS_RECEIVER);
 		if ((rc = rsync_connect(&opts, &sd, fargs)) == 0) {
-			rc = rsync_socket(&opts, sd, fargs);
+			rc = rsync_socket(cleanup_ctx, &opts, sd, fargs);
 			close(sd);
 		}
 		exit(rc);
@@ -833,11 +838,13 @@ basedir:
 		_exit(ERR_IPC);
 		/* NOTREACHED */
 	default:
+		cleanup_set_child(cleanup_ctx, child);
+
 		close(fds[1]);
 		if (!fargs->remote)
-			rc = rsync_client(&opts, fds[0], fargs);
+			rc = rsync_client(cleanup_ctx, &opts, fds[0], fargs);
 		else
-			rc = rsync_socket(&opts, fds[0], fargs);
+			rc = rsync_socket(cleanup_ctx, &opts, fds[0], fargs);
 		break;
 	}
 

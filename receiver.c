@@ -262,7 +262,8 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
  * Pledges (dry-run): -unix, -cpath, -wpath, -fattr, -chown.
  */
 int
-rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
+rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
+    int fdin, int fdout, const char *root)
 {
 	struct role	 receiver;
 	struct flist	*fl = NULL, *dfl = NULL;
@@ -517,6 +518,8 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 		goto out;
 	}
 
+	cleanup_set_download(cleanup_ctx, dl);
+
 	LOG2("%s: ready for phase 1 data", root);
 
 	for (;;) {
@@ -700,7 +703,18 @@ out:
 	if (dfd != -1)
 		close(dfd);
 	upload_free(ul);
+
+	/*
+	 * If we get signalled, we'll need to also free the download from that
+	 * context.  Side step potential issues by just declaring a cleanup
+	 * hold, which will just block the signals we try to handle cleanly for
+	 * this critical section.
+	 */
+	cleanup_hold(cleanup_ctx);
 	download_free(sess, dl);
+	cleanup_set_download(cleanup_ctx, NULL);
+	cleanup_release(cleanup_ctx);
+
 	flist_free(fl, flsz);
 	flist_free(dfl, dflsz);
 	return rc;

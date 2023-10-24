@@ -346,6 +346,8 @@ void	addargs(arglist *, const char *, ...)
 	    __attribute__((format(printf, 2, 3)));
 void	freeargs(arglist *);
 
+struct cleanup_ctx;
+
 struct	download;
 struct	upload;
 
@@ -418,6 +420,13 @@ int	flist_add_del(struct sess *, const char *, size_t, struct flist **,
 const char	 *alt_base_mode(int);
 char		**fargs_cmdline(struct sess *, const struct fargs *, size_t *);
 
+void	cleanup_hold(struct cleanup_ctx *);
+void	cleanup_release(struct cleanup_ctx *);
+void	cleanup_init(struct cleanup_ctx *, struct sess *);
+void	cleanup_set_args(struct cleanup_ctx *, struct fargs *);
+void	cleanup_set_child(struct cleanup_ctx *, pid_t);
+void	cleanup_set_download(struct cleanup_ctx *, struct download *);
+
 int	io_read_buf(struct sess *, int, void *, size_t);
 int	io_read_byte(struct sess *, int, uint8_t *);
 int	io_read_check(int);
@@ -447,12 +456,16 @@ void	io_unbuffer_int(const void *, size_t *, size_t, int32_t *);
 int	io_unbuffer_size(const void *, size_t *, size_t, size_t *);
 void	io_unbuffer_buf(const void *, size_t *, size_t, void *, size_t);
 
-int	rsync_receiver(struct sess *, int, int, const char *);
+int	rsync_receiver(struct sess *, struct cleanup_ctx *, int, int,
+	    const char *);
 int	rsync_sender(struct sess *, int, int, size_t, char **);
-int	rsync_client(const struct opts *, int, const struct fargs *);
+int	rsync_client(struct cleanup_ctx *, const struct opts *, int,
+	    const struct fargs *);
 int	rsync_connect(const struct opts *, int *, const struct fargs *);
-int	rsync_socket(const struct opts *, int, const struct fargs *);
-int	rsync_server(const struct opts *, size_t, char *[]);
+int	rsync_socket(struct cleanup_ctx *, const struct opts *, int,
+	    const struct fargs *);
+int	rsync_server(struct cleanup_ctx *, const struct opts *, size_t,
+	    char *[]);
 int	rsync_downloader(struct download *, struct sess *, int *, int,
 	    const struct hardlinks *);
 int	rsync_set_metadata(struct sess *, int, int, const struct flist *,

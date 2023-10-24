@@ -37,7 +37,8 @@
  * incompatible protocols.
  */
 int
-rsync_client(const struct opts *opts, int fd, const struct fargs *f)
+rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
+    int fd, const struct fargs *f)
 {
 	struct sess	 sess;
 	int		 rc = 1;
@@ -91,7 +92,7 @@ rsync_client(const struct opts *opts, int fd, const struct fargs *f)
 	} else {
 		LOG2("client starting receiver: %s",
 		    f->host == NULL ? "(local)" : f->host);
-		if (!rsync_receiver(&sess, fd, fd, f->sink)) {
+		if (!rsync_receiver(&sess, cleanup_ctx, fd, fd, f->sink)) {
 			ERRX1("rsync_receiver");
 			goto out;
 		}

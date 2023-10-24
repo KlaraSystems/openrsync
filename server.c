@@ -52,7 +52,8 @@ fcntl_nonblock(int fd)
  * incompatible protocols.
  */
 int
-rsync_server(const struct opts *opts, size_t argc, char *argv[])
+rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
+    size_t argc, char *argv[])
 {
 	struct sess	 sess;
 	int		 fdin = STDIN_FILENO,
@@ -148,7 +149,7 @@ rsync_server(const struct opts *opts, size_t argc, char *argv[])
 			goto out;
 		}
 
-		if (!rsync_receiver(&sess, fdin, fdout, argv[1])) {
+		if (!rsync_receiver(&sess, cleanup_ctx, fdin, fdout, argv[1])) {
 			ERRX1("rsync_receiver");
 			goto out;
 		}

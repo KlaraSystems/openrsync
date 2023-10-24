@@ -358,7 +358,8 @@ out:
  * incompatible protocols.
  */
 int
-rsync_socket(const struct opts *opts, int sd, const struct fargs *f)
+rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
+    int sd, const struct fargs *f)
 {
 	struct sess	  sess;
 	size_t		  i, skip;
@@ -485,7 +486,7 @@ rsync_socket(const struct opts *opts, int sd, const struct fargs *f)
 	assert(f->mode == FARGS_RECEIVER);
 
 	LOG2("client starting receiver: %s", f->host);
-	if (!rsync_receiver(&sess, sd, sd, f->sink)) {
+	if (!rsync_receiver(&sess, cleanup_ctx, sd, sd, f->sink)) {
 		ERRX1("rsync_receiver");
 		goto out;
 	}
