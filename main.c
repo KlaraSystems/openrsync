@@ -865,6 +865,12 @@ basedir:
 		err(ERR_WAITPID, "waitpid");
 
 	/*
+	 * Best effort to avoid a little bit of work during cleanup, but cleanup
+	 * will use WNOHANG and just move on if the child's already been reaped.
+	 */
+	cleanup_set_child(cleanup_ctx, 0);
+
+	/*
 	 * If we don't already have an error (rc == 0), then inherit the
 	 * error code of rsync_server() if it has exited.
 	 * If it hasn't exited, it overrides our return value.

@@ -71,6 +71,8 @@
 #define ERR_WIREPROTO	12
 #define ERR_IPC		14	/* catchall for any kind of syscall error */
 #define ERR_TERMIMATED	16
+#define ERR_SIGUSR1	19
+#define ERR_SIGNAL	20
 #define ERR_WAITPID	21
 #define ERR_NOMEM	22
 
@@ -423,6 +425,7 @@ char		**fargs_cmdline(struct sess *, const struct fargs *, size_t *);
 void	cleanup_hold(struct cleanup_ctx *);
 void	cleanup_release(struct cleanup_ctx *);
 void	cleanup_init(struct cleanup_ctx *, struct sess *);
+void	cleanup_run(int code);
 void	cleanup_set_args(struct cleanup_ctx *, struct fargs *);
 void	cleanup_set_child(struct cleanup_ctx *, pid_t);
 void	cleanup_set_download(struct cleanup_ctx *, struct download *);
