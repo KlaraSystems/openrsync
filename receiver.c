@@ -700,8 +700,6 @@ out:
 	sess->dlrename = NULL;
 	free(hl);
 	hl = NULL;
-	if (dfd != -1)
-		close(dfd);
 	upload_free(ul);
 
 	/*
@@ -714,6 +712,9 @@ out:
 	download_free(sess, dl);
 	cleanup_set_download(cleanup_ctx, NULL);
 	cleanup_release(cleanup_ctx);
+
+	if (dfd != -1)
+		close(dfd);
 
 	flist_free(fl, flsz);
 	flist_free(dfl, dflsz);
