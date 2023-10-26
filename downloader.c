@@ -786,7 +786,7 @@ again:
 				goto out;
 			}
 		} else {
-			if (S_ISREG(st2.st_mode)) {
+			if (!S_ISDIR(st2.st_mode)) {
 				LOG2("%s: doing backup", f->path);
 				snprintf(buf2, sizeof(buf2), "%s~", f->path);
 				if (renameat(p->rootfd, f->path,
