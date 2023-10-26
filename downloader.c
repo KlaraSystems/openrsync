@@ -491,7 +491,6 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz)
 		} else
 			renamer = sess->dlrename;
 	}
-		
 
 	/*
 	 * If we don't have a download already in session, then the next
@@ -777,8 +776,18 @@ again:
 	}
 
 	if (sess->opts->backup) {
-		if (fstatat(p->rootfd, f->path, &st2, 0) != -1) {
+		if (fstatat(p->rootfd, f->path, &st2, 0) == -1) {
+			/*
+			 * As-of-now missing file is OK, however
+			 * we take no action for --backup.
+			 */
+			if (errno != ENOENT) {
+				ERR("%s: stat during --backup", f->path);
+				goto out;
+			}
+		} else {
 			if (S_ISREG(st2.st_mode)) {
+				LOG2("%s: doing backup", f->path);
 				snprintf(buf2, sizeof(buf2), "%s~", f->path);
 				if (renameat(p->rootfd, f->path,
 					p->rootfd, buf2) == -1) {
@@ -786,8 +795,6 @@ again:
 					goto out;
 				}
 			}
-		} else {
-			ERRX("%s: stat during --backup", f->path);
 		}
 	}
 
