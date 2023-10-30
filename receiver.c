@@ -437,7 +437,7 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 		if ((pfd[PFD_SENDER_IN].revents & POLLIN) ||
 		    (pfd[PFD_DOWNLOADER_IN].revents & POLLIN)) {
 			c = rsync_downloader(dl, sess,
-				&pfd[PFD_DOWNLOADER_IN].fd);
+				&pfd[PFD_DOWNLOADER_IN].fd, flsz);
 			if (c < 0) {
 				ERRX1("rsync_downloader");
 				goto out;
@@ -521,6 +521,9 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 	LOG2("receiver finished updating");
 	rc = 1;
 out:
+	delayed_renames(sess);
+	free(sess->dlrename);
+	sess->dlrename = NULL;
 	if (dfd != -1)
 		close(dfd);
 	upload_free(ul);

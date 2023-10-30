@@ -354,6 +354,54 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
 }
 
 /*
+ * Infrastructure for --delay-updates.
+ */
+struct dlrename_entry {
+	char *from;  /* Will be free()ed after use */
+	const char *to;    /* Will not be free()ed after use */
+	char *rmdir; /* Directory to remove, will free() */
+};
+struct dlrename {
+	struct dlrename_entry *entries;
+	int n;
+	int fd;
+};
+
+void
+delayed_renames(struct sess *sess)
+{
+	int i;
+	struct dlrename *dlr = sess->dlrename;
+
+	if (dlr == NULL)
+		return;
+
+	for (i = 0; i < dlr->n; i++) {
+		LOG3("mv '%s' -> '%s'", dlr->entries[i].from,
+			dlr->entries[i].to);
+		if (renameat(dlr->fd, dlr->entries[i].from, dlr->fd,
+				dlr->entries[i].to) == -1) {
+			ERR("rename '%s' -> '%s'", dlr->entries[i].from,
+				dlr->entries[i].to);
+		}
+		if (unlinkat(dlr->fd, dlr->entries[i].rmdir, AT_REMOVEDIR) == 
+			-1) {
+			if (errno != ENOTEMPTY) {
+				ERR("rmdir '%s'", dlr->entries[i].rmdir);
+			}
+		}
+		free(dlr->entries[i].from);
+		free(dlr->entries[i].rmdir);
+		dlr->entries[i].from = NULL;
+		dlr->entries[i].rmdir = NULL;
+	}
+	free(dlr->entries);
+	dlr->entries = NULL;
+	free(sess->dlrename);
+	sess->dlrename = NULL;
+}
+
+/*
  * The downloader waits on a file the sender is going to give us, opens
  * and mmaps the existing file, opens a temporary file, dumps the file
  * (or metadata) into the temporary file, then renames.
@@ -362,7 +410,7 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
  * success (more data to be read from the sender).
  */
 int
-rsync_downloader(struct download *p, struct sess *sess, int *ofd)
+rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz)
 {
 	int		 c;
 	int32_t		 idx, rawtok;
@@ -373,6 +421,26 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd)
 	unsigned char	 ourmd[MD4_DIGEST_LENGTH],
 			 md[MD4_DIGEST_LENGTH];
 	char             buf2[PATH_MAX];
+	char            *usethis;
+	int		 dirlen;
+	struct dlrename  *renamer = NULL;
+
+	if (sess->opts->dlupdates) {
+		if (sess->dlrename == NULL) {
+			sess->dlrename = malloc(sizeof(struct dlrename));
+			if (sess->dlrename == NULL) {
+				ERR("malloc renamer");
+				goto out;
+			}
+			renamer = sess->dlrename;
+			renamer->entries = NULL;
+			renamer->n = 0;
+			renamer->fd = p->rootfd;
+		} else
+			renamer = sess->dlrename;
+	}
+		
+
 	/*
 	 * If we don't have a download already in session, then the next
 	 * one is coming in.
@@ -672,12 +740,67 @@ again:
 		goto out;
 	}
 
-	/* Finally, rename the temporary to the real file. */
-
+	/* 
+	 * Finally, rename the temporary to the real file, unless 
+	 * --delay-updates is in effect, in which case it is doing to
+	 * the .~tmp~ subdirectory for now and is renamed later in
+	 * a batch with all the other new or changed files.
+	 */
+	if (sess->opts->dlupdates) {
+		if (renamer->entries == NULL) {
+			renamer->entries = calloc(flsz,
+				sizeof(struct dlrename_entry));
+			if (renamer->entries == NULL) {
+				ERR("malloc dlrenamer entries");
+				goto out;
+			}
+			renamer->n = 0;
+		}
+		renamer->n++;
+		if ((usethis = strrchr(f->path, '/')) != NULL) {
+			dirlen = usethis - f->path;
+			snprintf(buf2, sizeof(buf2), "%.*s/.~tmp~",
+			    dirlen, f->path);
+			if (mkdirat(p->rootfd, buf2, 0700) == -1)
+				if (errno != EEXIST) {
+					ERR("mkdir '%s'", buf2);
+					goto out;
+				}
+			renamer->entries[renamer->n - 1].rmdir = strdup(buf2);
+			if (renamer->entries[renamer->n - 1].rmdir == NULL) {
+				ERR("strdup");
+				goto out;
+			}
+			snprintf(buf2, sizeof(buf2), "%.*s/.~tmp~/%s",
+			    dirlen, f->path, f->path + dirlen + 1);
+		} else {
+			snprintf(buf2, sizeof(buf2), ".~tmp~/%s", f->path);
+			if (mkdirat(p->rootfd, ".~tmp~", 0700) == -1)
+				if (errno != EEXIST) {
+					ERR("mkdir '%s'", buf2);
+					goto out;
+				}
+			renamer->entries[renamer->n - 1].rmdir = strdup(".~tmp~");
+			if (renamer->entries[renamer->n - 1].rmdir == NULL) {
+				ERR("strdup");
+				goto out;
+			}
+		}
+		usethis = buf2;
+	} else
+		usethis = f->path;
 	if (!sess->opts->inplace &&
-	    renameat(p->rootfd, p->fname, p->rootfd, f->path) == -1) {
-		ERR("%s: renameat: %s", p->fname, f->path);
+	    renameat(p->rootfd, p->fname, p->rootfd, usethis) == -1) {
+		ERR("%s: renameat: %s", p->fname, usethis);
 		goto out;
+	}
+	if (sess->opts->dlupdates) {
+		renamer->entries[renamer->n - 1].from = strdup(usethis);
+		if (renamer->entries[renamer->n - 1].from == NULL) {
+			ERR("strdup");
+			goto out;
+		}
+		renamer->entries[renamer->n - 1].to = f->path;
 	}
 
 	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size);

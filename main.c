@@ -387,6 +387,7 @@ const struct option	 lopts[] = {
     { "dirs",		no_argument,	NULL,			OP_DIRS },
     { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
+    { "delay-updates",	no_argument,	&opts.dlupdates,	1 },
     { NULL,		0,		NULL,			0 }
 };
 
@@ -789,7 +790,7 @@ usage:
 	fprintf(stderr, "usage: %s"
 	    " [-adDgklLnoprtvx] [-e program] [--address=sourceaddr]\n"
 	    "\t[--compare-dest=dir] [--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
-	    "\t[--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
+	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
 	    "\t[--port=portnumber] [--relative] [--rsync-path=program] [--timeout=seconds]\n"
 	    "\t[--version] source ... directory\n",

@@ -29,6 +29,7 @@
 .Op Fl -copy-links
 .Op Fl -copy-dirlinks
 .Op Fl -del
+.Op Fl -delay-updates
 .Op Fl -delete-before
 .Op Fl -delete-during
 .Op Fl -delete-delay
@@ -107,6 +108,12 @@ not found in
 directories.
 Only applicable with
 .Fl r .
+.It Fl -delay-updates
+Delay updates of (only) plain files until all other operations
+are complete.
+This is done to be more atomic.
+Requires extra space in the destination directory up to the amount of the
+whole tree.
 .It Fl -delete-before
 Execute the above described
 .Fl -delete

@@ -175,6 +175,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--relative");
 	if (sess->opts->dirs > 0)
 		addargs(&args, "--dirs");
+	if (sess->opts->dlupdates > 0)
+		addargs(&args, "--delay-updates");
 
 	/* only add --compare-dest, etc if this is the sender */
 	if (sess->opts->alt_base_mode != 0 &&

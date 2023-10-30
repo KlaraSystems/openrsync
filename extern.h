@@ -181,6 +181,7 @@ struct	opts {
 	int		 ign_non_exist;		/* --ignore-nonexisting */
 	int		 relative;		/* --relative */
 	int		 dirs;			/* -d --dirs */
+	int		 dlupdates;             /* --delay-updates */
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */
@@ -281,6 +282,7 @@ struct	sess {
 	double             last_time; /* last time printed --progress */  
 	char             **filesfrom; /* Contents of files-from */
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
+	struct dlrename    *dlrename; /* Deferred renames for --delay-update */
 };
 
 /*
@@ -403,7 +405,7 @@ int	rsync_client(const struct opts *, int, const struct fargs *);
 int	rsync_connect(const struct opts *, int *, const struct fargs *);
 int	rsync_socket(const struct opts *, int, const struct fargs *);
 int	rsync_server(const struct opts *, size_t, char *[]);
-int	rsync_downloader(struct download *, struct sess *, int *);
+int	rsync_downloader(struct download *, struct sess *, int *, int);
 int	rsync_set_metadata(struct sess *, int, int, const struct flist *,
 	    const char *);
 int	rsync_set_metadata_at(struct sess *, int, int, const struct flist *,
@@ -477,5 +479,6 @@ int		 iszerobuf(const void *b, size_t len);
 
 int              read_filesfrom(struct sess *sess, const char *basedir);
 void		 cleanup_filesfrom(struct sess *sess);
+void		 delayed_renames(struct sess *sess);
 
 #endif /*!EXTERN_H*/
