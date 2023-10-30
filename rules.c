@@ -332,6 +332,25 @@ parse_rule(char *line, enum rule_type def)
 	r->modifiers = modifiers;
 	parse_pattern(r, pattern);
 
+	if (type == RULE_MERGE) {
+		/*  - and + are mutually exclusive. */
+		if ((modifiers & (MOD_MERGE_EXCLUDE | MOD_MERGE_INCLUDE)) ==
+		    (MOD_MERGE_EXCLUDE | MOD_MERGE_INCLUDE))
+			return -1;
+
+		if ((modifiers & MOD_MERGE_EXCLUDE) != 0)
+			def = RULE_EXCLUDE;
+		else if ((modifiers & MOD_MERGE_INCLUDE) != 0)
+			def = RULE_INCLUDE;
+		else
+			def = RULE_NONE;
+
+		/*
+		 * XXX Some way to flag these as merge rules.
+		 */
+		parse_file(pattern, def);
+	}
+
 	return 0;
 }
 
