@@ -36,6 +36,7 @@
 #if HAVE_SCAN_SCALED
 # include <util.h>
 #endif
+#include <ctype.h>
 
 #include "extern.h"
 
@@ -293,6 +294,33 @@ clean_exit(int signo __attribute__((unused)))
 	_exit(0);
 }
 
+/*
+ * Like scan_scaled, but with a default for the case where no characterr
+ * is given.
+ * Return 0 on success, -1 and errno set on error.
+ */
+static int
+scan_scaled_def(char *maybe_scaled, long long *result, char def)
+{
+	int ret;
+	char *s = NULL;
+	int length;
+
+	length = strlen(maybe_scaled);
+	if (length > 0) {
+		if (isascii(maybe_scaled[length - 1]) &&
+			isdigit(maybe_scaled[length - 1])) {
+			asprintf(&s, "%s%c", maybe_scaled, def);
+			if (s == NULL) {
+				err(ERR_NOMEM, NULL);
+			}
+		}
+	}
+	ret = scan_scaled(s ? s : maybe_scaled, result);
+	free(s);
+	return ret;
+}
+
 static struct opts	 opts;
 
 #define OP_ADDRESS	1000
@@ -320,6 +348,7 @@ static struct opts	 opts;
 #define OP_DEL_DURING	1022
 #define OP_DEL_DELAY	1023
 #define OP_DEL_AFTER	1024
+#define OP_BWLIMIT	1025
 
 #define OP_NO_RELATIVE	1026
 
@@ -331,6 +360,7 @@ const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
     { "archive",	no_argument,	NULL,			'a' },
+    { "bwlimit",	required_argument, NULL,		OP_BWLIMIT },
     { "checksum",	no_argument,	NULL,			'c' },
     { "compare-dest",	required_argument, NULL,		OP_COMP_DEST },
 #if 0
@@ -657,6 +687,11 @@ basedir:
 		case OP_APPEND:
 			opts.append++;
 			break;
+		case OP_BWLIMIT:
+			if (scan_scaled_def(optarg, &tmpint, 'k') == -1)
+				err(1, "bad bwlimit");
+			opts.bwlimit = tmpint;
+			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",
 			    RSYNC_PROTOCOL);
@@ -838,7 +873,7 @@ basedir:
 usage:
 	fprintf(stderr, "usage: %s"
 	    " [-DLacdgklnoprtuvx] [-e program] [--address=sourceaddr]\n"
-	    "\t[--append] [--compare-dest=dir]\n"
+	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"

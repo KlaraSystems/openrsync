@@ -204,6 +204,7 @@ struct	opts {
 	char		*address;		/* --address */
 	char		*basedir[MAX_BASEDIR];
 	char            *filesfrom;             /* --files-from */
+	off_t		 bwlimit;		/* --bwlimit */
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif
@@ -322,6 +323,7 @@ struct	sess {
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
 	struct dlrename    *dlrename; /* Deferred renames for --delay-update */
 	struct role	  *role; /* Role context */
+	double             start_time; /* Time of first transfer */
 };
 
 /*

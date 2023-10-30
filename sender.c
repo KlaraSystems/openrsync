@@ -369,6 +369,8 @@ rsync_sender(struct sess *sess, int fdin,
 	size_t		    wbufpos = 0, wbufsz = 0, wbufmax = 0;
 	ssize_t		    ssz;
 	int		    markers = 0, shutdown = 0;
+	struct timeval	    tv;
+	double		    now, rate, sleeptime;
 
 	if (pledge("stdio getpw rpath", NULL) == -1) {
 		ERR("pledge");
@@ -617,6 +619,27 @@ rsync_sender(struct sess *sess, int fdin,
 			/* This is usually in io.c... */
 
 			sess->total_write += ssz;
+			if (sess->opts->bwlimit) {
+				gettimeofday(&tv, NULL);
+				now = tv.tv_sec + (double)tv.tv_usec / 
+					1000000.0;
+				if (sess->start_time == 0.0)
+					sess->start_time = now;
+				else {
+					rate = (double)sess->total_write /
+						(now - sess->start_time);
+					if (rate > sess->opts->bwlimit) {
+						sleeptime = 
+							/* Time supposed to have expired */
+							sess->total_write / 
+							sess->opts->bwlimit
+							/* Time actually expired */
+							- (now - sess->start_time)
+							;
+						usleep((long)sleeptime * 1000 * 1000);
+					}
+				}
+			}
 		}
 
 		/*
