@@ -28,9 +28,7 @@
 struct rule {
 	char			*pattern;
 	enum rule_type		 type;
-#ifdef NOTYET
 	unsigned int		 modifiers;
-#endif
 	short			 numseg;
 	unsigned char		 anchored;
 	unsigned char		 fileonly;
@@ -53,25 +51,24 @@ const struct command {
 	{ RULE_EXCLUDE,		'-',	"exclude" },
 	{ RULE_INCLUDE,		'+',	"include" },
 	{ RULE_CLEAR,		'!',	"clear" },
-#ifdef NOTYET
 	{ RULE_MERGE,		'.',	"merge" },
 	{ RULE_DIR_MERGE,	':',	"dir-merge" },
 	{ RULE_SHOW,		'S',	"show" },
 	{ RULE_HIDE,		'H',	"hide" },
 	{ RULE_PROTECT,		'P',	"protect" },
 	{ RULE_RISK,		'R',	"risk" },
-#endif
 	{ 0 }
 };
 
-#ifdef NOTYET
 #define MOD_ABSOLUTE			0x0001
 #define MOD_NEGATE			0x0002
 #define MOD_CVSEXCLUDE			0x0004
 #define MOD_SENDING			0x0008
 #define MOD_RECEIVING			0x0010
 #define MOD_PERISHABLE			0x0020
+#ifdef NOTYET
 #define MOD_XATTR			0x0040
+#endif
 #define MOD_MERGE_EXCLUDE		0x0080
 #define MOD_MERGE_INCLUDE		0x0100
 #define MOD_MERGE_CVSCOMPAT		0x0200
@@ -90,7 +87,9 @@ const struct modifier {
 	{ MOD_SENDING,			's' },
 	{ MOD_RECEIVING,		'r' },
 	{ MOD_PERISHABLE,		'p' },
+#ifdef NOTYET
 	{ MOD_XATTR,			'x' },
+#endif
 	/* for '.' and ':' types */
 	{ MOD_MERGE_EXCLUDE,		'-' },
 	{ MOD_MERGE_INCLUDE,		'+' },
@@ -99,8 +98,7 @@ const struct modifier {
 	{ MOD_MERGE_NO_INHERIT,		'n' },
 	{ MOD_MERGE_WORDSPLIT,		'w' },
 	{ 0 }
-}
-#endif
+};
 
 static struct rule *
 get_next_rule(void)
@@ -290,7 +288,6 @@ send_command(struct rule *r)
 	case RULE_CLEAR:
 		*b++ = '!';
 		break;
-#ifdef NOTYET
 	case RULE_MERGE:
 		*b++ = '.';
 		break;
@@ -309,19 +306,16 @@ send_command(struct rule *r)
 	case RULE_RISK:
 		*b++ = 'R';
 		break;
-#endif
 	default:
 		err(ERR_SYNTAX, "unknown rule type %d", r->type);
 	}
 
-#ifdef NOTYET
-	for (i = 0; modifiers[i].modifier != 0; i++) {
-		if (rule->modifiers & modifiers[i].modifier)
+	for (int i = 0; modifiers[i].modifier != 0; i++) {
+		if (r->modifiers & modifiers[i].modifier)
 			*b++ = modifiers[i].sopt;
 		if (b >= ep - 3)
 			err(ERR_SYNTAX, "rule modifiers overflow");
 	}
-#endif
 	if (b >= ep - 3)
 		err(ERR_SYNTAX, "rule prefix overflow");
 	*b++ = ' ';
@@ -440,7 +434,7 @@ recv_rules(struct sess *sess, int fd)
 static inline int
 rule_matched(struct rule *r)
 {
-	/* TODO apply negation once modifiers are added */
+	/* XXX TODO apply negation once modifiers are added */
 
 	if (r->type == RULE_EXCLUDE)
 		return -1;
