@@ -871,7 +871,7 @@ out:
 }
 
 static int
-flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
+flist_gen_dirent_file(const char *type, struct sess *sess, char *root,
     struct flist **fl, size_t *sz, size_t *max, const struct stat *st)
 {
 	struct flist	*f;
@@ -933,7 +933,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		ERR("%s: (l)stat", root);
 		return 0;
 	} else if (S_ISREG(st.st_mode)) {
-		return flist_gen_dirent_file(sess, "file", root, fl, sz, max, &st);
+		return flist_gen_dirent_file("file", sess, root, fl, sz, max, &st);
 	} else if (S_ISLNK(st.st_mode)) {
 		/*
 		 * How does this work?
@@ -963,13 +963,13 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			return 1;
 		}
 
-		return flist_gen_dirent_file(sess, "symlink", root, fl, sz, max, &st);
+		return flist_gen_dirent_file("symlink", sess, root, fl, sz, max, &st);
 	} else if (sess->opts->devices &&
 	    (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
-		return flist_gen_dirent_file(sess, "special", root, fl, sz, max, &st);
+		return flist_gen_dirent_file("special", sess, root, fl, sz, max, &st);
 	} else if (sess->opts->specials &&
 	    (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode))) {
-		return flist_gen_dirent_file(sess, "special", root, fl, sz, max, &st);
+		return flist_gen_dirent_file("special", sess, root, fl, sz, max, &st);
 	} else if (!S_ISDIR(st.st_mode)) {
 		WARNX("%s: skipping special", root);
 		return 1;
