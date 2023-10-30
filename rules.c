@@ -18,6 +18,7 @@
 #if HAVE_ERR
 # include <err.h>
 #endif
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -76,6 +77,9 @@ const struct command {
 #define MOD_MERGE_NO_INHERIT		0x0800
 #define MOD_MERGE_WORDSPLIT		0x1000
 
+#define MOD_MERGE_MASK			0x1f80
+#define MOD_VALID_MASK			0x1fff
+
 /* maybe support absolute and negate */
 const struct modifier {
 	unsigned int		modifier;
@@ -123,22 +127,66 @@ get_next_rule(void)
 	return rules + numrules - 1;
 }
 
+static unsigned int
+parse_modifiers(const char *command, size_t *len)
+{
+	unsigned int modmask, modparsed;
+	size_t idx;
+	char mod;
+
+	modmask = 0;
+	for (idx = 0; idx < *len; idx++) {
+		mod = command[idx];
+
+		modparsed = 0;
+		for (size_t i = 0; modifiers[i].modifier != 0; i++) {
+			if (modifiers[i].sopt == mod) {
+				modparsed = modifiers[i].modifier;
+				break;
+			}
+		}
+
+		if (modparsed == 0)
+			break;
+
+		modmask |= modparsed;
+	}
+
+	*len -= idx;
+
+	return modmask;
+}
+
 static enum rule_type
-parse_command(const char *command, size_t len)
+parse_command(const char *command, size_t len, unsigned int *omodifiers)
 {
 	const char *mod;
 	size_t	i;
+	unsigned int modifiers;
 
 	/* Command has been omitted, short-circuit. */
 	if (len == 0)
 		return RULE_NONE;
 
+	modifiers = 0;
 	mod = memchr(command, ',', len);
 	if (mod != NULL) {
-		/* XXX modifiers not yet implemented */
-		return RULE_NONE;
+		const char *modstart;
+		size_t modlen;
+
+		modstart = mod + 1;
+		modlen = len - (modstart - command);
+		modifiers = parse_modifiers(modstart, &modlen);
+
+		/* Some modifier could not be processed. */
+		if (modlen != 0)
+			return RULE_NONE;
+
+		len = mod - command;
 	}
 
+	if (omodifiers != NULL)
+		*omodifiers = modifiers;
 	for (i = 0; commands[i].type != RULE_NONE; i++) {
 		if (strncmp(commands[i].lopt, command, len) == 0)
 			return commands[i].type;
@@ -203,6 +251,32 @@ parse_pattern(struct rule *r, char *pattern)
 		err(ERR_NOMEM, NULL);
 }
 
+static bool
+modifiers_valid(enum rule_type rule, unsigned int *modifiers)
+{
+	unsigned int valid_mask;
+
+	switch (rule) {
+	case RULE_DIR_MERGE:
+	case RULE_MERGE:
+		if ((*modifiers & (MOD_MERGE_EXCLUDE | MOD_MERGE_INCLUDE)) ==
+		    (MOD_MERGE_EXCLUDE | MOD_MERGE_INCLUDE))
+			return false;
+		valid_mask = MOD_VALID_MASK;
+		break;
+	case RULE_EXCLUDE:
+	case RULE_INCLUDE:
+		valid_mask = MOD_VALID_MASK & ~MOD_MERGE_MASK;
+		break;
+	default:
+		valid_mask = 0;
+		break;
+	}
+
+	*modifiers &= valid_mask;
+	return (true);
+}
+
 int
 parse_rule(char *line, enum rule_type def)
 {
@@ -210,7 +284,9 @@ parse_rule(char *line, enum rule_type def)
 	struct rule *r;
 	char *pattern;
 	size_t len;
+	unsigned int modifiers;
 
+	modifiers = 0;
 	switch (*line) {
 	case '#':
 	case ';':
@@ -220,9 +296,10 @@ parse_rule(char *line, enum rule_type def)
 		/* ingore empty lines */
 		return 0;
 	default:
+		modifiers = 0;
 		if (def == RULE_NONE) {
 			len = strcspn(line, " _");
-			type = parse_command(line, len);
+			type = parse_command(line, len, &modifiers);
 		}
 		if (type == RULE_NONE) {
 			if (def == RULE_NONE)
@@ -236,11 +313,15 @@ parse_rule(char *line, enum rule_type def)
 			return -1;
 		if (*pattern != '\0' && type == RULE_CLEAR)
 			return -1;
+
+		if (!modifiers_valid(type, &modifiers))
+			return -1;
 		break;
 	}
 
 	r = get_next_rule();
 	r->type = type;
+	r->modifiers = modifiers;
 	parse_pattern(r, pattern);
 
 	return 0;
@@ -396,7 +477,7 @@ rule_xfer_type(const char **linep)
 	 * Not completely sure... see if this matches one of our rule prefixes.
 	 * If it doesn't, we have to assume that it's an exclude rule.
 	 */
-	type = parse_command(line, len);
+	type = parse_command(line, len, NULL);
 	if (type != RULE_NONE)
 		*linep = line + len + 1;
 	else
