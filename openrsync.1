@@ -23,6 +23,7 @@
 .Nm openrsync
 .Op Fl abcDgklLnoprtuvx
 .Op Fl e Ar program
+.Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
 .Op Fl -append
 .Op Fl -backup
@@ -223,6 +224,16 @@ Note that
 will generally handle quotes, but it makes no attempt to deal with escape
 sequences.
 In particular, escaped quotation marks will not be escaped.
+.It Fl f Ar filter , Fl -filter Ns = Ns Ar filter
+Process
+.Ar filter
+against the global filter chain.
+The specified
+.Ar filter
+may be a rule to include a filter file, or to include a per-directory filter
+file.
+Regular filter files are processed immediately, while per-directory filter files
+are processed as directories are encountered.
 .It Fl g , -group
 Set the group name to match the source.
 For example, group
