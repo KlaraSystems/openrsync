@@ -380,6 +380,7 @@ const struct option	 lopts[] = {
     { "exclude",	required_argument, NULL,		OP_EXCLUDE },
     { "exclude-from",	required_argument, NULL,		OP_EXCLUDE_FROM },
     { "existing",	no_argument, NULL,			OP_IGNORE_NON_EXISTING },
+    { "filter",		required_argument, NULL,		'f' },
     { "group",		no_argument,	NULL,			'g' },
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
     { "no-g",		no_argument,	&opts.preserve_gids,	0 },
@@ -465,7 +466,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "DHILRSVabcde:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "DHILRSVabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case 'D':
@@ -496,6 +497,11 @@ main(int argc, char *argv[])
 			break;
 		case 'e':
 			opts.ssh_prog = optarg;
+			break;
+		case 'f':
+			if (parse_rule(optarg, RULE_NONE) == -1)
+				errx(ERR_SYNTAX, "syntax error in filter: %s",
+				    optarg);
 			break;
 		case 'g':
 			opts.preserve_gids = 1;
@@ -950,7 +956,7 @@ basedir:
 	exit(rc);
 usage:
 	fprintf(stderr, "usage: %s"
-	    " [-DLacdgklnoprtuvx] [-e program] [--address=sourceaddr]\n"
+	    " [-DLacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
