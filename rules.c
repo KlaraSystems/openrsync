@@ -306,8 +306,16 @@ parse_rule(char *line, enum rule_type def)
 				return -1;
 			type = def;
 			pattern = line;
-		} else
-			pattern = line + len + 1;
+		} else {
+			/*
+			 * Some available rules have no arguments, so we're
+			 * pointing at the NUL byte and we shouldn't walk past
+			 * that.
+			 */
+			pattern = line + len;
+			if (*pattern != '\0')
+				pattern++;
+		}
 
 		if (*pattern == '\0' && type != RULE_CLEAR)
 			return -1;
