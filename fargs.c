@@ -191,6 +191,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-k");
 	if (f->mode == FARGS_SENDER && sess->opts->ignore_times > 0)
 		addargs(&args, "--ignore-times");
+	if (sess->opts->bwlimit >= 0)
+		addargs(&args, "--bwlimit=%lldb", (long long)sess->opts->bwlimit);
 
 	/* only add --compare-dest, etc if this is the sender */
 	if (sess->opts->alt_base_mode != 0 &&

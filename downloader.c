@@ -330,9 +330,7 @@ static void
 progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
 {
 	struct timeval tv;
-	double now;
-	double rate;
-	double remaining_time;
+	double now, remaining_time, rate;
 
 	if (!sess->opts->progress)
 		return;
@@ -340,6 +338,10 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
 	gettimeofday(&tv, NULL);
 	now = tv.tv_sec + (double)tv.tv_usec / 1000000.0;
 
+	/*
+	 * Print progress.
+	 * This calculates from previous transfer.
+	 */
 	if (sess->last_time == 0) {
 		sess->last_time = now;
 		return;
