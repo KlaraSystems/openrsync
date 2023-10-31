@@ -78,6 +78,8 @@ const struct command {
 #define MOD_MERGE_NO_INHERIT		0x0800
 #define MOD_MERGE_WORDSPLIT		0x1000
 
+#define MOD_SENDRECV_MASK		(MOD_SENDING | MOD_RECEIVING)
+
 #define MOD_MERGE_MASK			0x1f80
 #define MOD_VALID_MASK			0x1fff
 
@@ -302,6 +304,45 @@ modifiers_valid(enum rule_type rule, unsigned int *modifiers)
 	return (true);
 }
 
+static enum rule_type
+rule_modified(enum rule_type rule, unsigned int *modifiers)
+{
+	unsigned int mod = *modifiers;
+
+	if (mod == 0)
+		return rule;
+
+	switch (rule) {
+	case RULE_EXCLUDE:
+		if ((mod & MOD_SENDRECV_MASK) == MOD_SENDRECV_MASK) {
+			/* Just unset the modifiers. */
+		} else if ((mod & MOD_SENDING) != 0) {
+			rule = RULE_HIDE;
+		} else if ((mod & MOD_RECEIVING) != 0) {
+			rule = RULE_PROTECT;
+		}
+
+		mod &= ~MOD_SENDRECV_MASK;
+		break;
+	case RULE_INCLUDE:
+		if ((mod & MOD_SENDRECV_MASK) == MOD_SENDRECV_MASK) {
+			/* Just unset the modifiers. */
+		} else if ((mod & MOD_SENDING) != 0) {
+			rule = RULE_SHOW;
+		} else if ((mod & MOD_RECEIVING) != 0) {
+			rule = RULE_RISK;
+		}
+
+		mod &= ~MOD_SENDRECV_MASK;
+		break;
+	default:
+		return rule;
+	}
+
+	*modifiers = mod;
+	return rule;
+}
+
 int
 parse_rule(char *line, enum rule_type def)
 {
@@ -349,6 +390,9 @@ parse_rule(char *line, enum rule_type def)
 
 		if (!modifiers_valid(type, &modifiers))
 			return -1;
+
+		if (modifiers != 0)
+			type = rule_modified(type, &modifiers);
 		break;
 	}
 
