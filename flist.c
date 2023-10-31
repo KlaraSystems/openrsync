@@ -966,7 +966,7 @@ flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
 	struct flist	*f;
 
 	/* filter files */
-	if (rules_match(root, 0) == -1) {
+	if (rules_match(root, 0, FARGS_SENDER) == -1) {
 		WARNX("%s: skipping excluded %s", root, type);
 		return 1;
 	}
@@ -1189,7 +1189,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		}
 		/* filter files */
 		if (rules_match(ent->fts_path + stripdir,
-		    (ent->fts_info == FTS_D)) == -1) {
+		    (ent->fts_info == FTS_D), FARGS_SENDER) == -1) {
 			WARNX("%s: skipping excluded file",
 			    ent->fts_path + stripdir);
 			fts_set(fts, ent, FTS_SKIP);
@@ -1357,7 +1357,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 		}
 
 		/* filter files */
-		if (rules_match(argv[i], S_ISDIR(st.st_mode)) == -1) {
+		if (rules_match(argv[i], S_ISDIR(st.st_mode), FARGS_SENDER) == -1) {
 			WARNX("%s: skipping excluded file", argv[i]);
 			continue;
 		}
@@ -1765,7 +1765,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		}
 		/* filter files on delete */
 		if (!sess->opts->del_excl && rules_match(ent->fts_path + stripdir,
-		    (ent->fts_info == FTS_D)) == -1) {
+		    (ent->fts_info == FTS_D), FARGS_RECEIVER) == -1) {
 			WARNX("skip excluded file %s",
 			    ent->fts_path + stripdir);
 			fts_set(fts, ent, FTS_SKIP);
