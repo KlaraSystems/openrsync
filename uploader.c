@@ -659,7 +659,7 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 			stripdir++;
 		}
 		if (!sess->opts->del_excl && rules_match(ent->fts_path + stripdir,
-		    (ent->fts_info == FTS_D)) == -1) {
+		    (ent->fts_info == FTS_D), FARGS_RECEIVER) == -1) {
 			WARNX("skip excluded file %s",
 			    ent->fts_path + stripdir);
 			fts_set(fts, ent, FTS_SKIP);

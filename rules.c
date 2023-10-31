@@ -15,6 +15,7 @@
  */
 #include "config.h"
 
+#include <assert.h>
 #if HAVE_ERR
 # include <err.h>
 #endif
@@ -564,13 +565,65 @@ recv_rules(struct sess *sess, int fd)
 }
 
 static inline int
-rule_matched(struct rule *r)
+rule_actionable(const struct rule *r, enum fmode rulectx)
 {
 
-	if (r->type == RULE_EXCLUDE)
-		return -1;
-	else
+	switch (r->type) {
+	/* Almost always actionable */
+	case RULE_EXCLUDE:
+		if ((r->modifiers & MOD_CVSEXCLUDE) != 0)
+			return 0;
+		/* FALLTHROUGH */
+	case RULE_INCLUDE:
 		return 1;
+	/* Sender side */
+	case RULE_HIDE:
+	case RULE_SHOW:
+		return rulectx == FARGS_SENDER;
+	/* Receiver side */
+	case RULE_PROTECT:
+	case RULE_RISK:
+		return rulectx == FARGS_RECEIVER;
+	/* Meta, never actionable */
+	case RULE_CLEAR:
+	case RULE_MERGE:
+	case RULE_DIR_MERGE:
+	default:
+		return 0;
+	}
+
+	return 0;
+}
+
+static inline int
+rule_matched(const struct rule *r)
+{
+	int ret = 0;
+
+	switch (r->type) {
+	/*
+	 * We decomposed RULE_EXCLUDE and RULE_INCLUDE based on sender/receiver
+	 * modifiers earlier on, so we don't need to check it again here.  We
+	 * won't see hide/show/protect/risk rules here unless we're on the
+	 * appropriate side, so we don't need to worry about that, either.
+	 */
+	case RULE_HIDE:
+	case RULE_PROTECT:
+	case RULE_EXCLUDE:
+		ret = -1;
+		break;
+	case RULE_SHOW:
+	case RULE_RISK:
+	case RULE_INCLUDE:
+		ret = 1;
+		break;
+	default:
+		/* Illegal, should have been filtered out above. */
+		break;
+	}
+
+	assert(ret != 0);
+	return ret;
 }
 
 static inline int
@@ -589,7 +642,7 @@ rule_pattern_matched(const struct rule *r, const char *path)
 }
 
 int
-rules_match(const char *path, int isdir)
+rules_match(const char *path, int isdir, enum fmode rulectx)
 {
 	const char *basename, *p = NULL;
 	struct rule *r;
@@ -605,6 +658,10 @@ rules_match(const char *path, int isdir)
 		r = &rules[i];
 
 		if (r->onlydir && !isdir)
+			continue;
+
+		/* Rule out merge rules and other meta-actions. */
+		if (!rule_actionable(r, rulectx))
 			continue;
 
 		if (r->nowild) {
