@@ -160,41 +160,65 @@ parse_modifiers(const char *command, size_t *len)
 static enum rule_type
 parse_command(const char *command, size_t len, unsigned int *omodifiers)
 {
+	const struct command *cmd;
 	const char *mod;
-	size_t	i;
+	size_t	cmdlen, i;
 	unsigned int modifiers;
 
 	/* Command has been omitted, short-circuit. */
 	if (len == 0)
 		return RULE_NONE;
 
-	modifiers = 0;
-	mod = memchr(command, ',', len);
+	cmd = NULL;
+	cmdlen = len;
+
+	mod = memchr(command, ',', cmdlen);
 	if (mod != NULL) {
-		const char *modstart;
+		cmdlen = mod - command;
+		mod++;
+	}
+
+	/*
+	 * Do a pass up front to figure out the command.  We don't need to use
+	 * cmdlen to check for short names because they're designed to not
+	 * conflict with the first character of any long name.
+	 */
+	for (i = 0; commands[i].type != RULE_NONE; i++) {
+		if (strncmp(commands[i].lopt, command, cmdlen) == 0) {
+			cmd = &commands[i];
+			break;
+		} else if (commands[i].sopt == *command) {
+			cmd = &commands[i];
+
+			/*
+			 * The comma separator for modifiers is optional if a
+			 * short name is used, so point mod in the right
+			 * direction if there was no comma in the rule string.
+			 */
+			if (mod == NULL && command[1] != '\0')
+				mod = &command[1];
+			break;
+		}
+	}
+
+	if (cmd == NULL)
+		return RULE_NONE;
+
+	modifiers = 0;
+	if (mod != NULL) {
 		size_t modlen;
 
-		modstart = mod + 1;
-		modlen = len - (modstart - command);
-		modifiers = parse_modifiers(modstart, &modlen);
+		modlen = len - (mod - command);
+		modifiers = parse_modifiers(mod, &modlen);
 
 		/* Some modifier could not be processed. */
 		if (modlen != 0)
 			return RULE_NONE;
-
-		len = mod - command;
 	}
 
 	if (omodifiers != NULL)
 		*omodifiers = modifiers;
-	for (i = 0; commands[i].type != RULE_NONE; i++) {
-		if (strncmp(commands[i].lopt, command, len) == 0)
-			return commands[i].type;
-		if (len == 1 && commands[i].sopt == *command)
-			return commands[i].type;
-	}
-
-	return RULE_NONE;
+	return cmd->type;
 }
 
 static void
