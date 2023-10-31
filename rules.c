@@ -542,12 +542,26 @@ recv_rules(struct sess *sess, int fd)
 static inline int
 rule_matched(struct rule *r)
 {
-	/* XXX TODO apply negation once modifiers are added */
 
 	if (r->type == RULE_EXCLUDE)
 		return -1;
 	else
 		return 1;
+}
+
+static inline int
+rule_pattern_matched(const struct rule *r, const char *path)
+{
+	bool matched, negate = (r->modifiers & MOD_NEGATE) != 0;
+
+	/*
+	 * We need to augment this result with the negate modifier; the
+	 * intention of the negate modifier is that the rule shoud only take
+	 * effect if the pattern did *not* match.  If it *did* match, then we
+	 * still need to check other rules for possible applicability.
+	 */
+	matched = strcmp(path, r->pattern) == 0;
+	return matched != negate;
 }
 
 int
@@ -572,14 +586,14 @@ rules_match(const char *path, int isdir)
 		if (r->nowild) {
 			/* fileonly and anchored are mutually exclusive */
 			if (r->fileonly) {
-				if (strcmp(basename, r->pattern) == 0)
+				if (rule_pattern_matched(r, basename))
 					return rule_matched(r);
 			} else if (r->anchored) {
 				/*
 				 * assumes that neither path nor pattern
 				 * start with a '/'.
 				 */
-				if (strcmp(path, r->pattern) == 0)
+				if (rule_pattern_matched(r, path))
 					return rule_matched(r);
 			} else if (r->leadingdir) {
 				size_t plen = strlen(r->pattern);
@@ -596,8 +610,8 @@ rules_match(const char *path, int isdir)
 				size_t len = strlen(path);
 				size_t plen = strlen(r->pattern);
 
-				if (len >= plen && strcmp(path + len - plen,
-				    r->pattern) == 0) {
+				if (len >= plen && rule_pattern_matched(r,
+				    path + len - plen)) {
 					/* match all or start on dir boundary */
 					if (len == plen ||
 					    path[len - plen - 1] == '/')
@@ -630,7 +644,12 @@ rules_match(const char *path, int isdir)
 			}
 
 			if (p != NULL) {
-				if (rmatch(r->pattern, p, r->leadingdir) == 0)
+				bool matched, negate;
+
+				negate = (r->modifiers & MOD_NEGATE) != 0;
+				matched =  rmatch(r->pattern, p,
+				    r->leadingdir) == 0;
+				if (matched != negate)
 					return rule_matched(r);
 			}
 		}
