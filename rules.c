@@ -43,6 +43,8 @@ static struct rule	*rules;
 static size_t		 numrules;	/* number of rules */
 static size_t		 rulesz;	/* available size */
 
+static void parse_file_impl(const char *, enum rule_type, unsigned int);
+
 /* up to protocol 29 filter rules only support - + ! and no modifiers */
 
 const struct command {
@@ -335,16 +337,29 @@ rule_modified(enum rule_type rule, unsigned int *modifiers)
 
 		mod &= ~MOD_SENDRECV_MASK;
 		break;
-	default:
+	case RULE_MERGE:
+	case RULE_DIR_MERGE:
+		/*
+		 * We can't zap any modifiers for merge rules; they need to be
+		 * either inherited or just enacted for the merge directive on
+		 * the other side.
+		 */
 		return rule;
+	default:
+		/* Zap modifiers for everything else; inherited, not needed. */
+		mod = 0;
+		break;
 	}
 
 	*modifiers = mod;
 	return rule;
 }
 
-int
-parse_rule(char *line, enum rule_type def)
+/*
+ * Parses the line for a rule with consideration for the inherited modifiers.
+ */
+static int
+parse_rule_impl(char *line, enum rule_type def, unsigned int imodifiers)
 {
 	enum rule_type type = RULE_NONE;
 	struct rule *r;
@@ -391,6 +406,13 @@ parse_rule(char *line, enum rule_type def)
 		if (!modifiers_valid(type, &modifiers))
 			return -1;
 
+		/*
+		 * We inherit the modifiers here to bypass the validity check,
+		 * but we want them to be considered in rule_modified() in case
+		 * we need to promote some rules.  There's a good chance it will
+		 * simply zap most of the modifiers and send us on our way.
+		 */
+		modifiers |= imodifiers;
 		if (modifiers != 0)
 			type = rule_modified(type, &modifiers);
 		break;
@@ -414,17 +436,20 @@ parse_rule(char *line, enum rule_type def)
 		else
 			def = RULE_NONE;
 
-		/*
-		 * XXX Some way to flag these as merge rules.
-		 */
-		parse_file(pattern, def);
+		parse_file_impl(pattern, def, modifiers);
 	}
 
 	return 0;
 }
 
-void
-parse_file(const char *file, enum rule_type def)
+int
+parse_rule(char *line, enum rule_type def)
+{
+	return parse_rule_impl(line, def, 0);
+}
+
+static void
+parse_file_impl(const char *file, enum rule_type def, unsigned int imodifiers)
 {
 	FILE *fp;
 	char *line = NULL;
@@ -437,7 +462,7 @@ parse_file(const char *file, enum rule_type def)
 	while ((linelen = getline(&line, &linesize, fp)) != -1) {
 		linenum++;
 		line[linelen - 1] = '\0';
-		if (parse_rule(line, def) == -1)
+		if (parse_rule_impl(line, def, imodifiers) == -1)
 			errx(ERR_SYNTAX, "syntax error in %s at entry %zu",
 			    file, linenum);
 	}
@@ -446,6 +471,13 @@ parse_file(const char *file, enum rule_type def)
 	if (ferror(fp))
 		err(ERR_SYNTAX, "failed to parse file %s", file);
 	fclose(fp);
+}
+
+void
+parse_file(const char *file, enum rule_type def)
+{
+
+	parse_file_impl(file, def, 0);
 }
 
 static const char *
