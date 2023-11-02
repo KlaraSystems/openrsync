@@ -65,6 +65,7 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 
 	memset(&sess, 0, sizeof(struct sess));
 	sess.opts = opts;
+	sess.mode = sess.opts->sender ? FARGS_SENDER : FARGS_RECEIVER;
 
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);

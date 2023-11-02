@@ -51,6 +51,7 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 
 	memset(&sess, 0, sizeof(struct sess));
 	sess.opts = opts;
+	sess.mode = f->mode;
 	sess.lver = RSYNC_PROTOCOL;
 
 	cleanup_set_session(cleanup_ctx, &sess);

@@ -348,6 +348,7 @@ struct	role {
  */
 struct	sess {
 	const struct opts *opts; /* system options */
+	enum fmode	   mode; /* sender or receiver */
 	int32_t		   seed; /* checksum seed */
 	int32_t		   lver; /* local version */
 	int32_t		   rver; /* remote version */
