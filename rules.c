@@ -550,6 +550,41 @@ postfix_command(struct rule *r)
 	return buf;
 }
 
+static bool
+rule_should_xfer(struct sess *sess, struct rule *r)
+{
+
+	/*
+	 * Merge files without the include/exclude modifiers get passed through
+	 * for compatibility.
+	 */
+	if (r->type == RULE_MERGE) {
+		return (r->modifiers &
+		    (MOD_MERGE_EXCLUDE | MOD_MERGE_INCLUDE)) == 0;
+	}
+
+	/*
+	 * If *we* are the sender, the other side is mostly interested in
+	 * exclusion rules for the purposes of --delete-excluded.
+	 */
+	if (sess->mode == FARGS_SENDER) {
+		switch (r->type) {
+		case RULE_PROTECT:
+		case RULE_RISK:
+			/* Explicitly receiver-side rules */
+			return true;
+		default:
+			if ((r->modifiers & MOD_RECEIVING) != 0)
+				return true;
+			break;
+		}
+
+		return false;
+	}
+
+	return true;
+}
+
 void
 send_rules(struct sess *sess, int fd)
 {
@@ -560,6 +595,10 @@ send_rules(struct sess *sess, int fd)
 
 	for (i = 0; i < numrules; i++) {
 		r = &rules[i];
+
+		if (!rule_should_xfer(sess, r))
+			continue;
+
 		cmd = send_command(r);
 		if (cmd == NULL)
 			err(ERR_PROTOCOL,
