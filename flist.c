@@ -1289,9 +1289,11 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct flist **flp,
 {
 	size_t		 i, max = 0;
 
-	for (i = 0; i < argc; i++)
+	for (i = 0; i < argc; i++) {
+		rules_base(argv[i]);
 		if (!flist_gen_dirent(sess, argv[i], flp, sz, &max, -1))
 			break;
+	}
 
 	if (i == argc) {
 		LOG2("recursively generated %zu filenames", *sz);
@@ -1323,6 +1325,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 
 	assert(argc);
 
+	rules_base(".");
 	if ((*flp = calloc(argc, sizeof(struct flist))) == NULL) {
 		ERR("calloc");
 		return 0;
