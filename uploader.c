@@ -630,6 +630,8 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 	parg[0] = dirpath;
 	parg[1] = NULL;
 
+	rules_base(dirpath);
+
 	if ((fts = fts_open(parg, FTS_PHYSICAL, NULL)) == NULL) {
 		ERR("fts_open");
 		goto out;

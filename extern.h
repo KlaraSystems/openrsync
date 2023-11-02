@@ -66,6 +66,7 @@
  */
 #define ERR_SYNTAX	1
 #define ERR_PROTOCOL	2
+#define ERR_FILEGEN	3
 #define ERR_SOCK_IO	10
 #define ERR_FILE_IO	11
 #define ERR_WIREPROTO	12
@@ -571,6 +572,7 @@ void		 parse_file(const char *, enum rule_type);
 void		 send_rules(struct sess *, int);
 void		 recv_rules(struct sess *, int);
 int		 rules_match(const char *, int, enum fmode);
+void		 rules_base(const char *);
 
 int		 rmatch(const char *, const char *, int);
 

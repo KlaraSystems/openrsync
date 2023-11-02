@@ -15,15 +15,19 @@
  */
 #include "config.h"
 
+#include <sys/param.h>
+
 #include <assert.h>
 #if HAVE_ERR
 # include <err.h>
 #endif
+#include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include "extern.h"
 
@@ -38,6 +42,9 @@ struct rule {
 	unsigned char		 onlydir;
 	unsigned char		 leadingdir;
 };
+
+static char		 rule_base[MAXPATHLEN];
+static char		*rule_base_cwdend;
 
 static struct rule	*rules;
 static size_t		 numrules;	/* number of rules */
@@ -756,12 +763,88 @@ rule_pattern_matched(const struct rule *r, const char *path)
 	return matched != negate;
 }
 
+static void
+rule_abspath(const char *path, char *outpath, size_t outpathsz)
+{
+	assert(outpathsz >= PATH_MAX);
+
+	if (path[0] == '/') {
+		if (strlcpy(outpath, path, outpathsz) >= outpathsz) {
+			errno = ENAMETOOLONG;
+			err(ERR_FILEGEN, "%s", path);
+		}
+
+		return;
+	}
+
+	if (strlcpy(outpath, rule_base, outpathsz) >= outpathsz) {
+		errno = ENAMETOOLONG;
+		err(ERR_FILEGEN, "%s", rule_base);
+	}
+
+	/* rule_base is guaranteed to be /-terminated. */
+	if (strlcat(outpath, path, outpathsz) >= outpathsz) {
+		errno = ENAMETOOLONG;
+		err(ERR_FILEGEN, "%s/%s", outpath, path);
+	}
+}
+
+void
+rules_base(const char *root)
+{
+	size_t slen;
+
+	if (root[0] == '/') {
+		if (strlcpy(rule_base, root, sizeof(rule_base)) >=
+		    sizeof(rule_base)) {
+			errno = ENAMETOOLONG;
+			err(ERR_FILEGEN, "strlcpy");
+		}
+
+		rule_base_cwdend = NULL;
+		return;
+	}
+
+	if (rule_base_cwdend == NULL) {
+		getcwd(rule_base, sizeof(rule_base) - 1);
+		rule_base_cwdend = &rule_base[strlen(rule_base)];
+	}
+
+	/*
+	 * If we're working with a path within cwd, truncate this back to cwd so
+	 * that we can strlcat() it.
+	 */
+	*rule_base_cwdend = '/';
+	*(rule_base_cwdend + 1) = '\0';
+
+	if (strcmp(root, ".") == 0)
+		return;
+
+	slen = strlen(root);
+
+	if (strlcat(rule_base, root, sizeof(rule_base)) >= sizeof(rule_base)) {
+		errno = ENAMETOOLONG;
+		err(ERR_FILEGEN, "strlcat");
+	}
+
+	/* Guarantee / termination */
+	if (root[slen - 1] != '/' &&
+	    strlcat(rule_base, root, sizeof(rule_base)) >= sizeof(rule_base)) {
+		errno = ENAMETOOLONG;
+		err(ERR_FILEGEN, "strlcat");
+	}
+}
+
 int
 rules_match(const char *path, int isdir, enum fmode rulectx)
 {
-	const char *basename, *p = NULL;
+	char abspath[PATH_MAX];
+	const char *basename, *inpath = path, *p = NULL;
 	struct rule *r;
 	size_t i;
+
+	assert(rule_base != NULL);
+	abspath[0] = '\0';
 
 	basename = strrchr(path, '/');
 	if (basename != NULL)
@@ -778,6 +861,15 @@ rules_match(const char *path, int isdir, enum fmode rulectx)
 		/* Rule out merge rules and other meta-actions. */
 		if (!rule_actionable(r, rulectx))
 			continue;
+
+		if ((r->modifiers & MOD_ABSOLUTE) != 0) {
+			if (abspath[0] == '\0')
+				rule_abspath(path, abspath, sizeof(abspath));
+
+			path = abspath;
+		} else {
+			path = inpath;
+		}
 
 		if (r->nowild) {
 			/* fileonly and anchored are mutually exclusive */
