@@ -934,13 +934,21 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 			return -1;
 		}
 	}
-	if (rc == 0) {
+
+	/*
+	 * If the file exists, we need to fix permissions *before* we try to
+	 * update it or we risk not being able to open it in the first place if
+	 * the permissions are thoroughly messed up.
+	 */
+	if (rc >= 0 && rc < 3) {
 		if (!rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {
 			ERRX1("rsync_set_metadata");
 			return -1;
 		}
-		LOG3("%s: skipping: up to date", f->path);
-		return 0;
+		if (rc == 0) {
+			LOG3("%s: skipping: up to date", f->path);
+			return 0;
+		}
 	}
 
 	/* check alternative locations for better match */
