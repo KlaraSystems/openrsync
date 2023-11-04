@@ -160,6 +160,11 @@ rsync_server(const struct opts *opts, size_t argc, char *argv[])
 		WARNX("data remains in read pipe");
 #endif
 
+	/* Burn time until we get signalled to exit with SIGUSR2. */
+	for (;;) {
+		usleep(1000 * 100);
+	}
+
 	rc = 0;
 out:
 	return rc;
