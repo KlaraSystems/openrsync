@@ -27,6 +27,7 @@
 # include <fcntl.h>
 #endif
 #include <getopt.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -283,6 +284,13 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 	}
 
 	return f;
+}
+
+static void
+clean_exit(int signo __attribute__((unused)))
+{
+
+	_exit(0);
 }
 
 static struct opts	 opts;
@@ -667,6 +675,9 @@ basedir:
 	if (opts.dirs && opts_no_dirs)
 		ERRX1("Cannot use --dirs and --no-dirs at the same time");
 
+	/* XXX Temporary, should move into the cleanup infrastructure */
+	signal(SIGUSR2, clean_exit);
+
 	/*
 	 * XXX rsync started defaulting to --delete-during in later versions of the
 	 * protocol (30 and up).
@@ -766,6 +777,15 @@ basedir:
 	}
 
 	close(fds[0]);
+
+	/*
+	 * The server goes into an infinite sleep loop once it's concluded to
+	 * avoid closing the various pipes.  This gives us time to finish
+	 * draining whatever's left and making our way cleanly through the state
+	 * machine, after which we come here and signal the child that it's safe
+	 * to shutdown.
+	 */
+	kill(child, SIGUSR2);
 
 	if (waitpid(child, &st, 0) == -1)
 		err(ERR_WAITPID, "waitpid");
