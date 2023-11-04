@@ -33,6 +33,8 @@
 
 #include "extern.h"
 
+#define PHASE_MAX	2
+
 /*
  * A request from the receiver to download updated file data.
  */
@@ -372,6 +374,7 @@ rsync_sender(struct sess *sess, int fdin,
 	void		   *wbuf = NULL;
 	size_t		    wbufpos = 0, wbufsz = 0, wbufmax = 0;
 	ssize_t		    ssz;
+	int		    markers = 0, shutdown = 0;
 
 	if (pledge("stdio getpw rpath", NULL) == -1) {
 		ERR("pledge");
@@ -489,7 +492,7 @@ rsync_sender(struct sess *sess, int fdin,
 			if (!io_read_flush(sess, fdin)) {
 				ERRX1("io_read_flush");
 				goto out;
-			} else if (sess->mplex_read_remain == 0) {
+			} else if (sess->mplex_read_remain == 0 && !shutdown) {
 				c = io_read_check(fdin);
 				if (c < 0) {
 					ERRX1("io_read_check");
@@ -507,10 +510,24 @@ rsync_sender(struct sess *sess, int fdin,
 		 * more data (read priority).
 		 */
 
-		if (pfd[0].revents & POLLIN) {
+		if (pfd[0].revents & POLLIN && !shutdown) {
 			if (!io_read_int(sess, fdin, &idx)) {
 				ERRX1("io_read_int");
 				goto out;
+			}
+
+			/*
+			 * Start to spin down; most notably, we need to avoid
+			 * trying to enqueue anything else because we should
+			 * only observe the end-of-transmission marker after
+			 * this.  We could also see other non-data messages come
+			 * in via fdin, so we should *only* stop reading indices
+			 * from fdin and continue flushing out any pending
+			 * messages above.
+			 */
+			if (idx == -1) {
+				if (++markers == PHASE_MAX)
+					shutdown = 1;
 			}
 			if (!send_dl_enqueue(sess,
 			    &sdlq, idx, fl, flsz, fdin)) {
