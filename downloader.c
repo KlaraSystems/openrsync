@@ -402,6 +402,45 @@ delayed_renames(struct sess *sess)
 }
 
 /*
+ * Fix metadata of the temp file based on the original file.
+ */
+static int
+download_fix_metadata(const struct sess *sess, const char *fname, int fd,
+    const struct stat *ost)
+{
+	uid_t uid = (uid_t)-1;
+	gid_t gid = (gid_t)-1;
+	mode_t mode;
+
+	if (!sess->opts->preserve_uids && getuid() == 0)
+		uid = ost->st_uid;
+	if (!sess->opts->preserve_gids)
+		gid = ost->st_gid;
+
+	mode = ost->st_mode;
+	if (uid != (uid_t)-1 || gid != (gid_t)-1) {
+		if (fchown(fd, uid, gid) == -1) {
+			if (errno != EPERM) {
+				ERR("%s: fchown", fname);
+				return 0;
+			}
+			if (getuid() == 0)
+				WARNX("%s: identity unknown or not available "
+				    "to user.group: %u.%u", fname, uid, gid);
+		}
+
+		mode &= ~(S_ISTXT | S_ISUID | S_ISGID);
+	}
+
+	if (!sess->opts->preserve_perms && fchmod(fd, mode) == -1) {
+		ERR("%s: fchmod", fname);
+		return 0;
+	}
+
+	return 1;
+}
+
+/*
  * The downloader waits on a file the sender is going to give us, opens
  * and mmaps the existing file, opens a temporary file, dumps the file
  * (or metadata) into the temporary file, then renames.
@@ -587,6 +626,11 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz)
 				goto out;
 			}
 
+			if (!download_fix_metadata(sess, p->fname, p->fd,
+			    &st)) {
+				goto out;
+			}
+
 			/*
 			 * FIXME: we can technically wait until the temporary
 			 * file is writable, but since it's guaranteed to be
@@ -735,7 +779,7 @@ again:
 
 	/* Adjust our file metadata (uid, mode, etc.). */
 
-	if (!rsync_set_metadata(sess, 1, p->fd, f, p->fname)) {
+	if (!rsync_set_metadata(sess, p->ofd == -1, p->fd, f, p->fname)) {
 		ERRX1("rsync_set_metadata");
 		goto out;
 	}
