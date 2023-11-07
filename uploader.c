@@ -27,6 +27,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <search.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -928,8 +929,18 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 	if (rc == -1)
 		return -1;
 	if (rc == 2 && !S_ISREG(st.st_mode)) {
-		if (S_ISDIR(st.st_mode) &&
-		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
+		int uflags = 0;
+		bool do_unlink = false;
+
+		/*
+		 * If we're operating --inplace, need to clear out any stale
+		 * non-file entries since we'll want to just open or create it
+		 * and get to it.
+		 */
+		do_unlink = S_ISDIR(st.st_mode) || sess->opts->inplace;
+		if (S_ISDIR(st.st_mode))
+			uflags |= AT_REMOVEDIR;
+		if (do_unlink && unlinkat(p->rootfd, f->path, uflags) == -1) {
 			ERR("%s: unlinkat", f->path);
 			return -1;
 		}
@@ -938,7 +949,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 		 * Fix the return value so that we don't try to set metadata of
 		 * what we unlinked below.
 		 */
-		if (S_ISDIR(st.st_mode))
+		if (do_unlink)
 			rc = 3;
 	}
 
