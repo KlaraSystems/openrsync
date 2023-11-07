@@ -402,7 +402,9 @@ delayed_renames(struct sess *sess)
 }
 
 /*
- * Fix metadata of the temp file based on the original file.
+ * Fix metadata of the temp file based on the original destination file.  This
+ * is the logical inverse of rsync_set_metadata*() as we're determining which
+ * of the metadata won't be clobbered by preseration of the source file.
  */
 static int
 download_fix_metadata(const struct sess *sess, const char *fname, int fd,
@@ -417,7 +419,11 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 	if (!sess->opts->preserve_gids)
 		gid = ost->st_gid;
 
-	mode = ost->st_mode;
+	/*
+	 * Unlike rsync_set_metadata, we're using perms from the local system
+	 * and thus, we'll trust them a little bit more.
+	 */
+	mode = ost->st_mode & ALLPERMS;
 	if (uid != (uid_t)-1 || gid != (gid_t)-1) {
 		if (fchown(fd, uid, gid) == -1) {
 			if (errno != EPERM) {
@@ -428,8 +434,6 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 				WARNX("%s: identity unknown or not available "
 				    "to user.group: %u.%u", fname, uid, gid);
 		}
-
-		mode &= ~(S_ISTXT | S_ISUID | S_ISGID);
 	}
 
 	if (!sess->opts->preserve_perms && fchmod(fd, mode) == -1) {
