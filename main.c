@@ -366,6 +366,7 @@ const struct option	 lopts[] = {
     { "compress",	no_argument,	NULL,			'z' },
     { "copy-dirlinks",	no_argument,	NULL,			'k' },
     { "copy-links",	no_argument,	&opts.copy_links,	'L' },
+    { "cvs-exclude",	no_argument,	NULL,			'C' },
     { "no-D",		no_argument,	NULL,			OP_NO_D },
     { "del",		no_argument,	NULL,			OP_DEL },
     { "delete",		no_argument,	NULL,			OP_DEL },
@@ -449,7 +450,7 @@ int
 main(int argc, char *argv[])
 {
 	pid_t		 child;
-	int		 fds[2], sd = -1, rc, c, st, i, lidx;
+	int		 cvs_excl, fds[2], sd = -1, rc, c, st, i, lidx;
 	size_t		 basedir_cnt = 0;
 	struct sess	 sess;
 	struct fargs	*fargs;
@@ -464,11 +465,15 @@ main(int argc, char *argv[])
 	    NULL) == -1)
 		err(ERR_IPC, "pledge");
 
+	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "DHILRSVabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "CDHILRSVabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
+		case 'C':
+			cvs_excl = 1;
+			break;
 		case 'D':
 			opts.devices = 1;
 			opts.specials = 1;
@@ -820,6 +825,19 @@ basedir:
 	if (opts.server)
 		exit(rsync_server(cleanup_ctx, &opts, (size_t)argc, argv));
 
+	if (cvs_excl) {
+		int ret;
+
+		ret = parse_rule("-C", RULE_NONE);
+		assert(ret == 0);
+
+		ret = parse_rule(":C", RULE_NONE);
+		assert(ret == 0);
+
+		/* Silence NDEBUG warnings */
+		(void)ret;
+	}
+
 	/*
 	 * Now we know that we're the client on the local machine
 	 * invoking rsync(1).
@@ -956,7 +974,7 @@ basedir:
 	exit(rc);
 usage:
 	fprintf(stderr, "usage: %s"
-	    " [-DLacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-CDLacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"

@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl abcDgklLnoprtuvx
+.Op Fl abCcDgklLnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -118,6 +118,37 @@ is a relative path, it is relative to the destination directory.
 Copy targets of symbolic links.
 .It Fl -copy-dirlinks
 Copy targets of symbolic links that point to directories only.
+.It Fl C , Fl -cvs-exclude
+Exclude a common list of files as CVS would.
+The patterns deployed are specifically:
+.Bl -column -offset indent ".make.state" ".nse_depinfo" "*.BAK" "CVS.adm"
+.It RCS         Ta SCCS         Ta CVS   Ta CVS.adm
+.It RCSLOG      Ta cvslog.*     Ta tags  Ta TAGS
+.It .make.state Ta .nse_depinfo Ta *~    Ta #*
+.It .#*         Ta ,*           Ta _$*   Ta *$
+.It *.old       Ta *.bak        Ta *.BAK Ta *.orig
+.It *.rej       Ta .del-*       Ta *.a   Ta *.olb
+.It *.o         Ta *.obj        Ta *.so  Ta *.exe
+.It *.Z         Ta *.elc        Ta *.ln  Ta core
+.It .svn/       Ta              Ta       Ta
+.El
+Followed by any patterns included in
+.Pa $HOME/.cvsignore
+and the
+.Ev CVSIGNORE
+environment variable.
+.Pp
+The
+.Fl C
+flag also adds a
+.Dq dir-merge
+CVS rule to include per-dir
+.Pa .cvsignore
+files.
+All of these rules are appended to the end of the filter list with the
+equivalent of specifying
+.Fl f Dq Ar -C
+.Fl f Dq Ar :C .
 .It Fl D
 Also transfer device and special files.
 Shorthand for
