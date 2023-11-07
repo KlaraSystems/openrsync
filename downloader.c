@@ -410,14 +410,23 @@ static int
 download_fix_metadata(const struct sess *sess, const char *fname, int fd,
     const struct stat *ost)
 {
-	uid_t uid = (uid_t)-1;
-	gid_t gid = (gid_t)-1;
+	uid_t uid = (uid_t)-1, puid = (uid_t)-1;
+	gid_t gid = (gid_t)-1, pgid = (gid_t)-1;
 	mode_t mode;
 
-	if (!sess->opts->preserve_uids && getuid() == 0)
-		uid = ost->st_uid;
-	if (!sess->opts->preserve_gids)
-		gid = ost->st_gid;
+	if (!sess->opts->preserve_uids) {
+		puid = getuid();
+
+		if (puid != ost->st_uid && puid == 0)
+			uid = ost->st_uid;
+	}
+
+	if (!sess->opts->preserve_gids) {
+		pgid = getgid();
+
+		if (pgid != ost->st_gid)
+			gid = ost->st_gid;
+	}
 
 	/*
 	 * Unlike rsync_set_metadata, we're using perms from the local system
@@ -630,7 +639,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz)
 				goto out;
 			}
 
-			if (!download_fix_metadata(sess, p->fname, p->fd,
+			if (p->ofd != -1 &&
+			    !download_fix_metadata(sess, p->fname, p->fd,
 			    &st)) {
 				goto out;
 			}
