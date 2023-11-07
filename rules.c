@@ -449,6 +449,12 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 	r->type = type;
 	r->modifiers = modifiers;
 	parse_pattern(r, pattern);
+	if (type == RULE_MERGE || type == RULE_DIR_MERGE) {
+		if ((modifiers & MOD_MERGE_EXCLUDE_FILE) != 0) {
+			if (parse_rule_impl(r->pattern, RULE_EXCLUDE, 0) == -1)
+				return -1;
+		}
+	}
 
 	if (type == RULE_MERGE) {
 		/*  - and + are mutually exclusive. */
