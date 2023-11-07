@@ -234,7 +234,7 @@ parse_command(const char *command, size_t len, unsigned int *omodifiers)
 }
 
 static void
-parse_pattern(struct rule *r, char *pattern)
+parse_pattern(struct rule *r, const char *pattern)
 {
 	size_t plen;
 	char *p;
@@ -256,15 +256,20 @@ parse_pattern(struct rule *r, char *pattern)
 	 */
 	if (plen > 1 && pattern[plen - 1] == '/') {
 		r->onlydir = 1;
-		pattern[plen - 1] = '\0';
+		plen--;
 	}
-	if (plen > 4 && strcmp(pattern + plen - 4, "/***") == 0) {
+	if (!r->onlydir && plen > 4 &&
+	    strcmp(pattern + plen - 4, "/***") == 0) {
 		r->leadingdir = 1;
-		pattern[plen - 4] = '\0';
+		plen -= 4;
 	}
 
+	r->pattern = strndup(pattern, plen);
+	if (r->pattern == NULL)
+		err(ERR_NOMEM, NULL);
+
 	/* count how many segments the pattern has. */
-	for (p = pattern; *p != '\0'; p++)
+	for (p = r->pattern; *p != '\0'; p++)
 		if (*p == '/')
 			nseg++;
 	r->numseg = nseg;
@@ -273,18 +278,14 @@ parse_pattern(struct rule *r, char *pattern)
 	if (nseg == 1 && !r->anchored)
 		r->fileonly = 1;
 
-	if (strpbrk(pattern, "*?[") == NULL) {
+	if (strpbrk(r->pattern, "*?[") == NULL) {
 		/* no wildchar matching */
 		r->nowild = 1;
 	} else {
 		/* requires wildchar matching */
-		if (strstr(pattern, "**") != NULL)
+		if (strstr(r->pattern, "**") != NULL)
 			r->numseg = -1;
 	}
-
-	r->pattern = strdup(pattern);
-	if (r->pattern == NULL)
-		err(ERR_NOMEM, NULL);
 }
 
 static bool
@@ -387,11 +388,11 @@ rule_modified(enum rule_type rule, unsigned int *modifiers)
  * Parses the line for a rule with consideration for the inherited modifiers.
  */
 static int
-parse_rule_impl(char *line, enum rule_type def, unsigned int imodifiers)
+parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 {
 	enum rule_type type = RULE_NONE;
 	struct rule *r;
-	char *pattern;
+	const char *pattern;
 	size_t len;
 	unsigned int modifiers;
 
@@ -469,7 +470,7 @@ parse_rule_impl(char *line, enum rule_type def, unsigned int imodifiers)
 }
 
 int
-parse_rule(char *line, enum rule_type def)
+parse_rule(const char *line, enum rule_type def)
 {
 	return parse_rule_impl(line, def, 0);
 }
