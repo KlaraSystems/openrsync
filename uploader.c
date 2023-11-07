@@ -959,10 +959,14 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 	 * the permissions are thoroughly messed up.
 	 */
 	if (rc >= 0 && rc < 3) {
-		if (!rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {
+		bool fix_metadata = rc != 0 || !sess->opts->ign_non_exist;
+
+		if (fix_metadata &&
+		    !rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {
 			ERRX1("rsync_set_metadata");
 			return -1;
 		}
+
 		if (rc == 0) {
 			LOG3("%s: skipping: up to date", f->path);
 			return 0;
