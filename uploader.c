@@ -933,6 +933,13 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 			ERR("%s: unlinkat", f->path);
 			return -1;
 		}
+
+		/*
+		 * Fix the return value so that we don't try to set metadata of
+		 * what we unlinked below.
+		 */
+		if (S_ISDIR(st.st_mode))
+			rc = 3;
 	}
 
 	/*
