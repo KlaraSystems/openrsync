@@ -313,6 +313,27 @@ modifiers_valid(enum rule_type rule, unsigned int *modifiers)
 	return (true);
 }
 
+static int
+pattern_valid(enum rule_type rule, unsigned int modifiers, const char *pattern)
+{
+	bool is_empty, need_empty = false;
+
+	switch (rule) {
+	case RULE_EXCLUDE:
+		if ((modifiers & MOD_CVSEXCLUDE) == 0)
+			break;
+		/* FALLTHROUGH */
+	case RULE_CLEAR:
+		need_empty = true;
+		break;
+	default:
+		break;
+	}
+
+	is_empty = *pattern == '\0';
+	return is_empty == need_empty;
+}
+
 static enum rule_type
 rule_modified(enum rule_type rule, unsigned int *modifiers)
 {
@@ -405,12 +426,10 @@ parse_rule_impl(char *line, enum rule_type def, unsigned int imodifiers)
 				pattern++;
 		}
 
-		if (*pattern == '\0' && type != RULE_CLEAR)
-			return -1;
-		if (*pattern != '\0' && type == RULE_CLEAR)
+		if (!modifiers_valid(type, &modifiers))
 			return -1;
 
-		if (!modifiers_valid(type, &modifiers))
+		if (!pattern_valid(type, modifiers, pattern))
 			return -1;
 
 		/*
