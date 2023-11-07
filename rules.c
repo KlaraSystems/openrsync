@@ -34,6 +34,7 @@
 struct rule {
 	char			*pattern;
 	enum rule_type		 type;
+	unsigned int		 omodifiers;
 	unsigned int		 modifiers;
 	short			 numseg;
 	unsigned char		 anchored;
@@ -447,7 +448,9 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 
 	r = get_next_rule();
 	r->type = type;
-	r->modifiers = modifiers;
+	r->omodifiers = r->modifiers = modifiers;
+	if (type == RULE_MERGE || type == RULE_DIR_MERGE)
+		r->modifiers &= MOD_MERGE_MASK;
 	parse_pattern(r, pattern);
 	if (type == RULE_MERGE || type == RULE_DIR_MERGE) {
 		if ((modifiers & MOD_MERGE_EXCLUDE_FILE) != 0) {
@@ -553,7 +556,7 @@ send_command(struct rule *r)
 	}
 
 	for (int i = 0; modifiers[i].modifier != 0; i++) {
-		if (r->modifiers & modifiers[i].modifier)
+		if (r->omodifiers & modifiers[i].modifier)
 			*b++ = modifiers[i].sopt;
 		if (b >= ep - 3)
 			err(ERR_SYNTAX, "rule modifiers overflow");
