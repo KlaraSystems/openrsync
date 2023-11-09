@@ -375,6 +375,9 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	sess.lver = RSYNC_PROTOCOL;
 	sess.opts = opts;
 
+	cleanup_set_session(cleanup_ctx, &sess);
+	cleanup_release(cleanup_ctx);
+
 	assert(f->host != NULL);
 	assert(f->module != NULL);
 
