@@ -569,7 +569,7 @@ pre_sock(struct upload *p, struct sess *sess)
 static int
 pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 {
-	const struct flist *f;
+	const struct flist *cf, *f;
 	char *dirpath, *parg[2];
 	FTS *fts;
 	FTSENT *ent;
@@ -602,17 +602,18 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 		 * Stop scanning once we're backed out of the directory we're
 		 * looking at.
 		 */
-		if (strncmp(f->path, p->fl[i].wpath, stripdir - 1) != 0)
+		cf = &p->fl[i];
+		if (strncmp(f->path, cf->wpath, stripdir - 1) != 0)
 			break;
 
 		/* Omit subdirectories' contents */
-		slp = strrchr(p->fl[i].wpath, '/');
-		slpos = (slp != NULL ? slp - p->fl[i].wpath : 0);
+		slp = strrchr(cf->wpath, '/');
+		slpos = (slp != NULL ? slp - cf->wpath : 0);
 		if (slpos >= stripdir)
 			continue;
 
 		memset(&hent, 0, sizeof(hent));
-		if ((hent.key = strdup(p->fl[i].wpath)) == NULL) {
+		if ((hent.key = strdup(cf->wpath)) == NULL) {
 			ERR("strdup");
 			goto out;
 		}
@@ -621,7 +622,7 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 			ERR("hsearch");
 			goto out;
 		} else if (hentp->key != hent.key) {
-			ERRX("%s: duplicate", p->fl[i].wpath);
+			ERRX("%s: duplicate", cf->wpath);
 			free(hent.key);
 			goto out;
 		}
