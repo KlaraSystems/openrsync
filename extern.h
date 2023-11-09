@@ -482,6 +482,7 @@ int	rsync_uploader_tail(struct upload *, struct sess *);
 struct download	*download_alloc(struct sess *, int, struct flist *, size_t,
 		    int);
 size_t		 download_needs_redo(struct download *);
+void		 download_interrupted(struct sess *, struct download *);
 void		 download_free(struct sess *, struct download *);
 struct upload	*upload_alloc(const char *, int, int, size_t,
 		    const struct flist *, size_t, mode_t);

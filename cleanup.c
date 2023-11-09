@@ -287,7 +287,7 @@ rsync_cleanup_download(struct cleanup_ctx *ctx)
 	if (ctx->dl == NULL)
 		return;
 
-	download_free(ctx->sess, ctx->dl);
+	download_interrupted(ctx->sess, ctx->dl);
 }
 
 /*

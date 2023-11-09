@@ -148,6 +148,53 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
 }
 
 /*
+ * Cleanup any partial bits of a transfer.  This may mean anything from do
+ * nothing to moving the file into place if we've been instructed to.  It may
+ * be called from a signal context, so we should take care to only do
+ * async-signal-safe things.
+ *
+ * This function may fail if we couldn't move the file into place for some
+ * reason, but p->fd is guaranteed to be cleaned up either way.
+ */
+static int
+download_cleanup_partial(struct sess *sess, struct download *p)
+{
+	int ret;
+
+	if (p->fd == -1)
+		return 1;
+
+	close(p->fd);
+	p->fd = -1;
+
+	if (p->fname == NULL)
+		return 1;
+
+	ret = 1;
+	if (sess->opts->partial) {
+		const struct flist *f;
+
+		f = &p->fl[p->idx];
+
+		/*
+		 * For partial transfers, we need to move the file into place if
+		 * we're operating on a temp file.  If the rename fails, we do
+		 * not try to remove it because partial files have been
+		 * explicitly request.  Better to just warn about the situation
+		 * so that the user can manually recover the partial file and
+		 * make a decision on it.
+		 */
+		if (!sess->opts->inplace &&
+		    renameat(p->rootfd, p->fname, p->rootfd, f->path) == -1)
+			ret = 0;
+	} else {
+		(void)unlinkat(p->rootfd, p->fname, 0);
+	}
+
+	return ret;
+}
+
+/*
  * Free a download context.
  * If "cleanup" is non-zero, we also try to clean up the temporary file,
  * assuming that it has been opened in p->fd.
@@ -166,31 +213,16 @@ download_cleanup(struct sess *sess, struct download *p, int cleanup)
 		close(p->ofd);
 		p->ofd = -1;
 	}
-	if (p->fd != -1) {
-		close(p->fd);
-		if (cleanup && p->fname != NULL) {
-			if (sess->opts->partial) {
-				const struct flist *f;
-
-				f = &p->fl[p->idx];
-
-				/*
-				 * For partial transfers, we need to move the
-				 * file into place if we're operating on a temp
-				 * file..
-				 */
-				if (!sess->opts->inplace &&
-				    renameat(p->rootfd, p->fname, p->rootfd,
-				    f->path) == -1) {
-					ERR("%s: renameat: %s", p->fname,
-					    f->path);
-				}
-			} else {
-				unlinkat(p->rootfd, p->fname, 0);
-			}
+	if (cleanup) {
+		if (!download_cleanup_partial(sess, p)) {
+			ERR("%s: partial cleanup failed, left at %s",
+			    p->fl[p->idx].path, p->fname);
 		}
+	} else if (p->fd != -1) {
+		close(p->fd);
 		p->fd = -1;
 	}
+
 	free(p->fname);
 	p->fname = NULL;
 	p->state = DOWNLOAD_READ_NEXT;
@@ -251,6 +283,21 @@ download_free(struct sess *sess, struct download *p)
 	download_cleanup(sess, p, 1);
 	free(p->obuf);
 	free(p);
+}
+
+/*
+ * Perform all cleanups (including removing stray files) without freeing,
+ * because we're likely operating in a signal context.
+ * Passing a NULL to this function is ok.
+ */
+void
+download_interrupted(struct sess *sess, struct download *p)
+{
+
+	if (p == NULL)
+		return;
+
+	download_cleanup_partial(sess, p);
 }
 
 /*
