@@ -716,8 +716,12 @@ recv_rules(struct sess *sess, int fd)
 }
 
 static inline int
-rule_actionable(const struct rule *r, enum fmode rulectx)
+rule_actionable(const struct rule *r, enum fmode rulectx, int perishing)
 {
+
+	if ((r->modifiers & MOD_PERISHABLE) != 0 && perishing) {
+		return 0;
+	}
 
 	switch (r->type) {
 	/* Almost always actionable */
@@ -865,7 +869,7 @@ rules_base(const char *root)
 }
 
 int
-rules_match(const char *path, int isdir, enum fmode rulectx)
+rules_match(const char *path, int isdir, enum fmode rulectx, int perishing)
 {
 	char abspath[PATH_MAX];
 	const char *basename, *inpath = path, *p = NULL;
@@ -888,7 +892,7 @@ rules_match(const char *path, int isdir, enum fmode rulectx)
 			continue;
 
 		/* Rule out merge rules and other meta-actions. */
-		if (!rule_actionable(r, rulectx))
+		if (!rule_actionable(r, rulectx, perishing))
 			continue;
 
 		if ((r->modifiers & MOD_ABSOLUTE) != 0) {

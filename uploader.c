@@ -572,7 +572,7 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 	const struct flist *cf, *f;
 	char *dirpath, *parg[2];
 	FTS *fts;
-	FTSENT *ent;
+	FTSENT *ent, *perish_ent = NULL;
 	size_t stripdir;
 	ENTRY hent, *hentp;
 	int isroot, ret;
@@ -671,13 +671,17 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 		}
 		if (!sess->opts->del_excl && ent->fts_info != FTS_DP &&
 		    rules_match(ent->fts_path + stripdir,
-		    (ent->fts_info == FTS_D), FARGS_RECEIVER) == -1) {
+		    (ent->fts_info == FTS_D), FARGS_RECEIVER,
+		    perish_ent != NULL) == -1) {
 			WARNX("skip excluded file %s",
 			    ent->fts_path + stripdir);
 			fts_set(fts, ent, FTS_SKIP);
 			ent->fts_parent->fts_number++;
 			continue;
 		}
+
+		if (ent->fts_info == FTS_D && perish_ent != NULL)
+			continue;
 
 		/* Look up in the hashtable. */
 		memset(&hent, 0, sizeof(hent));
@@ -688,6 +692,14 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 				fts_set(fts, ent, FTS_SKIP);
 			}
 			continue;
+		}
+
+		if (ent->fts_info == FTS_D) {
+			perish_ent = ent;
+			continue;
+		} else if (ent == perish_ent) {
+			assert(ent->fts_info == FTS_DP);
+			perish_ent = NULL;
 		}
 
 		if (ent->fts_info != FTS_D) {

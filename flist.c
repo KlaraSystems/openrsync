@@ -988,7 +988,7 @@ flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
 	struct flist	*f;
 
 	/* filter files */
-	if (rules_match(root, 0, FARGS_SENDER) == -1) {
+	if (rules_match(root, 0, FARGS_SENDER, 0) == -1) {
 		WARNX("%s: skipping excluded %s", root, type);
 		return 1;
 	}
@@ -1211,7 +1211,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		}
 		/* filter files */
 		if (rules_match(ent->fts_path + stripdir,
-		    (ent->fts_info == FTS_D), FARGS_SENDER) == -1) {
+		    (ent->fts_info == FTS_D), FARGS_SENDER, 0) == -1) {
 			WARNX("%s: skipping excluded file",
 			    ent->fts_path + stripdir);
 			fts_set(fts, ent, FTS_SKIP);
@@ -1382,7 +1382,8 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 		}
 
 		/* filter files */
-		if (rules_match(argv[i], S_ISDIR(st.st_mode), FARGS_SENDER) == -1) {
+		if (rules_match(argv[i], S_ISDIR(st.st_mode), FARGS_SENDER,
+		    0) == -1) {
 			WARNX("%s: skipping excluded file", argv[i]);
 			continue;
 		}
@@ -1636,7 +1637,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 	char		**cargv = NULL;
 	int		  rc = 0, skip_post = 0, c, flag;
 	FTS		 *fts = NULL;
-	FTSENT		 *ent;
+	FTSENT		 *ent, *perish_ent = NULL;
 	struct flist	 *f;
 	struct stat	  st;
 	size_t		  cargvs = 0, i, j, max = 0, stripdir;
@@ -1807,7 +1808,8 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		/* filter files on delete */
 		if (!sess->opts->del_excl && ent->fts_info != FTS_DP &&
 		    rules_match(ent->fts_path + stripdir,
-		    (ent->fts_info == FTS_D), FARGS_RECEIVER) == -1) {
+		    (ent->fts_info == FTS_D), FARGS_RECEIVER,
+		    perish_ent != NULL) == -1) {
 			WARNX("skip excluded file %s",
 			    ent->fts_path + stripdir);
 			if (ent->fts_info == FTS_D)
@@ -1818,10 +1820,10 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		}
 
 		/*
-		 * Pre-order isn't used for deleting directories because we may
-		 * have some files inside that are excluded from deletion.
+		 * We only check directories in pre-order when we have not
+		 * descended down a tree that we already know is perishing.
 		 */
-		if (ent->fts_info == FTS_D)
+		if (ent->fts_info == FTS_D && perish_ent != NULL)
 			continue;
 
 		/* Look up in hashtable. */
@@ -1829,6 +1831,20 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		hent.key = ent->fts_path + stripdir;
 		if (hsearch(hent, FIND) != NULL)
 			continue;
+
+		/*
+		 * Pre-order isn't used for deleting directories because we may
+		 * have some files inside that are excluded from deletion, but
+		 * we still want to do the above search in case we need to set
+		 * the perish bit.
+		 */
+		if (ent->fts_info == FTS_D) {
+			perish_ent = ent;
+			continue;
+		} else if (ent == perish_ent) {
+			assert(ent->fts_info == FTS_DP);
+			perish_ent = NULL;
+		}
 
 		if (ent->fts_info == FTS_DP && ent->fts_number > 0) {
 			/*
