@@ -424,10 +424,11 @@ char		**fargs_cmdline(struct sess *, const struct fargs *, size_t *);
 
 void	cleanup_hold(struct cleanup_ctx *);
 void	cleanup_release(struct cleanup_ctx *);
-void	cleanup_init(struct cleanup_ctx *, struct sess *);
+void	cleanup_init(struct cleanup_ctx *);
 void	cleanup_run(int code);
 void	cleanup_set_args(struct cleanup_ctx *, struct fargs *);
 void	cleanup_set_child(struct cleanup_ctx *, pid_t);
+void	cleanup_set_session(struct cleanup_ctx *, struct sess *);
 void	cleanup_set_download(struct cleanup_ctx *, struct download *);
 
 int	io_read_buf(struct sess *, int, void *, size_t);

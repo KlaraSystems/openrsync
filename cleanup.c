@@ -80,6 +80,9 @@ cleanup_signaled(int signo)
 	case SIGUSR1:
 		code = ERR_SIGUSR1;
 		break;
+	case SIGUSR2:
+		_exit(0);
+		break;
 	default:
 		code = ERR_SIGNAL;
 		break;
@@ -110,11 +113,24 @@ cleanup_hold(struct cleanup_ctx *ctx)
 		sigset_t set;
 
 		sigemptyset(&set);
+		sigaddset(&set, SIGUSR1);
+		sigaddset(&set, SIGUSR2);
 		sigaddset(&set, SIGHUP);
 		sigaddset(&set, SIGINT);
 		sigaddset(&set, SIGTERM);
 
 		sigprocmask(SIG_BLOCK, &set, &ctx->holdmask);
+
+		/*
+		 * We don't actually know that these were unblocked when we
+		 * started, so just blindly remove them from the holdmask to
+		 * avoid them being blocked once we resume normal execution.
+		 */
+		sigdelset(&ctx->holdmask, SIGUSR1);
+		sigdelset(&ctx->holdmask, SIGUSR2);
+		sigdelset(&ctx->holdmask, SIGHUP);
+		sigdelset(&ctx->holdmask, SIGINT);
+		sigdelset(&ctx->holdmask, SIGTERM);
 	}
 }
 
@@ -135,12 +151,14 @@ cleanup_release(struct cleanup_ctx *ctx)
  * Bare minimum needed for cleanup -- the session gives us options, if we're the
  * client we'll later pick up some fargs that we'll use for additional
  * decisions.
+ *
+ * cleanup_init() will block the pertinent signals until we're sure we're
+ * running with enough context to make some useful decisions about what needs to
+ * be done.
  */
 void
-cleanup_init(struct cleanup_ctx *ctx, struct sess *sess)
+cleanup_init(struct cleanup_ctx *ctx)
 {
-
-	ctx->sess = sess;
 
 	/*
 	 * We don't currently mask the other termination signals automatically,
@@ -149,9 +167,12 @@ cleanup_init(struct cleanup_ctx *ctx, struct sess *sess)
 	 * cleanup_run and do something reasonably sane.
 	 */
 	signal(SIGUSR1, cleanup_signaled);
+	signal(SIGUSR2, cleanup_signaled);
 	signal(SIGHUP, cleanup_signaled);
 	signal(SIGINT, cleanup_signaled);
 	signal(SIGTERM, cleanup_signaled);
+
+	cleanup_hold(ctx);
 }
 
 void
@@ -175,6 +196,13 @@ cleanup_set_child(struct cleanup_ctx *ctx, pid_t pid)
 	/* No process groups here. */
 	assert(pid >= 0);
 	ctx->child_pid = pid;
+}
+
+void
+cleanup_set_session(struct cleanup_ctx *ctx, struct sess *sess)
+{
+
+	ctx->sess = sess;
 }
 
 void
@@ -283,9 +311,6 @@ rsync_cleanup_reap_child(struct cleanup_ctx *ctx)
 static void
 rsync_cleanup_download(struct cleanup_ctx *ctx)
 {
-
-	if (ctx->dl == NULL)
-		return;
 
 	download_interrupted(ctx->sess, ctx->dl);
 }

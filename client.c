@@ -53,6 +53,9 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	sess.opts = opts;
 	sess.lver = RSYNC_PROTOCOL;
 
+	cleanup_set_session(cleanup_ctx, &sess);
+	cleanup_release(cleanup_ctx);
+
 	if (!io_write_int(&sess, fd, sess.lver)) {
 		ERRX1("io_write_int");
 		goto out;

@@ -289,13 +289,6 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 	return f;
 }
 
-static void
-clean_exit(int signo __attribute__((unused)))
-{
-
-	_exit(0);
-}
-
 /*
  * Like scan_scaled, but with a default for the case where no characterr
  * is given.
@@ -741,9 +734,10 @@ basedir:
 	if (opts.dirs && opts_no_dirs)
 		ERRX1("Cannot use --dirs and --no-dirs at the same time");
 
-	/* XXX Temporary, should move into the cleanup infrastructure */
-	signal(SIGUSR2, clean_exit);
-	cleanup_init(cleanup_ctx, &sess);
+	/*
+	 * Signals blocked until we understand what session we'll be using.
+	 */
+	cleanup_init(cleanup_ctx);
 
 	/*
 	 * XXX rsync started defaulting to --delete-during in later versions of the
@@ -822,6 +816,14 @@ basedir:
 
 		memset(&sess, 0, sizeof(struct sess));
 		sess.opts = &opts;
+
+		/*
+		 * We're about to exec(), but we need to make sure the
+		 * appropriate signals are unblocked so that we can be
+		 * interrupted earlier if needed.
+		 */
+		cleanup_set_session(cleanup_ctx, &sess);
+		cleanup_release(cleanup_ctx);
 
 		args = fargs_cmdline(&sess, fargs, NULL);
 

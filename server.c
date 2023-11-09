@@ -66,6 +66,9 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	memset(&sess, 0, sizeof(struct sess));
 	sess.opts = opts;
 
+	cleanup_set_session(cleanup_ctx, &sess);
+	cleanup_release(cleanup_ctx);
+
 	/* Begin by making descriptors non-blocking. */
 
 	if (!fcntl_nonblock(fdin) ||
