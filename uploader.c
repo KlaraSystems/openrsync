@@ -575,12 +575,15 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 	FTSENT *ent;
 	size_t stripdir;
 	ENTRY hent, *hentp;
-	int ret;
+	int isroot, ret;
 
 	fts = NULL;
 	ret = 0;
 	f = &p->fl[p->idx];
-	if (asprintf(&dirpath, "%s/%s", p->root, f->path) == -1) {
+	isroot = strcmp(f->path, ".") == 0;
+
+	if (asprintf(&dirpath, "%s/%s", p->root,
+	    isroot ? "" : f->path) == -1) {
 		ERRX1("%s: asprintf", f->path);
 		return (ret);
 	}
@@ -603,13 +606,21 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 		 * looking at.
 		 */
 		cf = &p->fl[i];
-		if (strncmp(f->path, cf->wpath, stripdir - 1) != 0)
+
+		if (strcmp(cf->wpath, ".") == 0)
+			continue;
+
+		if (!isroot && strncmp(f->path, cf->wpath, stripdir - 1) != 0)
 			break;
 
 		/* Omit subdirectories' contents */
 		slp = strrchr(cf->wpath, '/');
 		slpos = (slp != NULL ? slp - cf->wpath : 0);
-		if (slpos >= stripdir)
+
+		if (isroot) {
+			if (slpos != 0)
+				continue;
+		} else if (slpos >= stripdir)
 			continue;
 
 		memset(&hent, 0, sizeof(hent));
