@@ -605,13 +605,13 @@ rule_should_xfer(struct sess *sess, struct rule *r)
 	 */
 	if (sess->mode == FARGS_SENDER) {
 		switch (r->type) {
+		case RULE_INCLUDE:
+		case RULE_EXCLUDE:
 		case RULE_PROTECT:
 		case RULE_RISK:
 			/* Explicitly receiver-side rules */
 			return true;
 		default:
-			if ((r->modifiers & MOD_RECEIVING) != 0)
-				return true;
 			break;
 		}
 
