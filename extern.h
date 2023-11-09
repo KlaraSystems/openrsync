@@ -572,7 +572,7 @@ int		 parse_rule(const char *line, enum rule_type);
 void		 parse_file(const char *, enum rule_type);
 void		 send_rules(struct sess *, int);
 void		 recv_rules(struct sess *, int);
-int		 rules_match(const char *, int, enum fmode);
+int		 rules_match(const char *, int, enum fmode, int);
 void		 rules_base(const char *);
 
 int		 rmatch(const char *, const char *, int);
