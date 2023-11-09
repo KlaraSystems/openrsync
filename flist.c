@@ -73,6 +73,28 @@ flist_cmp(const void *p1, const void *p2)
 }
 
 /*
+ * Like the above, but we need to guarantee the relative order of directory
+ * contents to their directory.
+ */
+int
+flist_dir_cmp(const void *p1, const void *p2)
+{
+	const struct flist *f1 = p1, *f2 = p2;
+	size_t s1, s2;
+
+	s1 = strlen(f1->wpath);
+	s2 = strlen(f2->wpath);
+	if (strncmp(f1->wpath, f2->wpath, MINIMUM(s1, s2)) == 0) {
+		/*
+		 * One is the prefix of the other, sort the longer one later.
+		 */
+		return s2 > s1 ? 1 : -1;
+	}
+
+	return strcmp(f1->wpath, f2->wpath);
+}
+
+/*
  * Deduplicate our file list (which may be zero-length).
  * Returns zero on failure, non-zero on success.
  */
@@ -1612,7 +1634,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
     size_t *sz,	const struct flist *wfl, size_t wflsz)
 {
 	char		**cargv = NULL;
-	int		  rc = 0, c, flag;
+	int		  rc = 0, skip_post = 0, c, flag;
 	FTS		 *fts = NULL;
 	FTSENT		 *ent;
 	struct flist	 *f;
@@ -1731,7 +1753,23 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 	while ((ent = fts_read(fts)) != NULL) {
 		if (ent->fts_info == FTS_NS)
 			continue;
-		if (!flist_fts_check(sess, ent, FARGS_RECEIVER)) {
+
+		/*
+		 * skip_post indicates that we just skipped recursing into this
+		 * dir, so we should also not consider it for deletion (which is
+		 * all we do in post-order).
+		 */
+		if (skip_post && ent->fts_info == FTS_DP) {
+			skip_post = 0;
+			continue;
+		}
+
+		/*
+		 * Here we want directories in post-order because that's where
+		 * we'll ultimately schedule a directory for deletion.
+		 */
+		if (ent->fts_info != FTS_DP &&
+		    !flist_fts_check(sess, ent, FARGS_RECEIVER)) {
 			errno = 0;
 			continue;
 		} else if (stripdir >= ent->fts_pathlen)
@@ -1767,20 +1805,41 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 			stripdir++;
 		}
 		/* filter files on delete */
-		if (!sess->opts->del_excl && rules_match(ent->fts_path + stripdir,
+		if (!sess->opts->del_excl && ent->fts_info != FTS_DP &&
+		    rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D), FARGS_RECEIVER) == -1) {
 			WARNX("skip excluded file %s",
 			    ent->fts_path + stripdir);
+			if (ent->fts_info == FTS_D)
+				skip_post = 1;
+			ent->fts_parent->fts_number++;
 			fts_set(fts, ent, FTS_SKIP);
 			continue;
 		}
 
-		/* Look up in hashtable. */
+		/*
+		 * Pre-order isn't used for deleting directories because we may
+		 * have some files inside that are excluded from deletion.
+		 */
+		if (ent->fts_info == FTS_D)
+			continue;
 
+		/* Look up in hashtable. */
 		memset(&hent, 0, sizeof(ENTRY));
 		hent.key = ent->fts_path + stripdir;
 		if (hsearch(hent, FIND) != NULL)
 			continue;
+
+		if (ent->fts_info == FTS_DP && ent->fts_number > 0) {
+			/*
+			 * Just warn that we have some files inside that are not
+			 * scheduled to be deleted, and propagate the exception
+			 * in case we would have deleted the parent directory.
+			 */
+			WARNX("%s: not empty, cannot delete", ent->fts_path);
+			ent->fts_parent->fts_number++;
+			continue;
+		}
 
 		/* Not found: we'll delete it. */
 
@@ -1804,7 +1863,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		goto out;
 	}
 
-	qsort(*fl, *sz, sizeof(struct flist), flist_cmp);
+	qsort(*fl, *sz, sizeof(struct flist), flist_dir_cmp);
 	rc = 1;
 out:
 	if (fts != NULL)
@@ -1860,7 +1919,7 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 	assert(sess->opts->del);
 	assert(sess->opts->recursive);
 
-	for (i = flsz - 1; i >= 0; i--) {
+	for (i = 0; i < flsz; i++) {
 		LOG1("%s: deleting", fl[i].wpath);
 		if (sess->opts->dry_run)
 			continue;

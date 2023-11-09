@@ -445,6 +445,7 @@ void	rsync_errx(const char *, ...)
 void	rsync_errx1(const char *, ...)
 			__attribute__((format(printf, 1, 2)));
 
+int	flist_dir_cmp(const void *, const void *);
 int	flist_fts_check(struct sess *, FTSENT *, enum fmode);
 int	flist_del(struct sess *, int, const struct flist *, size_t);
 int	flist_gen(struct sess *, size_t, char **, struct flist **, size_t *);
