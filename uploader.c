@@ -653,15 +653,12 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 	while ((ent = fts_read(fts)) != NULL) {
 		if (ent->fts_info == FTS_NS) {
 			continue;
-		} else if (ent->fts_info == FTS_D) {
-			/* Skip non-root directories */
-			if (strcmp(ent->fts_path, parg[0]) != 0)
-				fts_set(fts, ent, FTS_SKIP);
 		} else if (stripdir >= ent->fts_pathlen) {
 			continue;
 		}
 
-		if (!flist_fts_check(sess, ent, FARGS_RECEIVER)) {
+		if (ent->fts_info != FTS_DP &&
+		    !flist_fts_check(sess, ent, FARGS_RECEIVER)) {
 			errno = 0;
 			continue;
 		}
@@ -672,44 +669,65 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 		if (ent->fts_path[stripdir] == '/') {
 			stripdir++;
 		}
-		if (!sess->opts->del_excl && rules_match(ent->fts_path + stripdir,
+		if (!sess->opts->del_excl && ent->fts_info != FTS_DP &&
+		    rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D), FARGS_RECEIVER) == -1) {
 			WARNX("skip excluded file %s",
 			    ent->fts_path + stripdir);
 			fts_set(fts, ent, FTS_SKIP);
+			ent->fts_parent->fts_number++;
 			continue;
 		}
 
 		/* Look up in the hashtable. */
 		memset(&hent, 0, sizeof(hent));
 		hent.key = ent->fts_path + stripdir;
-		if (hsearch(hent, FIND) != NULL)
-			continue;
-
-		if (delmode == DMODE_DURING) {
-			int flag = 0;
-
-			LOG1("%s: deleting", ent->fts_path + stripdir);
-
-			if (sess->opts->dry_run)
-				continue;
-
-			if (ent->fts_info == FTS_D)
-				flag |= AT_REMOVEDIR;
-			if (unlinkat(p->rootfd, ent->fts_path + stripdir,
-			    flag) == -1 && errno != ENOENT) {
-				ERR("%s: unlinkat", ent->fts_path + stripdir);
-				goto out;
+		if (hsearch(hent, FIND) != NULL) {
+			if (ent->fts_info == FTS_D &&
+			    strcmp(ent->fts_path, parg[0]) != 0) {
+				fts_set(fts, ent, FTS_SKIP);
 			}
-		} else {
-			assert(delmode == DMODE_DELAY);
-			flist_add_del(sess, ent->fts_path, stripdir, &p->dfl, &p->dflsz,
-			    &p->dflmax, ent->fts_statp);
+			continue;
+		}
+
+		if (ent->fts_info != FTS_D) {
+			if (ent->fts_info == FTS_DP && ent->fts_number != 0) {
+				WARNX("%s: not empty, cannot delete",
+				    ent->fts_path);
+				ent->fts_parent->fts_number++;
+				continue;
+			}
+
+			if (delmode == DMODE_DURING) {
+				LOG1("%s: deleting", ent->fts_path + stripdir);
+
+				if (sess->opts->dry_run)
+					continue;
+
+				flist_add_del(sess, ent->fts_path, stripdir, &p->dfl, &p->dflsz,
+				    &p->dflmax, ent->fts_statp);
+			} else {
+				assert(delmode == DMODE_DELAY);
+				flist_add_del(sess, ent->fts_path, stripdir, &p->dfl, &p->dflsz,
+				    &p->dflmax, ent->fts_statp);
+			}
 		}
 	}
 
 	ret = 1;
 out:
+	if (delmode == DMODE_DURING) {
+		qsort(p->dfl, p->dflsz, sizeof(struct flist), flist_dir_cmp);
+
+		/* flist_del will report the error, just propagate status. */
+		if (!flist_del(sess, p->rootfd, p->dfl, p->dflsz))
+			ret = 0;
+
+		flist_free(p->dfl, p->dflsz);
+		p->dfl = NULL;
+		p->dflsz = p->dflmax = 0;
+	}
+
 	fts_close(fts);
 	free(dirpath);
 	hdestroy();
@@ -720,6 +738,7 @@ int
 upload_del(struct upload *p, struct sess *sess)
 {
 
+	qsort(p->dfl, p->dflsz, sizeof(struct flist), flist_dir_cmp);
 	return (flist_del(sess, p->rootfd, p->dfl, p->dflsz));
 }
 
