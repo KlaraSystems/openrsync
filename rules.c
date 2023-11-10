@@ -110,7 +110,7 @@ const struct modifier {
 } modifiers[] = {
 	{ MOD_ABSOLUTE,			'/' },
 	{ MOD_NEGATE,			'!' },
-	{ MOD_CVSEXCLUDE,		'C' },
+	{ MOD_CVSEXCLUDE | MOD_MERGE_CVSCOMPAT,		'C' },
 	{ MOD_SENDING,			's' },
 	{ MOD_RECEIVING,		'r' },
 	{ MOD_PERISHABLE,		'p' },
@@ -120,7 +120,6 @@ const struct modifier {
 	/* for '.' and ':' types */
 	{ MOD_MERGE_EXCLUDE,		'-' },
 	{ MOD_MERGE_INCLUDE,		'+' },
-	{ MOD_MERGE_CVSCOMPAT,		'C' },
 	{ MOD_MERGE_EXCLUDE_FILE,	'e' },
 	{ MOD_MERGE_NO_INHERIT,		'n' },
 	{ MOD_MERGE_WORDSPLIT,		'w' },
@@ -487,6 +486,16 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 					pstart++;
 			}
 
+			/*
+			 * Merge rules and non-merge rules share 'C' as a common
+			 * modifier between the two, so it just sets both bits.
+			 * Untangle it here.
+			 */
+			if (type == RULE_MERGE || type == RULE_DIR_MERGE)
+				modifiers &= ~MOD_CVSEXCLUDE;
+			else
+				modifiers &= ~MOD_MERGE_CVSCOMPAT;
+
 			if (!modifiers_valid(type, &modifiers))
 				return -1;
 
@@ -501,13 +510,27 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 			}
 
 			line = pend;
-			pattern = strndup(pstart, pend - pstart);
+			if (pend == pstart && type == RULE_DIR_MERGE &&
+			    (modifiers & MOD_MERGE_CVSCOMPAT) != 0) {
+				pattern = strdup(".cvsignore");
+			} else {
+				pattern = strndup(pstart, pend - pstart);
+			}
 			if (pattern == NULL)
 				err(ERR_NOMEM, "strndup");
 
 			if (!pattern_valid(type, modifiers, pattern)) {
 				free(pattern);
 				return -1;
+			}
+
+			/*
+			 * The CVS compat modifier turns on 'n', 'w', and '-'.
+			 */
+			if (type == RULE_DIR_MERGE &&
+			    (modifiers & MOD_MERGE_CVSCOMPAT) != 0) {
+				modifiers |= MOD_MERGE_NO_INHERIT |
+				    MOD_MERGE_WORDSPLIT | MOD_MERGE_EXCLUDE;
 			}
 
 			/*
