@@ -45,6 +45,14 @@ struct rule {
 	unsigned char		 leadingdir;
 };
 
+static const char builtin_cvsignore[] =
+	"RCS SCCS CVS CVS.adm RCSLOG cvslog.* tags "
+	"TAGS .make.state .nse_depinfo *~ #* .#* ,* "
+	"_$* *$ *.old *.bak *.BAK *.orig *.rej .del-* "
+	"*.a *.olb *.o *.obj *.so *.exe *.Z *.elc "
+	"*.ln core "
+	".svn/ ";
+
 static char		 rule_base[MAXPATHLEN];
 static char		*rule_base_cwdend;
 
@@ -52,7 +60,8 @@ static struct rule	*rules;
 static size_t		 numrules;	/* number of rules */
 static size_t		 rulesz;	/* available size */
 
-static void parse_file_impl(const char *, enum rule_type, unsigned int);
+static void parse_file_impl(const char *, enum rule_type, unsigned int, bool);
+static int parse_rule_impl(const char *, enum rule_type, unsigned int);
 
 /* up to protocol 29 filter rules only support - + ! and no modifiers */
 
@@ -384,6 +393,42 @@ rule_modified(enum rule_type rule, unsigned int *modifiers)
 	return rule;
 }
 
+static int
+add_cvsignore_rules(void)
+{
+	char home_cvsignore[PATH_MAX];
+	const char *cvsignore, *home;
+	int ret;
+
+	/* XXX shouldn't transfer any of these? */
+	/* First we add the internal cvsignore rules. */
+	ret = parse_rule_impl(builtin_cvsignore, RULE_EXCLUDE,
+	    MOD_MERGE_WORDSPLIT);
+	if (ret == -1)
+		return ret;
+
+	/* Next we process ~/.cvsignore */
+	home = getenv("HOME");
+	if (home != NULL && *home != '\0') {
+		if (snprintf(home_cvsignore, sizeof(home_cvsignore),
+		    "%s/.cvsignore", home) < (int)sizeof(home_cvsignore)) {
+			parse_file_impl(home_cvsignore, RULE_EXCLUDE,
+			    MOD_MERGE_WORDSPLIT, false);
+		}
+	}
+
+	/* Finally, we process the CVSIGNORE environment var for more files. */
+	cvsignore = getenv("CVSIGNORE");
+	if (cvsignore != NULL && *cvsignore != '\0') {
+		ret = parse_rule_impl(cvsignore, RULE_EXCLUDE,
+		    MOD_MERGE_WORDSPLIT);
+	}
+
+
+	return ret;
+}
+
+
 /*
  * Parses the line for a rule with consideration for the inherited modifiers.
  */
@@ -425,6 +470,7 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 				len = strcspn(line, " _");
 				type = parse_command(line, len, &modifiers);
 			}
+
 			if (type == RULE_NONE) {
 				if (def == RULE_NONE)
 					return -1;
@@ -500,7 +546,9 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 			else
 				def = RULE_NONE;
 
-			parse_file_impl(pattern, def, modifiers);
+			parse_file_impl(pattern, def, modifiers, true);
+		} else if ((modifiers & MOD_CVSEXCLUDE) != 0) {
+			add_cvsignore_rules();
 		}
 
 		pattern = NULL;
@@ -516,15 +564,19 @@ parse_rule(const char *line, enum rule_type def)
 }
 
 static void
-parse_file_impl(const char *file, enum rule_type def, unsigned int imodifiers)
+parse_file_impl(const char *file, enum rule_type def, unsigned int imodifiers,
+    bool must_exist)
 {
 	FILE *fp;
 	char *line = NULL;
 	size_t linesize = 0, linenum = 0;
 	ssize_t linelen;
 
-	if ((fp = fopen(file, "r")) == NULL)
+	if ((fp = fopen(file, "r")) == NULL) {
+		if (!must_exist)
+			return;
 		err(ERR_SYNTAX, "open: %s", file);
+	}
 
 	while ((linelen = getline(&line, &linesize, fp)) != -1) {
 		linenum++;
@@ -544,7 +596,7 @@ void
 parse_file(const char *file, enum rule_type def)
 {
 
-	parse_file_impl(file, def, 0);
+	parse_file_impl(file, def, 0, true);
 }
 
 static const char *
