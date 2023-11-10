@@ -178,6 +178,7 @@ struct	opts {
 	int              progress;              /* --progress */
 	int		 alt_base_mode;
 	int		 sparse;		/* -S --sparse */
+	int		 update;		/* -u --update */
 	int		 backup;		/* --backup */
 	int		 ign_exist;		/* --ignore-existing */
 	int		 ign_non_exist;		/* --ignore-nonexisting */
