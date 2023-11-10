@@ -17,6 +17,7 @@
 
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include COMPAT_ENDIAN_H
 
 #include <assert.h>
