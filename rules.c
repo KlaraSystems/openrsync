@@ -18,6 +18,7 @@
 #include <sys/param.h>
 
 #include <assert.h>
+#include <ctype.h>
 #if HAVE_ERR
 # include <err.h>
 #endif
@@ -235,7 +236,7 @@ parse_command(const char *command, size_t len, unsigned int *omodifiers)
 }
 
 static void
-parse_pattern(struct rule *r, const char *pattern)
+parse_pattern(struct rule *r, char *pattern)
 {
 	size_t plen;
 	char *p;
@@ -257,20 +258,16 @@ parse_pattern(struct rule *r, const char *pattern)
 	 */
 	if (plen > 1 && pattern[plen - 1] == '/') {
 		r->onlydir = 1;
-		plen--;
+		pattern[plen - 1] = '\0';
 	}
 	if (!r->onlydir && plen > 4 &&
 	    strcmp(pattern + plen - 4, "/***") == 0) {
 		r->leadingdir = 1;
-		plen -= 4;
+		pattern[plen - 4] = '\0';
 	}
 
-	r->pattern = strndup(pattern, plen);
-	if (r->pattern == NULL)
-		err(ERR_NOMEM, NULL);
-
 	/* count how many segments the pattern has. */
-	for (p = r->pattern; *p != '\0'; p++)
+	for (p = pattern; *p != '\0'; p++)
 		if (*p == '/')
 			nseg++;
 	r->numseg = nseg;
@@ -279,14 +276,16 @@ parse_pattern(struct rule *r, const char *pattern)
 	if (nseg == 1 && !r->anchored)
 		r->fileonly = 1;
 
-	if (strpbrk(r->pattern, "*?[") == NULL) {
+	if (strpbrk(pattern, "*?[") == NULL) {
 		/* no wildchar matching */
 		r->nowild = 1;
 	} else {
 		/* requires wildchar matching */
-		if (strstr(r->pattern, "**") != NULL)
+		if (strstr(pattern, "**") != NULL)
 			r->numseg = -1;
 	}
+
+	r->pattern = pattern;
 }
 
 static bool
@@ -391,88 +390,120 @@ rule_modified(enum rule_type rule, unsigned int *modifiers)
 static int
 parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 {
-	enum rule_type type = RULE_NONE;
+	enum rule_type type;
 	struct rule *r;
-	const char *pattern;
+	const char *pstart, *pend;
+	char *pattern;
 	size_t len;
 	unsigned int modifiers;
+	bool wsplit = (imodifiers & MOD_MERGE_WORDSPLIT) != 0;
 
+	imodifiers &= ~MOD_MERGE_MASK;
 	modifiers = 0;
-	switch (*line) {
-	case '#':
-	case ';':
-		/* comment */
-		return 0;
-	case '\0':
-		/* ingore empty lines */
-		return 0;
-	default:
-		modifiers = 0;
-		if (def == RULE_NONE) {
-			len = strcspn(line, " _");
-			type = parse_command(line, len, &modifiers);
+
+	/* Empty lines are ignored. */
+	while (*line != '\0') {
+		if (wsplit) {
+			while (isspace(*line))
+				line++;
 		}
-		if (type == RULE_NONE) {
-			if (def == RULE_NONE)
+
+		type = RULE_NONE;
+		switch (*line) {
+		case '\0':
+			/* ignore empty lines */
+			return 0;
+		case '#':
+		case ';':
+			/* Comments, but they are disabled in word split mode */
+			if (!wsplit)
+				return 0;
+			/* FALLTHROUGH */
+		default:
+			modifiers = 0;
+			if (def == RULE_NONE) {
+				len = strcspn(line, " _");
+				type = parse_command(line, len, &modifiers);
+			}
+			if (type == RULE_NONE) {
+				if (def == RULE_NONE)
+					return -1;
+				type = def;
+				pstart = line;
+			} else {
+				/*
+				 * Some available rules have no arguments, so
+				 * we're pointing at the NUL byte and we
+				 * shouldn't walk past that.
+				 */
+				pstart = line + len;
+				if (*pstart != '\0')
+					pstart++;
+			}
+
+			if (!modifiers_valid(type, &modifiers))
 				return -1;
-			type = def;
-			pattern = line;
-		} else {
+
+			/* Make a copy of the pattern */
+			pend = pstart;
+			if (wsplit) {
+				while (!isspace(*pend) && *pend != '\0') {
+					pend++;
+				}
+			} else {
+				pend = pstart + strlen(pstart);
+			}
+
+			line = pend;
+			pattern = strndup(pstart, pend - pstart);
+			if (pattern == NULL)
+				err(ERR_NOMEM, "strndup");
+
+			if (!pattern_valid(type, modifiers, pattern)) {
+				free(pattern);
+				return -1;
+			}
+
 			/*
-			 * Some available rules have no arguments, so we're
-			 * pointing at the NUL byte and we shouldn't walk past
-			 * that.
+			 * We inherit the modifiers here to bypass the validity
+			 * check, but we want them to be considered in
+			 * rule_modified() in case we need to promote some
+			 * rules.  There's a good chance it will simply zap most
+			 * of the modifiers and send us on our way.
 			 */
-			pattern = line + len;
-			if (*pattern != '\0')
-				pattern++;
+			modifiers |= imodifiers;
+			if (modifiers != 0)
+				type = rule_modified(type, &modifiers);
+			break;
 		}
 
-		if (!modifiers_valid(type, &modifiers))
-			return -1;
-
-		if (!pattern_valid(type, modifiers, pattern))
-			return -1;
-
-		/*
-		 * We inherit the modifiers here to bypass the validity check,
-		 * but we want them to be considered in rule_modified() in case
-		 * we need to promote some rules.  There's a good chance it will
-		 * simply zap most of the modifiers and send us on our way.
-		 */
-		modifiers |= imodifiers;
-		if (modifiers != 0)
-			type = rule_modified(type, &modifiers);
-		break;
-	}
-
-	r = get_next_rule();
-	r->type = type;
-	r->omodifiers = r->modifiers = modifiers;
-	if (type == RULE_MERGE || type == RULE_DIR_MERGE)
-		r->modifiers &= MOD_MERGE_MASK;
-	parse_pattern(r, pattern);
-	if (type == RULE_MERGE || type == RULE_DIR_MERGE) {
-		if ((modifiers & MOD_MERGE_EXCLUDE_FILE) != 0) {
-			if (parse_rule_impl(r->pattern, RULE_EXCLUDE, 0) == -1)
-				return -1;
+		r = get_next_rule();
+		r->type = type;
+		r->omodifiers = r->modifiers = modifiers;
+		if (type == RULE_MERGE || type == RULE_DIR_MERGE)
+			r->modifiers &= MOD_MERGE_MASK;
+		parse_pattern(r, pattern);
+		if (type == RULE_MERGE || type == RULE_DIR_MERGE) {
+			if ((modifiers & MOD_MERGE_EXCLUDE_FILE) != 0) {
+				if (parse_rule_impl(r->pattern, RULE_EXCLUDE,
+				    0) == -1) {
+					return -1;
+				}
+			}
 		}
-	}
 
-	if (type == RULE_MERGE) {
-		/*  - and + are mutually exclusive. */
-		if ((modifiers & (MOD_MERGE_EXCLUDE | MOD_MERGE_INCLUDE)) ==
-		    (MOD_MERGE_EXCLUDE | MOD_MERGE_INCLUDE))
-			return -1;
+		if (type == RULE_MERGE) {
+			if ((modifiers & MOD_MERGE_EXCLUDE) != 0)
+				def = RULE_EXCLUDE;
+			else if ((modifiers & MOD_MERGE_INCLUDE) != 0)
+				def = RULE_INCLUDE;
+			else
+				def = RULE_NONE;
 
-		if ((modifiers & MOD_MERGE_EXCLUDE) != 0)
-			def = RULE_EXCLUDE;
-		else if ((modifiers & MOD_MERGE_INCLUDE) != 0)
-			def = RULE_INCLUDE;
-		else
-			def = RULE_NONE;
+			parse_file_impl(pattern, def, modifiers);
+		}
 
-		parse_file_impl(pattern, def, modifiers);
+		pattern = NULL;
 	}
 
 	return 0;
