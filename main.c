@@ -395,6 +395,7 @@ const struct option	 lopts[] = {
     { "times",		no_argument,	NULL,			't' },
     { "no-times",	no_argument,	&opts.preserve_times,	0 },
     { "no-t",		no_argument,	&opts.preserve_times,	0 },
+    { "update",		no_argument,	NULL,			'u' },
     { "verbose",	no_argument,	NULL,			'v' },
     { "no-verbose",	no_argument,	&verbose,		0 },
     { "no-v",		no_argument,	&verbose,		0 },
@@ -432,7 +433,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "DHILRSVabde:ghklnoprtvxz", lopts,
+	while ((c = getopt_long(argc, argv, "DHILRSVabde:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case 'D':
@@ -487,6 +488,9 @@ main(int argc, char *argv[])
 			break;
 		case 't':
 			opts.preserve_times = 1;
+			break;
+		case 'u':
+			opts.update++;
 			break;
 		case 'v':
 			verbose++;
@@ -824,7 +828,7 @@ basedir:
 	exit(rc);
 usage:
 	fprintf(stderr, "usage: %s"
-	    " [-DLadgklnoprtvx] [-e program] [--address=sourceaddr]\n"
+	    " [-DLadgklnoprtuvx] [-e program] [--address=sourceaddr]\n"
 	    "\t[--compare-dest=dir] [--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"

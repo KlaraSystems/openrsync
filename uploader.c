@@ -900,6 +900,11 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		return 4;
 	}
 
+	if (sess->opts->update && st->st_mtime > f->st.mtime) {
+		LOG1("Skip newer '%s'", f->path);
+		return 4;
+	}
+
 	/* quick check if file is the same */
 	/* TODO: add support for --checksum and --size-only */
 	if (!sess->opts->ignore_times && st->st_size == f->st.size) {

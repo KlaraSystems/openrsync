@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl abDgklLnoprtvx
+.Op Fl abDgklLnoprtuvx
 .Op Fl e Ar program
 .Op Fl -address Ns = Ns Ar sourceaddr
 .Op Fl -backup
@@ -307,6 +307,9 @@ The default is 0, which means no timeout.
 .It Fl t , -times
 Set destination file and directory modification time to match the source
 when it is updated or created.
+.It Fl u , -update
+Skip existing files on the destination that have a modification time newer
+than the source file.
 .It Fl v , -verbose
 Increase verbosity.
 Specify once for files being transferred, twice for specific status,

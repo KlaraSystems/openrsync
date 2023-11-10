@@ -144,6 +144,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-S");
 	if (sess->opts->hard_links)
 		addargs(&args, "-H");
+	if (sess->opts->update)
+		addargs(&args, "-u");
 	if (verbose > 3)
 		addargs(&args, "-v");
 	if (verbose > 2)
