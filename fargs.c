@@ -134,8 +134,16 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-n");
 	if (sess->opts->inplace)
 		addargs(&args, "--inplace");
-	if (sess->opts->partial && f->mode == FARGS_SENDER)
+
+	if (sess->opts->partial_dir != NULL && f->mode == FARGS_SENDER) {
+		/* Implied --partial for brevity. */
+		addargs(&args, "--partial-dir");
+		addargs(&args, "%s", sess->opts->partial_dir);
+	} else if (sess->opts->partial && f->mode == FARGS_SENDER) {
+		/* Explicit --partial since we have no --partial-dir. */
 		addargs(&args, "--partial");
+	}
+
 	if (sess->opts->preserve_uids)
 		addargs(&args, "-o");
 	if (sess->opts->preserve_perms)

@@ -148,6 +148,94 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
 }
 
 /*
+ * Handle the --partial-dir aspect of downloads, return the path to use for the
+ * tmpdir.  Takes a buffer to store the result into, which should be at least
+ * PATH_MAX in size.
+ */
+static const char *
+download_partial_path(struct sess *sess, const struct flist *f,
+    char *path, size_t pathsz)
+{
+	const char *dirsep, *dir;
+	int dirlen;
+
+	assert(sess->opts->partial_dir != NULL);
+	assert(f != NULL);
+
+	if (sess->opts->partial_dir[0] == '/') {
+		return sess->opts->partial_dir;
+	}
+
+	dir = f->path;
+	dirsep = strrchr(dir, '/');
+	if (dirsep == NULL) {
+		dir = "./";
+		dirlen = 1;	/* Copy the NUL byte. */
+	} else {
+		/*
+		 * For all other subdirectories, we'll do a half-hearted
+		 * attempt at normalizing it.
+		 */
+		while (dirsep > dir && *(dirsep - 1) == '/') {
+			dirsep--;
+		}
+
+		/* Relative path of at least one level, not possible. */
+		assert(dirsep != dir);
+
+		dirlen = dirsep - dir;
+	}
+
+	assert(dirlen > 0);
+
+	(void)snprintf(path, pathsz, "%.*s/%s", dirlen, dir,
+	    sess->opts->partial_dir);
+	return path;
+}
+
+static int
+download_partial_fd(struct sess *sess, int rootfd, const struct flist *f)
+{
+	char partial_reldir[PATH_MAX];
+	const char *partial_dir;
+	struct stat st;
+	int ret;
+
+	partial_dir = download_partial_path(sess, f, partial_reldir,
+	    sizeof(partial_reldir));
+
+	ret = fstatat(rootfd, partial_dir, &st, AT_SYMLINK_NOFOLLOW);
+	if (ret == -1 && errno != ENOENT)
+		goto err;
+	if (ret == 0 && !S_ISDIR(st.st_mode)) {
+		/* Remove it if it's not a directory. */
+		ret = unlinkat(rootfd, partial_dir, 0);
+		if (ret == -1)
+			goto err;
+
+		/* Signal that we need to create it. */
+		ret = -1;
+	}
+
+	if (ret == -1) {
+		ret = mkdirat(rootfd, partial_dir,
+		    S_IRUSR|S_IWUSR|S_IXUSR);
+
+		/*
+		 * Punt on EEXIST for now; we'll fail the below openat() if
+		 * whatever happened was too weird.
+		 */
+		if (ret == -1 && errno != EEXIST)
+			goto err;
+	}
+
+	/* Finally, we can open it. */
+	return openat(rootfd, partial_dir, O_DIRECTORY);
+err:
+	return -1;
+}
+
+/*
  * Cleanup any partial bits of a transfer.  This may mean anything from do
  * nothing to moving the file into place if we've been instructed to.  It may
  * be called from a signal context, so we should take care to only do
@@ -159,7 +247,6 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
 static int
 download_cleanup_partial(struct sess *sess, struct download *p)
 {
-	int ret;
 
 	if (p->fd == -1)
 		return 1;
@@ -170,28 +257,41 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 	if (p->fname == NULL)
 		return 1;
 
-	ret = 1;
+	if (sess->opts->partial && sess->opts->inplace)
+		return 1;
+
 	if (sess->opts->partial) {
 		const struct flist *f;
+		char *fname;
+		int pdfd;
 
 		f = &p->fl[p->idx];
+
+		pdfd = download_partial_fd(sess, p->rootfd, f);
+		if (pdfd == -1)
+			return 0;
+
+		fname = strrchr(f->path, '/');
+		if (fname == NULL)
+			fname = f->path;
+		else
+			fname++;
 
 		/*
 		 * For partial transfers, we need to move the file into place if
 		 * we're operating on a temp file.  If the rename fails, we do
 		 * not try to remove it because partial files have been
-		 * explicitly request.  Better to just warn about the situation
-		 * so that the user can manually recover the partial file and
-		 * make a decision on it.
+		 * explicitly requested.  Better to just warn about the
+		 * situation so that the user can manually recover the partial
+		 * file and make a decision on it.
 		 */
-		if (!sess->opts->inplace &&
-		    renameat(p->rootfd, p->fname, p->rootfd, f->path) == -1)
-			ret = 0;
+		if (renameat(p->rootfd, p->fname, pdfd, fname) == -1)
+			return 0;
 	} else {
 		(void)unlinkat(p->rootfd, p->fname, 0);
 	}
 
-	return ret;
+	return 1;
 }
 
 /*

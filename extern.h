@@ -173,6 +173,7 @@ struct	opts {
 	int		 dry_run;		/* -n */
 	int		 inplace;		/* --inplace */
 	int		 partial;		/* --partial */
+	char		*partial_dir;		/* --partial-dir */
 	int		 preserve_times;	/* -t */
 	int		 preserve_perms;	/* -p */
 	int		 copy_links;		/* -L */
