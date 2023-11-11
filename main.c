@@ -350,6 +350,7 @@ static struct opts	 opts;
 #define OP_NO_DIRS	1028
 #define OP_FILESFROM	1029
 #define OP_APPEND	1030
+#define OP_PARTIAL_DIR	1031
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -403,6 +404,7 @@ const struct option	 lopts[] = {
     { "one-file-system",no_argument,	NULL,			'x' },
     { "partial",	no_argument,	&opts.partial,		1 },
     { "no-partial",	no_argument,	&opts.partial,		0 },
+    { "partial-dir",	required_argument,	NULL,		OP_PARTIAL_DIR },
     { "perms",		no_argument,	NULL,			'p' },
     { "no-perms",	no_argument,	&opts.preserve_perms,	0 },
     { "no-p",		no_argument,	&opts.preserve_perms,	0 },
@@ -688,6 +690,22 @@ basedir:
 				err(1, "bad bwlimit");
 			opts.bwlimit = tmpint;
 			break;
+		case OP_PARTIAL_DIR:
+			opts.partial = 1;
+
+			/*
+			 * We stash off our own copy just to be logically
+			 * consistent; if it's not specified here, we instead
+			 * use RSYNC_PARTIAL_DIR from the environment if it's
+			 * set which we'll naturally want to make a copy of.  We
+			 * can thus always assume it's on the heap, rather than
+			 * sometimes part of argv.
+			 */
+			free(opts.partial_dir);
+			opts.partial_dir = strdup(optarg);
+			if (opts.partial_dir == NULL)
+				errx(ERR_NOMEM, NULL);
+			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",
 			    RSYNC_PROTOCOL);
@@ -706,8 +724,47 @@ basedir:
 	if (argc < 2)
 		goto usage;
 
-	if (opts.inplace)
+	if (opts.inplace) {
+		if (opts.partial_dir != NULL)
+			errx(ERR_SYNTAX,
+			    "option --partial-dir conflicts with --inplace");
 		opts.partial = 1;
+	} else if (opts.partial && opts.partial_dir == NULL) {
+		char *rsync_partial_dir;
+
+		/*
+		 * XXX For delayed update mode, this should use .~tmp~ instead
+		 * of RSYNC_PARTIAL_DIR if --partial-dir was not supplied here.
+		 */
+		rsync_partial_dir = getenv("RSYNC_PARTIAL_DIR");
+		if (rsync_partial_dir != NULL && rsync_partial_dir[0] != '\0') {
+			opts.partial_dir = strdup(rsync_partial_dir);
+			if (opts.partial_dir == NULL)
+				errx(ERR_NOMEM, NULL);
+		}
+	}
+
+	if (opts.partial_dir != NULL) {
+		char *partial_dir;
+
+		/* XXX Samba rsync would normalize this path a little better. */
+		partial_dir = opts.partial_dir;
+		if (partial_dir[0] == '\0' || strcmp(partial_dir, ".") == 0) {
+			opts.partial_dir = NULL;
+		} else {
+			char *endp;
+
+			endp = &partial_dir[strlen(partial_dir) - 1];
+			while (endp > partial_dir && *(endp - 1) == '/') {
+				*endp-- = '\0';
+			}
+
+			if (parse_rule(partial_dir, RULE_EXCLUDE) == -1) {
+				errx(ERR_SYNTAX, "syntax error in exclude: %s",
+				    partial_dir);
+			}
+		}
+	}
 
 	if (opts.port == NULL)
 		opts.port = (char *)"rsync";
