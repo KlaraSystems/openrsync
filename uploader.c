@@ -953,8 +953,11 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 	int dfd, x;
 
 	dfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY);
-	if (dfd == -1)
+	if (dfd == -1) {
+		if (errno == ENOENT)
+			return 1;
 		err(ERR_FILE_IO, "%s: openat", root);
+	}
 	x = check_file(dfd, f, st, sess, hl);
 	/* found a match */
 	if (x == 0) {
