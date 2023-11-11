@@ -940,6 +940,62 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 }
 
 /*
+ * Check an alternate dir (e.g., copy dest mode dir) for a suitable version of
+ * the file.
+ *
+ * Returns -1 on error, 0 on success, or 1 to keep trying further dirs.
+ */
+static int
+pre_file_check_altdir(struct sess *sess, const struct upload *p,
+    const char **matchdir, struct stat *st, const char *root,
+    const struct flist *f, const struct hardlinks *const hl, int rc)
+{
+	int dfd, x;
+
+	dfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY);
+	if (dfd == -1)
+		err(ERR_FILE_IO, "%s: openat", root);
+	x = check_file(dfd, f, st, sess, hl);
+	/* found a match */
+	if (x == 0) {
+		if (rc >= 0) {
+			/* found better match, delete file in rootfd */
+			if (unlinkat(p->rootfd, f->path, 0) == -1 &&
+			    errno != ENOENT) {
+				ERR("%s: unlinkat", f->path);
+				return -1;
+			}
+		}
+		/* TODO: implement --copy-dest */
+		if (sess->opts->alt_base_mode == BASE_MODE_LINK) {
+			LOG3("%s: hardlinking: up to date in %s",
+			    f->path, root);
+			if (linkat(dfd, f->path, p->rootfd,
+				f->path, 0) == -1) {
+				/*
+				 * GNU rsync falls back to copy here.
+				 * I think it is more correct to
+				 * fail since the user requested
+				 * --link-dest and the manpage states
+				 * that there will be hardlinking.
+				 */
+				ERR("hard link '%s/%s'", root, f->path);
+			}
+		} else {
+			LOG3("%s: skipping: up to date in %s", f->path,
+			    root);
+		}
+		close(dfd);
+		return 0;
+	} else if (x == 1 && *matchdir == NULL) {
+		/* found a local file that is a close match */
+		*matchdir = root;
+	}
+	close(dfd);
+	return 1;
+}
+
+/*
  * Try to open the file at the current index.
  * If the file does not exist, returns with >0.
  * Return <0 on failure, 0 on success w/nothing to be done, >0 on
@@ -950,8 +1006,9 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
     struct sess *sess, const struct hardlinks *hl)
 {
 	const struct flist *f;
+	const char *matchdir = NULL;
 	struct stat st;
-	int i, rc, match = -1;
+	int i, rc, ret;
 
 	f = &p->fl[p->idx];
 	assert(S_ISREG(f->st.mode));
@@ -1034,53 +1091,15 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 
 	/* check alternative locations for better match */
 	for (i = 0; sess->opts->basedir[i] != NULL; i++) {
-		const char *root = sess->opts->basedir[i];
-		int dfd, x;
+		ret = pre_file_check_altdir(sess, p, &matchdir,
+		    &st, sess->opts->basedir[i], f, hl, rc);
 
-		dfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY);
-		if (dfd == -1)
-			err(ERR_FILE_IO, "%s: openat", root);
-		x = check_file(dfd, f, &st, sess, hl);
-		/* found a match */
-		if (x == 0) {
-			if (rc >= 0) {
-				/* found better match, delete file in rootfd */
-				if (unlinkat(p->rootfd, f->path, 0) == -1 &&
-				    errno != ENOENT) {
-					ERR("%s: unlinkat", f->path);
-					return -1;
-				}
-			}
-			/* TODO: implement --copy-dest */
-			if (sess->opts->alt_base_mode == BASE_MODE_LINK) {
-				LOG3("%s: hardlinking: up to date in %s",
-				    f->path, root);
-				if (linkat(dfd, f->path, p->rootfd,
-					f->path, 0) == -1) {
-					/*
-					 * GNU rsync falls back to copy here.
-					 * I think it is more correct to
-					 * fail since the user requested
-					 * --link-dest and the manpage states
-					 * that there will be hardlinking.
-					 */
-					ERR("hard link '%s/%s'", root, f->path);
-				}
-			} else {
-				LOG3("%s: skipping: up to date in %s", f->path,
-				    root);
-			}
-			close(dfd);
-			return 0;
-		} else if (x == 1 && match == -1) {
-			/* found a local file that is a close match */
-			match = i;
-		}
-		close(dfd);
+		if (ret <= 0)
+			return ret;
 	}
-	if (match != -1) {
+	if (matchdir != NULL) {
 		/* copy match from basedir into root as a start point */
-		copy_file(p->rootfd, sess->opts->basedir[match], f);
+		copy_file(p->rootfd, matchdir, f);
 		if (fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW) ==
 		    -1) {
 			ERR("%s: fstatat", f->path);
