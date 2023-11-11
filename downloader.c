@@ -152,7 +152,7 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
  * tmpdir.  Takes a buffer to store the result into, which should be at least
  * PATH_MAX in size.
  */
-static const char *
+const char *
 download_partial_path(struct sess *sess, const struct flist *f,
     char *path, size_t pathsz)
 {
@@ -190,6 +190,19 @@ download_partial_path(struct sess *sess, const struct flist *f,
 
 	(void)snprintf(path, pathsz, "%.*s/%s", dirlen, dir,
 	    sess->opts->partial_dir);
+	return path;
+}
+
+const char *
+download_partial_filepath(const struct flist *f)
+{
+	const char *path;
+
+	path = strrchr(f->path, '/');
+	if (path != NULL)
+		path++;
+	else
+		path = f->path;
 	return path;
 }
 
@@ -236,6 +249,30 @@ err:
 }
 
 /*
+ * Best-effort attempt to remove the partial dir.
+ */
+static void
+download_cleanup_partial_dir(struct sess *sess, struct download *p,
+    const struct flist *f)
+{
+	char partial_reldir[PATH_MAX];
+	const char *partial_dir;
+	struct stat st;
+	int ret;
+
+	partial_dir = download_partial_path(sess, f, partial_reldir,
+	    sizeof(partial_reldir));
+	ret = fstatat(p->rootfd, partial_dir, &st, AT_SYMLINK_NOFOLLOW);
+	if (ret == -1)
+		return;
+
+	if (!S_ISDIR(st.st_mode))
+		return;
+
+	(void)unlinkat(p->rootfd, partial_dir, AT_REMOVEDIR);
+}
+
+/*
  * Cleanup any partial bits of a transfer.  This may mean anything from do
  * nothing to moving the file into place if we've been instructed to.  It may
  * be called from a signal context, so we should take care to only do
@@ -247,9 +284,17 @@ err:
 static int
 download_cleanup_partial(struct sess *sess, struct download *p)
 {
+	const struct flist *f;
 
-	if (p->fd == -1)
+	if (p->fl == NULL)
 		return 1;
+
+	f = &p->fl[p->idx];
+	if (p->fd == -1) {
+		if (f->pdfd >= 0)
+			download_cleanup_partial_dir(sess, p, f);
+		return 1;
+	}
 
 	close(p->fd);
 	p->fd = -1;
@@ -261,21 +306,26 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 		return 1;
 
 	if (sess->opts->partial) {
-		const struct flist *f;
 		char *fname;
 		int pdfd;
 
-		f = &p->fl[p->idx];
+		if (f->pdfd >= 0)
+			return 1;
 
-		pdfd = download_partial_fd(sess, p->rootfd, f);
-		if (pdfd == -1)
-			return 0;
+		if (sess->opts->partial_dir != NULL) {
+			pdfd = download_partial_fd(sess, p->rootfd, f);
+			if (pdfd == -1)
+				return 0;
 
-		fname = strrchr(f->path, '/');
-		if (fname == NULL)
+			fname = strrchr(f->path, '/');
+			if (fname == NULL)
+				fname = f->path;
+			else
+				fname++;
+		} else {
+			pdfd = p->rootfd;
 			fname = f->path;
-		else
-			fname++;
+		}
 
 		/*
 		 * For partial transfers, we need to move the file into place if
@@ -725,6 +775,9 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 	 */
 
 	if (p->state == DOWNLOAD_READ_NEXT) {
+		const char *path;
+		int rootfd;
+
 		if (!io_read_int(sess, p->fdin, &idx)) {
 			ERRX1("io_read_int");
 			return -1;
@@ -764,7 +817,15 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 
 		p->state = DOWNLOAD_READ_LOCAL;
 		f = &p->fl[idx];
-		p->ofd = openat(p->rootfd, f->path, O_RDONLY | O_NONBLOCK);
+
+		rootfd = p->rootfd;
+		path = f->path;
+		if (f->pdfd >= 0) {
+			rootfd = f->pdfd;
+			path = download_partial_filepath(f);
+		}
+
+		p->ofd = openat(rootfd, path, O_RDONLY | O_NONBLOCK);
 		if (sess->opts->progress && !verbose)
 			fprintf(stderr, "%s\n", f->path);
 
@@ -830,13 +891,19 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 		*ofd = -1;
 
 		/* Create the temporary file. */
-		if (download_is_inplace(sess, p, false)) {
+		if (download_is_inplace(sess, p, false) || f->pdfd >= 0) {
 			char *basename;
+			const char *path = f->path;
+			int rootfd = p->rootfd;
 
-			p->fd = openat(p->rootfd, f->path, O_RDWR | O_CREAT | O_NONBLOCK,
+			if (f->pdfd >= 0) {
+				rootfd = f->pdfd;
+				path = download_partial_filepath(f);
+			}
+			p->fd = openat(rootfd, path, O_RDWR | O_CREAT | O_NONBLOCK,
 			    f->st.mode & ACCESSPERMS);
 			if (p->fd == -1) {
-				ERRX1("%s: open", f->path);
+				ERRX1("%s: open", path);
 				goto out;
 			}
 
@@ -1121,7 +1188,8 @@ again:
 			hl_p = find_hl(f, hl);
 	}
 	if (!download_is_inplace(sess, p, false) &&
-	    renameat(p->rootfd, p->fname, p->rootfd, usethis) == -1) {
+	    renameat(f->pdfd >= 0 ? f->pdfd : p->rootfd, p->fname, p->rootfd,
+	    usethis) == -1) {
 		ERR("%s: renameat: %s", p->fname, usethis);
 		goto out;
 	}

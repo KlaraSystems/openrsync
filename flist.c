@@ -260,6 +260,8 @@ flist_free(struct flist *f, size_t sz)
 		return;
 
 	for (i = 0; i < sz; i++) {
+		if (f[i].pdfd >= 0)
+			close(f[i].pdfd);
 		free(f[i].path);
 		free(f[i].link);
 	}
@@ -578,7 +580,10 @@ flist_realloc(struct flist **fl, size_t *sz, size_t *max)
 	}
 	*fl = pp;
 	*max += FLIST_CHUNK_SIZE;
+	for (size_t i = *sz; i < *max; i++)
+		(*fl)[i].pdfd = -1;
 	(*sz)++;
+
 	return 1;
 }
 

@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <math.h>
 #include <search.h>
 #include <stdbool.h>
@@ -36,6 +37,12 @@
 #include <limits.h>
 
 #include "extern.h"
+
+enum	altmode {
+	ALTMODE_COMPARE,	/* Just compare */
+	ALTMODE_COPY,		/* Copy into rootfd */
+	ALTMODE_LINK,		/* Link into rootfd */
+};
 
 enum	uploadst {
 	UPLOAD_FIND_NEXT = 0, /* find next to upload to sender */
@@ -59,7 +66,7 @@ struct	upload {
 	int		    rootfd; /* destination directory */
 	size_t		    csumlen; /* checksum length */
 	int		    fdout; /* write descriptor to sender */
-	const struct flist *fl; /* file list */
+	struct flist	   *fl; /* file list */
 	size_t		    flsz; /* size of file list */
 	struct flist	   *dfl; /* delayed delete file list */
 	size_t		    dflsz; /* size of delayed delete list */
@@ -852,9 +859,14 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
  */
 static int
 check_file(int rootfd, const struct flist *f, struct stat *st,
-    struct sess *sess, const struct hardlinks *const hl)
+    struct sess *sess, const struct hardlinks *const hl,
+    bool is_partialdir)
 {
-	if (fstatat(rootfd, f->path, st, AT_SYMLINK_NOFOLLOW) == -1) {
+	const char *path = f->path;
+
+	if (is_partialdir)
+		path = download_partial_filepath(f);
+	if (fstatat(rootfd, path, st, AT_SYMLINK_NOFOLLOW) == -1) {
 		if (errno == ENOENT) {
 			if (sess->opts->ign_non_exist) {
 				LOG1("Skip non existing '%s'", f->path);
@@ -948,7 +960,8 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 static int
 pre_file_check_altdir(struct sess *sess, const struct upload *p,
     const char **matchdir, struct stat *st, const char *root,
-    const struct flist *f, const struct hardlinks *const hl, int rc)
+    const struct flist *f, const struct hardlinks *const hl, int rc,
+    int basemode, int *savedfd, bool is_partialdir)
 {
 	int dfd, x;
 
@@ -958,7 +971,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 			return 1;
 		err(ERR_FILE_IO, "%s: openat", root);
 	}
-	x = check_file(dfd, f, st, sess, hl);
+	x = check_file(dfd, f, st, sess, hl, is_partialdir);
 	/* found a match */
 	if (x == 0) {
 		if (rc >= 0) {
@@ -969,12 +982,17 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 				return -1;
 			}
 		}
-		/* TODO: implement --copy-dest */
-		if (sess->opts->alt_base_mode == BASE_MODE_LINK) {
+
+		switch (basemode) {
+		case BASE_MODE_COPY:
+			LOG3("%s: copying: up to date in %s",
+			    f->path, root);
+			copy_file(p->rootfd, root, f);
+			break;
+		case BASE_MODE_LINK:
 			LOG3("%s: hardlinking: up to date in %s",
 			    f->path, root);
-			if (linkat(dfd, f->path, p->rootfd,
-				f->path, 0) == -1) {
+			if (linkat(dfd, f->path, p->rootfd, f->path, 0) == -1) {
 				/*
 				 * GNU rsync falls back to copy here.
 				 * I think it is more correct to
@@ -984,17 +1002,22 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 				 */
 				ERR("hard link '%s/%s'", root, f->path);
 			}
-		} else {
-			LOG3("%s: skipping: up to date in %s", f->path,
-			    root);
+			break;
+		case BASE_MODE_COMPARE:
+		default:
+			LOG3("%s: skipping: up to date in %s", f->path, root);
+			break;
 		}
 		close(dfd);
 		return 0;
-	} else if (x == 1 && *matchdir == NULL) {
+	} else if ((x == 1 || x == 2) && *matchdir == NULL) {
 		/* found a local file that is a close match */
 		*matchdir = root;
 	}
-	close(dfd);
+	if (savedfd != NULL)
+		*savedfd = dfd;
+	else
+		close(dfd);
 	return 1;
 }
 
@@ -1008,10 +1031,11 @@ static int
 pre_file(const struct upload *p, int *filefd, off_t *size,
     struct sess *sess, const struct hardlinks *hl)
 {
-	const struct flist *f;
-	const char *matchdir = NULL;
+	struct flist *f;
+	const char *matchdir = NULL, *partialdir = NULL;
 	struct stat st;
-	int i, rc, ret;
+	size_t psize;
+	int i, pdfd = -1, rc, ret;
 
 	f = &p->fl[p->idx];
 	assert(S_ISREG(f->st.mode));
@@ -1042,7 +1066,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 	*size = 0;
 	*filefd = -1;
 
-	rc = check_file(p->rootfd, f, &st, sess, hl);
+	rc = check_file(p->rootfd, f, &st, sess, hl, false);
 	if (rc == -1)
 		return -1;
 	if (rc == 4)
@@ -1092,15 +1116,42 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 		}
 	}
 
-	/* check alternative locations for better match */
-	for (i = 0; sess->opts->basedir[i] != NULL; i++) {
-		ret = pre_file_check_altdir(sess, p, &matchdir,
-		    &st, sess->opts->basedir[i], f, hl, rc);
+	if (sess->opts->partial_dir != NULL) {
+		char partial_path[PATH_MAX];
+		const char *file_partial_dir;
+
+		file_partial_dir = download_partial_path(sess, f, partial_path,
+		    sizeof(partial_path));
+		ret = pre_file_check_altdir(sess, p, &partialdir,
+		    &st, file_partial_dir, f, hl, rc, BASE_MODE_COPY, &pdfd,
+		    true);
 
 		if (ret <= 0)
 			return ret;
+
+		if (partialdir != NULL) {
+			matchdir = partialdir;
+			psize = st.st_size;
+		}
 	}
-	if (matchdir != NULL) {
+
+	/* check alternative locations for better match */
+	for (i = 0; sess->opts->basedir[i] != NULL; i++) {
+		ret = pre_file_check_altdir(sess, p, &matchdir, &st,
+		    sess->opts->basedir[i], f, hl, rc,
+		    sess->opts->alt_base_mode, NULL, false);
+
+		if (ret <= 0) {
+			if (partialdir != NULL)
+				close(pdfd);
+			return ret;
+		}
+	}
+
+	/*
+	 * partialdir is a special case, we'll work on it from there.
+	 */
+	if (matchdir != NULL && partialdir == NULL) {
 		/* copy match from basedir into root as a start point */
 		copy_file(p->rootfd, matchdir, f);
 		if (fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW) ==
@@ -1110,8 +1161,18 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 		}
 	}
 
-	*size = st.st_size;
-	*filefd = openat(p->rootfd, f->path, O_RDONLY | O_NOFOLLOW);
+	if (partialdir != NULL) {
+
+		*size = psize;
+		*filefd = openat(pdfd, download_partial_filepath(f),
+		    O_RDONLY | O_NOFOLLOW);
+
+		if (*filefd >= 0)
+			f->pdfd = pdfd;
+	} else {
+		*size = st.st_size;
+		*filefd = openat(p->rootfd, f->path, O_RDONLY | O_NOFOLLOW);
+	}
 	if (*filefd == -1 && errno != ENOENT) {
 		ERR("%s: openat", f->path);
 		return -1;
@@ -1128,7 +1189,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
  */
 struct upload *
 upload_alloc(const char *root, int rootfd, int fdout,
-	size_t clen, const struct flist *fl, size_t flsz, mode_t msk)
+	size_t clen, struct flist *fl, size_t flsz, mode_t msk)
 {
 	struct upload	*p;
 

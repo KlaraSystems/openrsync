@@ -153,6 +153,7 @@ struct	flstat {
  */
 struct	flist {
 	char		*path; /* path relative to root */
+	int		 pdfd; /* dirfd for partial */
 	const char	*wpath; /* "working" path for receiver */
 	struct flstat	 st; /* file information */
 	char		*link; /* symlink target or NULL */
@@ -484,10 +485,13 @@ int	rsync_uploader_tail(struct upload *, struct sess *);
 struct download	*download_alloc(struct sess *, int, struct flist *, size_t,
 		    int);
 size_t		 download_needs_redo(struct download *);
+const char	*download_partial_path(struct sess *, const struct flist *,
+		    char *, size_t);
+const char	*download_partial_filepath(const struct flist *);
 void		 download_interrupted(struct sess *, struct download *);
 void		 download_free(struct sess *, struct download *);
 struct upload	*upload_alloc(const char *, int, int, size_t,
-		    const struct flist *, size_t, mode_t);
+		   struct flist *, size_t, mode_t);
 void		upload_next_phase(struct upload *);
 void		upload_free(struct upload *);
 int		upload_del(struct upload *, struct sess *);
