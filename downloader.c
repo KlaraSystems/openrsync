@@ -905,7 +905,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 	 */
 
 again:
-	progress(sess, p->fl[p->idx].st.size, p->downloaded);
+	progress(sess, p->fl[p->idx].st.size, p->total);
 
 	assert(p->state == DOWNLOAD_READ_REMOTE);
 	assert(p->fname != NULL);
