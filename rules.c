@@ -45,6 +45,21 @@ struct rule {
 	unsigned char		 leadingdir;
 };
 
+struct rule_match_ctx {
+	char		 abspath[PATH_MAX];
+	const char	*path;
+	const char	*basename;
+	int		 isdir;
+	int		 perishing;
+	enum fmode	 rulectx;
+};
+
+/*
+ * Return 0 to continue rule processing, -1 for exclude and 1 for include.
+ */
+typedef int (match_action_fn)(struct rule *, struct rule_match_ctx *);
+static match_action_fn rule_match_action_xfer;
+
 static const char builtin_cvsignore[] =
 	"RCS SCCS CVS CVS.adm RCSLOG cvslog.* tags "
 	"TAGS .make.state .nse_depinfo *~ #* .#* ,* "
@@ -821,12 +836,12 @@ recv_rules(struct sess *sess, int fd)
 	} while (1);
 }
 
-static inline int
+static inline match_action_fn *
 rule_actionable(const struct rule *r, enum fmode rulectx, int perishing)
 {
 
 	if ((r->modifiers & MOD_PERISHABLE) != 0 && perishing) {
-		return 0;
+		return NULL;
 	}
 
 	switch (r->type) {
@@ -836,24 +851,28 @@ rule_actionable(const struct rule *r, enum fmode rulectx, int perishing)
 			return 0;
 		/* FALLTHROUGH */
 	case RULE_INCLUDE:
-		return 1;
+		return &rule_match_action_xfer;
 	/* Sender side */
 	case RULE_HIDE:
 	case RULE_SHOW:
-		return rulectx == FARGS_SENDER;
+		if (rulectx == FARGS_SENDER)
+			return &rule_match_action_xfer;
+		break;
 	/* Receiver side */
 	case RULE_PROTECT:
 	case RULE_RISK:
-		return rulectx == FARGS_RECEIVER;
+		if (rulectx == FARGS_RECEIVER)
+			return &rule_match_action_xfer;
+		break;
 	/* Meta, never actionable */
 	case RULE_CLEAR:
 	case RULE_MERGE:
 	case RULE_DIR_MERGE:
 	default:
-		return 0;
+		break;
 	}
 
-	return 0;
+	return NULL;
 }
 
 static inline int
@@ -974,113 +993,138 @@ rules_base(const char *root)
 	}
 }
 
-int
-rules_match(const char *path, int isdir, enum fmode rulectx, int perishing)
+static int
+rule_match_action_xfer(struct rule *r, struct rule_match_ctx *ctx)
 {
-	char abspath[PATH_MAX];
-	const char *basename, *inpath = path, *p = NULL;
-	struct rule *r;
-	size_t i;
+	const char *p = NULL, *path = ctx->path;
 
-	assert(rule_base != NULL);
-	abspath[0] = '\0';
+	if ((r->modifiers & MOD_ABSOLUTE) != 0) {
+		if (ctx->abspath[0] == '\0')
+			rule_abspath(path, ctx->abspath, sizeof(ctx->abspath));
 
-	basename = strrchr(path, '/');
-	if (basename != NULL)
-		basename += 1;
-	else
-		basename = path;
+		path = ctx->abspath;
+	}
 
-	for (i = 0; i < numrules; i++) {
-		r = &rules[i];
+	if (r->nowild) {
+		/* fileonly and anchored are mutually exclusive */
+		if (r->fileonly) {
+			if (rule_pattern_matched(r, ctx->basename))
+				return rule_matched(r);
+		} else if (r->anchored) {
+			/*
+			 * assumes that neither path nor pattern
+			 * start with a '/'.
+			 */
+			if (rule_pattern_matched(r, path))
+				return rule_matched(r);
+		} else if (r->leadingdir) {
+			size_t plen = strlen(r->pattern);
 
-		if (r->onlydir && !isdir)
-			continue;
-
-		/* Rule out merge rules and other meta-actions. */
-		if (!rule_actionable(r, rulectx, perishing))
-			continue;
-
-		if ((r->modifiers & MOD_ABSOLUTE) != 0) {
-			if (abspath[0] == '\0')
-				rule_abspath(path, abspath, sizeof(abspath));
-
-			path = abspath;
+			p = strstr(path, r->pattern);
+			/*
+			 * match from start or dir boundary also
+			 * match to end or to dir boundary
+			 */
+			if (p != NULL && (p == path || p[-1] == '/') &&
+			    (p[plen] == '\0' || p[plen] == '/'))
+				return rule_matched(r);
 		} else {
-			path = inpath;
+			size_t len = strlen(path);
+			size_t plen = strlen(r->pattern);
+
+			if (len >= plen && rule_pattern_matched(r,
+			    path + len - plen)) {
+				/* match all or start on dir boundary */
+				if (len == plen ||
+				    path[len - plen - 1] == '/')
+					return rule_matched(r);
+			}
+		}
+	} else {
+		if (r->fileonly) {
+			p = ctx->basename;
+		} else if (r->anchored || r->numseg == -1) {
+			/* full path matching */
+			p = path;
+		} else {
+			short nseg = 1;
+
+			/* match against the last numseg elements */
+			for (p = path; *p != '\0'; p++)
+				if (*p == '/')
+					nseg++;
+			if (nseg < r->numseg) {
+				p = NULL;
+			} else {
+				nseg -= r->numseg;
+				for (p = path; *p != '\0' && nseg > 0;
+				    p++) {
+					if (*p == '/')
+						nseg--;
+				}
+			}
 		}
 
-		if (r->nowild) {
-			/* fileonly and anchored are mutually exclusive */
-			if (r->fileonly) {
-				if (rule_pattern_matched(r, basename))
-					return rule_matched(r);
-			} else if (r->anchored) {
-				/*
-				 * assumes that neither path nor pattern
-				 * start with a '/'.
-				 */
-				if (rule_pattern_matched(r, path))
-					return rule_matched(r);
-			} else if (r->leadingdir) {
-				size_t plen = strlen(r->pattern);
+		if (p != NULL) {
+			bool matched, negate;
 
-				p = strstr(path, r->pattern);
-				/*
-				 * match from start or dir boundary also
-				 * match to end or to dir boundary
-				 */
-				if (p != NULL && (p == path || p[-1] == '/') &&
-				    (p[plen] == '\0' || p[plen] == '/'))
-					return rule_matched(r);
-			} else {
-				size_t len = strlen(path);
-				size_t plen = strlen(r->pattern);
-
-				if (len >= plen && rule_pattern_matched(r,
-				    path + len - plen)) {
-					/* match all or start on dir boundary */
-					if (len == plen ||
-					    path[len - plen - 1] == '/')
-						return rule_matched(r);
-				}
-			}
-		} else {
-			if (r->fileonly) {
-				p = basename;
-			} else if (r->anchored || r->numseg == -1) {
-				/* full path matching */
-				p = path;
-			} else {
-				short nseg = 1;
-
-				/* match against the last numseg elements */
-				for (p = path; *p != '\0'; p++)
-					if (*p == '/')
-						nseg++;
-				if (nseg < r->numseg) {
-					p = NULL;
-				} else {
-					nseg -= r->numseg;
-					for (p = path; *p != '\0' && nseg > 0;
-					    p++) {
-						if (*p == '/')
-							nseg--;
-					}
-				}
-			}
-
-			if (p != NULL) {
-				bool matched, negate;
-
-				negate = (r->modifiers & MOD_NEGATE) != 0;
-				matched =  rmatch(r->pattern, p,
-				    r->leadingdir) == 0;
-				if (matched != negate)
-					return rule_matched(r);
-			}
+			negate = (r->modifiers & MOD_NEGATE) != 0;
+			matched =  rmatch(r->pattern, p,
+			    r->leadingdir) == 0;
+			if (matched != negate)
+				return rule_matched(r);
 		}
 	}
 
 	return 0;
 }
+
+static int
+rule_match_impl(struct rule *prules, size_t nrules, struct rule_match_ctx *ctx)
+{
+	struct rule *r;
+	match_action_fn *hdl;
+	size_t i;
+	int ret;
+
+	for (i = 0; i < nrules; i++) {
+		r = &prules[i];
+
+		if (r->onlydir && !ctx->isdir)
+			continue;
+
+		/* Rule out merge rules and other meta-actions. */
+		hdl = rule_actionable(r, ctx->rulectx, ctx->perishing);
+		if (hdl == NULL)
+			continue;
+
+		ret = (*hdl)(r, ctx);
+		if (ret != 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+int
+rules_match(const char *path, int isdir, enum fmode rulectx, int perishing)
+{
+	struct rule_match_ctx ctx;
+
+	assert(rule_base != NULL);
+
+	ctx.abspath[0] = '\0';
+	ctx.path = path;
+	ctx.isdir = isdir;
+	ctx.perishing = perishing;
+	ctx.rulectx = rulectx;
+
+	ctx.basename = strrchr(path, '/');
+	if (ctx.basename != NULL)
+		ctx.basename += 1;
+	else
+		ctx.basename = path;
+
+	return rule_match_impl(rules, numrules, &ctx);
+}
+
