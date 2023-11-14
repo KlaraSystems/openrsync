@@ -16,6 +16,9 @@
 #include "config.h"
 
 #include <sys/param.h>
+#if HAVE_SYS_QUEUE
+# include <sys/queue.h>
+#endif
 
 #include <assert.h>
 #include <ctype.h>
@@ -40,7 +43,17 @@ struct ruleset {
 	size_t		 rulesz;	/* available size */
 };
 
+struct merge_rule {
+	TAILQ_ENTRY(merge_rule)		 entries;
+	struct rule			*parent_rule;
+	struct ruleset			*ruleset;
+	bool				 inherited;
+};
+
+TAILQ_HEAD(merge_ruleq, merge_rule);
+
 struct rule {
+	struct merge_ruleq	 merge_rule_chain;
 	char			*pattern;
 	enum rule_type		 type;
 	unsigned int		 omodifiers;
@@ -67,6 +80,7 @@ struct rule_match_ctx {
  */
 typedef int (match_action_fn)(struct rule *, struct rule_match_ctx *);
 static match_action_fn rule_match_action_xfer;
+static match_action_fn rule_match_action_merge;
 
 static const char builtin_cvsignore[] =
 	"RCS SCCS CVS CVS.adm RCSLOG cvslog.* tags "
@@ -83,6 +97,7 @@ static struct ruleset	 global_ruleset;
 
 static void parse_file_impl(const char *, enum rule_type, unsigned int, bool);
 static int parse_rule_impl(const char *, enum rule_type, unsigned int);
+static int rule_match_impl(struct ruleset *, struct rule_match_ctx *);
 
 /* up to protocol 29 filter rules only support - + ! and no modifiers */
 
@@ -569,6 +584,7 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 		}
 
 		r = get_next_rule(&global_ruleset);
+		TAILQ_INIT(&r->merge_rule_chain);
 		r->type = type;
 		r->omodifiers = r->modifiers = modifiers;
 		if (type == RULE_MERGE || type == RULE_DIR_MERGE)
@@ -998,6 +1014,34 @@ rules_base(const char *root)
 		errno = ENAMETOOLONG;
 		err(ERR_FILEGEN, "strlcat");
 	}
+}
+
+static int
+rule_match_action_merge(struct rule *r, struct rule_match_ctx *ctx)
+{
+	struct merge_rule *mrule;
+	int ret;
+
+	/*
+	 * We may have simply not encountered any of the relevant files yet,
+	 * in which case we're just a NOP.
+	 */
+	ret = 0;
+	TAILQ_FOREACH(mrule, &r->merge_rule_chain, entries) {
+		/*
+		 * Each entry in the current chain represents a directory in the
+		 * current hierarchy, so noinherit is honored for every element
+		 * except for the last one.
+		 */
+		if (!mrule->inherited && TAILQ_NEXT(mrule, entries) != NULL)
+			continue;
+
+		ret = rule_match_impl(mrule->ruleset, ctx);
+		if (ret != 0)
+			return ret;
+	}
+
+	return 0;
 }
 
 static int
