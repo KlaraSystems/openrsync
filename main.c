@@ -799,9 +799,10 @@ basedir:
 	if (rc == 0) {
 		if (WIFEXITED(st))
 			rc = WEXITSTATUS(st);
-		else if (WIFSIGNALED(st))
-			rc = ERR_TERMIMATED;
-		else
+		else if (WIFSIGNALED(st)) {
+			if (WTERMSIG(st) != SIGUSR2)
+				rc = ERR_TERMIMATED;
+		} else
 			rc = ERR_WAITPID;
 	}
 
