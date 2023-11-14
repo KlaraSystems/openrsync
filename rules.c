@@ -32,6 +32,14 @@
 
 #include "extern.h"
 
+struct rule;
+
+struct ruleset {
+	struct rule	*rules;
+	size_t		 numrules;	/* number of rules */
+	size_t		 rulesz;	/* available size */
+};
+
 struct rule {
 	char			*pattern;
 	enum rule_type		 type;
@@ -71,9 +79,7 @@ static const char builtin_cvsignore[] =
 static char		 rule_base[MAXPATHLEN];
 static char		*rule_base_cwdend;
 
-static struct rule	*rules;
-static size_t		 numrules;	/* number of rules */
-static size_t		 rulesz;	/* available size */
+static struct ruleset	 global_ruleset;
 
 static void parse_file_impl(const char *, enum rule_type, unsigned int, bool);
 static int parse_rule_impl(const char *, enum rule_type, unsigned int);
@@ -142,26 +148,27 @@ const struct modifier {
 };
 
 static struct rule *
-get_next_rule(void)
+get_next_rule(struct ruleset *ruleset)
 {
 	struct rule *new;
 	size_t newsz;
 
-	if (++numrules > rulesz) {
-		if (rulesz == 0)
+	if (++ruleset->numrules > ruleset->rulesz) {
+		if (ruleset->rulesz == 0)
 			newsz = 16;
 		else
-			newsz = rulesz * 2;
+			newsz = ruleset->rulesz * 2;
 
-		new = recallocarray(rules, rulesz, newsz, sizeof(*rules));
+		new = recallocarray(ruleset->rules, ruleset->rulesz, newsz,
+		    sizeof(*ruleset->rules));
 		if (new == NULL)
 			err(ERR_NOMEM, NULL);
 
-		rules = new;
-		rulesz = newsz;
+		ruleset->rules = new;
+		ruleset->rulesz = newsz;
 	}
 
-	return rules + numrules - 1;
+	return ruleset->rules + ruleset->numrules - 1;
 }
 
 static unsigned int
@@ -561,7 +568,7 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 			break;
 		}
 
-		r = get_next_rule();
+		r = get_next_rule(&global_ruleset);
 		r->type = type;
 		r->omodifiers = r->modifiers = modifiers;
 		if (type == RULE_MERGE || type == RULE_DIR_MERGE)
@@ -750,8 +757,8 @@ send_rules(struct sess *sess, int fd)
 	struct rule *r;
 	size_t cmdlen, len, postlen, i;
 
-	for (i = 0; i < numrules; i++) {
-		r = &rules[i];
+	for (i = 0; i < global_ruleset.numrules; i++) {
+		r = &global_ruleset.rules[i];
 
 		if (!rule_should_xfer(sess, r))
 			continue;
@@ -1080,15 +1087,15 @@ rule_match_action_xfer(struct rule *r, struct rule_match_ctx *ctx)
 }
 
 static int
-rule_match_impl(struct rule *prules, size_t nrules, struct rule_match_ctx *ctx)
+rule_match_impl(struct ruleset *ruleset, struct rule_match_ctx *ctx)
 {
 	struct rule *r;
 	match_action_fn *hdl;
 	size_t i;
 	int ret;
 
-	for (i = 0; i < nrules; i++) {
-		r = &prules[i];
+	for (i = 0; i < ruleset->numrules; i++) {
+		r = &ruleset->rules[i];
 
 		if (r->onlydir && !ctx->isdir)
 			continue;
@@ -1125,6 +1132,6 @@ rules_match(const char *path, int isdir, enum fmode rulectx, int perishing)
 	else
 		ctx.basename = path;
 
-	return rule_match_impl(rules, numrules, &ctx);
+	return rule_match_impl(&global_ruleset, &ctx);
 }
 
