@@ -1131,18 +1131,24 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 	 */
 
 	if ((fts = fts_open(cargv,
-		    sess->opts->copy_links ? FTS_LOGICAL: FTS_PHYSICAL, 
-		    NULL)) == NULL) {
+		    sess->opts->copy_links ? FTS_LOGICAL: FTS_PHYSICAL |
+		    FTS_NOCHDIR, NULL)) == NULL) {
 		ERR("fts_open");
 		return 0;
 	}
 
 	errno = 0;
 	while ((ent = fts_read(fts)) != NULL) {
+		if (ent->fts_info == FTS_DP)
+			rules_dir_pop(ent->fts_path, stripdir);
+
 		if (!flist_fts_check(sess, ent, FARGS_SENDER)) {
 			errno = 0;
 			continue;
 		}
+
+		if (ent->fts_info == FTS_D)
+			rules_dir_push(ent->fts_path, stripdir);
 
 		/* We don't allow symlinks without -l. */
 

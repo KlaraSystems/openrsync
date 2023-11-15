@@ -19,6 +19,7 @@
 #if HAVE_SYS_QUEUE
 # include <sys/queue.h>
 #endif
+#include <sys/stat.h>
 
 #include <assert.h>
 #include <ctype.h>
@@ -26,6 +27,7 @@
 # include <err.h>
 #endif
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -38,15 +40,21 @@
 struct rule;
 
 struct ruleset {
+	struct ruleset	*parent_set;
 	struct rule	*rules;
 	size_t		 numrules;	/* number of rules */
 	size_t		 rulesz;	/* available size */
+#ifndef NDEBUG
+	size_t		 numdrules;	/* number of dir-merge rules */
+#endif
 };
 
 struct merge_rule {
 	TAILQ_ENTRY(merge_rule)		 entries;
 	struct rule			*parent_rule;
 	struct ruleset			*ruleset;
+	const char			*path;
+	size_t				 depth;
 	bool				 inherited;
 };
 
@@ -75,6 +83,14 @@ struct rule_match_ctx {
 	enum fmode	 rulectx;
 };
 
+enum rule_iter_action {
+	RULE_ITER_HALT,		/* Halt iteration entirely. */
+	RULE_ITER_SKIP,		/* Skip further processing of this rule. */
+	RULE_ITER_CONTINUE,	/* Contine as normal. */
+};
+typedef enum rule_iter_action (rule_dir_iter_fn)(struct ruleset *,
+    struct rule *, const char *, void *);
+
 /*
  * Return 0 to continue rule processing, -1 for exclude and 1 for include.
  */
@@ -95,8 +111,12 @@ static char		*rule_base_cwdend;
 
 static struct ruleset	 global_ruleset;
 
-static void parse_file_impl(const char *, enum rule_type, unsigned int, bool);
-static int parse_rule_impl(const char *, enum rule_type, unsigned int);
+static size_t		 rule_dir_depth;
+
+static void parse_file_impl(struct ruleset *, const char *, enum rule_type,
+    unsigned int, bool);
+static int parse_rule_impl(struct ruleset *, const char *, enum rule_type,
+    unsigned int);
 static int rule_match_impl(struct ruleset *, struct rule_match_ctx *);
 
 /* up to protocol 29 filter rules only support - + ! and no modifiers */
@@ -438,7 +458,7 @@ add_cvsignore_rules(void)
 
 	/* XXX shouldn't transfer any of these? */
 	/* First we add the internal cvsignore rules. */
-	ret = parse_rule_impl(builtin_cvsignore, RULE_EXCLUDE,
+	ret = parse_rule_impl(&global_ruleset, builtin_cvsignore, RULE_EXCLUDE,
 	    MOD_MERGE_WORDSPLIT);
 	if (ret == -1)
 		return ret;
@@ -448,15 +468,15 @@ add_cvsignore_rules(void)
 	if (home != NULL && *home != '\0') {
 		if (snprintf(home_cvsignore, sizeof(home_cvsignore),
 		    "%s/.cvsignore", home) < (int)sizeof(home_cvsignore)) {
-			parse_file_impl(home_cvsignore, RULE_EXCLUDE,
-			    MOD_MERGE_WORDSPLIT, false);
+			parse_file_impl(&global_ruleset, home_cvsignore,
+			    RULE_EXCLUDE, MOD_MERGE_WORDSPLIT, false);
 		}
 	}
 
 	/* Finally, we process the CVSIGNORE environment var for more files. */
 	cvsignore = getenv("CVSIGNORE");
 	if (cvsignore != NULL && *cvsignore != '\0') {
-		ret = parse_rule_impl(cvsignore, RULE_EXCLUDE,
+		ret = parse_rule_impl(&global_ruleset, cvsignore, RULE_EXCLUDE,
 		    MOD_MERGE_WORDSPLIT);
 	}
 
@@ -464,12 +484,83 @@ add_cvsignore_rules(void)
 	return ret;
 }
 
+static void
+ruleset_add_merge(struct ruleset *ruleset)
+{
+#ifndef NDEBUG
+	struct ruleset *rs = ruleset;
+
+	do {
+		rs->numdrules++;
+	} while ((rs = rs->parent_set) != NULL);
+#endif
+}
+
+static void
+ruleset_remove_merge(struct ruleset *ruleset)
+{
+#ifndef NDEBUG
+	struct ruleset *rs = ruleset;
+
+	do {
+		assert(rs->numdrules != 0);
+		rs->numdrules--;
+	} while ((rs = rs->parent_set) != NULL);
+#endif
+}
+
+static void
+ruleset_free(struct ruleset *ruleset)
+{
+	struct rule *r;
+	size_t i;
+
+	for (i = 0; i < ruleset->numrules; i++) {
+		r = &ruleset->rules[i];
+
+		if (r->type == RULE_DIR_MERGE) {
+			assert(ruleset->numdrules > 0);
+			assert(ruleset->parent_set->numdrules > 0);
+
+			/*
+			 * We should only be attempting to remove a dir-merge
+			 * rule if it doesn't have any active directories left.
+			 */
+			assert(TAILQ_EMPTY(&r->merge_rule_chain));
+
+			ruleset_remove_merge(ruleset);
+		}
+
+		free(r->pattern);
+	}
+
+	assert(ruleset->numdrules == 0);
+	free(ruleset->rules);
+	free(ruleset);
+}
+
+
+static void
+ruleset_do_merge(struct ruleset *ruleset, const char *path, int modifiers)
+{
+	enum rule_type def;
+
+	if ((modifiers & MOD_MERGE_EXCLUDE) != 0)
+		def = RULE_EXCLUDE;
+	else if ((modifiers & MOD_MERGE_INCLUDE) != 0)
+		def = RULE_INCLUDE;
+	else
+		def = RULE_NONE;
+
+	parse_file_impl(ruleset, path, def, modifiers, true);
+}
 
 /*
  * Parses the line for a rule with consideration for the inherited modifiers.
  */
 static int
-parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
+parse_rule_impl(struct ruleset *ruleset, const char *line, enum rule_type def,
+    unsigned int imodifiers)
 {
 	enum rule_type type;
 	struct rule *r;
@@ -583,7 +674,7 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 			break;
 		}
 
-		r = get_next_rule(&global_ruleset);
+		r = get_next_rule(ruleset);
 		TAILQ_INIT(&r->merge_rule_chain);
 		r->type = type;
 		r->omodifiers = r->modifiers = modifiers;
@@ -592,22 +683,17 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 		parse_pattern(r, pattern);
 		if (type == RULE_MERGE || type == RULE_DIR_MERGE) {
 			if ((modifiers & MOD_MERGE_EXCLUDE_FILE) != 0) {
-				if (parse_rule_impl(r->pattern, RULE_EXCLUDE,
-				    0) == -1) {
+				if (parse_rule_impl(ruleset, r->pattern,
+				    RULE_EXCLUDE, 0) == -1) {
 					return -1;
 				}
 			}
 		}
 
 		if (type == RULE_MERGE) {
-			if ((modifiers & MOD_MERGE_EXCLUDE) != 0)
-				def = RULE_EXCLUDE;
-			else if ((modifiers & MOD_MERGE_INCLUDE) != 0)
-				def = RULE_INCLUDE;
-			else
-				def = RULE_NONE;
-
-			parse_file_impl(pattern, def, modifiers, true);
+			ruleset_do_merge(ruleset, r->pattern, modifiers);
+		} else if (type == RULE_DIR_MERGE) {
+			ruleset_add_merge(ruleset);
 		} else if ((modifiers & MOD_CVSEXCLUDE) != 0) {
 			add_cvsignore_rules();
 		}
@@ -621,12 +707,12 @@ parse_rule_impl(const char *line, enum rule_type def, unsigned int imodifiers)
 int
 parse_rule(const char *line, enum rule_type def)
 {
-	return parse_rule_impl(line, def, 0);
+	return parse_rule_impl(&global_ruleset, line, def, 0);
 }
 
 static void
-parse_file_impl(const char *file, enum rule_type def, unsigned int imodifiers,
-    bool must_exist)
+parse_file_impl(struct ruleset *ruleset, const char *file, enum rule_type def,
+    unsigned int imodifiers, bool must_exist)
 {
 	FILE *fp;
 	char *line = NULL;
@@ -642,7 +728,7 @@ parse_file_impl(const char *file, enum rule_type def, unsigned int imodifiers,
 	while ((linelen = getline(&line, &linesize, fp)) != -1) {
 		linenum++;
 		line[linelen - 1] = '\0';
-		if (parse_rule_impl(line, def, imodifiers) == -1)
+		if (parse_rule_impl(ruleset, line, def, imodifiers) == -1)
 			errx(ERR_SYNTAX, "syntax error in %s at entry %zu",
 			    file, linenum);
 	}
@@ -657,7 +743,7 @@ void
 parse_file(const char *file, enum rule_type def)
 {
 
-	parse_file_impl(file, def, 0, true);
+	parse_file_impl(&global_ruleset, file, def, 0, true);
 }
 
 static const char *
@@ -1028,12 +1114,7 @@ rule_match_action_merge(struct rule *r, struct rule_match_ctx *ctx)
 	 */
 	ret = 0;
 	TAILQ_FOREACH(mrule, &r->merge_rule_chain, entries) {
-		/*
-		 * Each entry in the current chain represents a directory in the
-		 * current hierarchy, so noinherit is honored for every element
-		 * except for the last one.
-		 */
-		if (!mrule->inherited && TAILQ_NEXT(mrule, entries) != NULL)
+		if (!mrule->inherited && rule_dir_depth > mrule->depth)
 			continue;
 
 		ret = rule_match_impl(mrule->ruleset, ctx);
@@ -1048,6 +1129,9 @@ static int
 rule_match_action_xfer(struct rule *r, struct rule_match_ctx *ctx)
 {
 	const char *p = NULL, *path = ctx->path;
+
+	if (r->onlydir && !ctx->isdir)
+		return 0;
 
 	if ((r->modifiers & MOD_ABSOLUTE) != 0) {
 		if (ctx->abspath[0] == '\0')
@@ -1141,9 +1225,6 @@ rule_match_impl(struct ruleset *ruleset, struct rule_match_ctx *ctx)
 	for (i = 0; i < ruleset->numrules; i++) {
 		r = &ruleset->rules[i];
 
-		if (r->onlydir && !ctx->isdir)
-			continue;
-
 		/* Rule out merge rules and other meta-actions. */
 		hdl = rule_actionable(r, ctx->rulectx, ctx->perishing);
 		if (hdl == NULL)
@@ -1155,6 +1236,167 @@ rule_match_impl(struct ruleset *ruleset, struct rule_match_ctx *ctx)
 	}
 
 	return 0;
+}
+
+/*
+ * Calls iter_fn on each dir-merge rule that it comes across.  This notably will
+ * pick up any new dir-merge rules that get processed in the current directory
+ * and issue the callback for it.
+ *
+ * Popping a directory will want to call the iterator in post-order so that any
+ * dir-merge rules nested inside get freed first.
+ */
+static int
+rule_dir_iter(struct ruleset *ruleset, const char *path, int postcall,
+    rule_dir_iter_fn *iter_fn, void *cookie)
+{
+	struct merge_rule *mrule;
+	struct rule *r;
+	size_t i;
+	enum rule_iter_action ract;
+	int ret = 0;
+
+	/*
+	 * No need to traverse any of this if we already know there's nothing
+	 * to discover.
+	 */
+	if (ruleset->numdrules == 0)
+		return 1;
+
+	for (i = 0; i < ruleset->numrules; i++) {
+		r = &ruleset->rules[i];
+
+		if (r->type != RULE_DIR_MERGE)
+			continue;
+
+		/*
+		 * See if we have a dir-merge file to pick up from this one.
+		 */
+		ract = RULE_ITER_CONTINUE;
+		if (!postcall)
+			ract = (*iter_fn)(ruleset, r, path, cookie);
+		if (ract == RULE_ITER_HALT)
+			return 0;
+		else if (ract == RULE_ITER_SKIP)
+			continue;
+
+		TAILQ_FOREACH(mrule, &r->merge_rule_chain, entries) {
+			if (!mrule->inherited && rule_dir_depth > mrule->depth)
+				continue;
+
+			ret = rule_dir_iter(mrule->ruleset, path, postcall,
+			    iter_fn, cookie);
+			if (!ret)
+				return ret;
+		}
+
+		if (postcall) {
+			ract = (*iter_fn)(ruleset, r, path, cookie);
+			assert(ract != RULE_ITER_SKIP);
+			if (ract == RULE_ITER_HALT)
+				return 0;
+		}
+	}
+
+	return 1;
+}
+
+static enum rule_iter_action
+rule_dir_push(struct ruleset *parent, struct rule *r, const char *path,
+    void *cookie)
+{
+	char mfile[PATH_MAX];
+	struct stat st;
+	struct merge_rule *mrule;
+	size_t stripdir = *(size_t *)cookie;
+
+	/* Not worried about truncation; stat() will fail. */
+	(void) snprintf(mfile, sizeof(mfile), "%s/%s", path, r->pattern);
+
+	if (stat(mfile, &st) == -1) {
+		if (errno != ENOENT)
+			err(ERR_FILEGEN, "stat");
+		return RULE_ITER_CONTINUE;
+	}
+
+	/*
+	 * We have a file, now we need to allocate and populate a new
+	 * merge_rule.
+	 */
+	mrule = calloc(1, sizeof(*mrule));
+	if (mrule == NULL)
+		err(ERR_NOMEM, "calloc");
+
+	mrule->ruleset = calloc(1, sizeof(*mrule->ruleset));
+	if (mrule->ruleset == NULL)
+		err(ERR_NOMEM, "calloc");
+
+	mrule->path = strdup(path + stripdir);
+	if (mrule->path == NULL)
+		err(ERR_NOMEM, "strdup");
+
+	mrule->ruleset->parent_set = parent;
+	mrule->parent_rule = r;
+	mrule->inherited = (r->modifiers & MOD_MERGE_NO_INHERIT) == 0;
+	mrule->depth = rule_dir_depth;
+
+	TAILQ_INSERT_HEAD(&r->merge_rule_chain, mrule, entries);
+
+	ruleset_do_merge(mrule->ruleset, mfile, r->modifiers & MOD_MERGE_MASK);
+
+	return RULE_ITER_CONTINUE;
+}
+
+void
+rules_dir_push(const char *path, size_t stripdir)
+{
+
+	rule_dir_depth++;
+	(void)rule_dir_iter(&global_ruleset, path, 0, &rule_dir_push,
+	    &stripdir);
+}
+
+static void
+rule_dir_free(struct rule *r, struct merge_rule *mrule)
+{
+
+	TAILQ_REMOVE(&r->merge_rule_chain, mrule, entries);
+	ruleset_free(mrule->ruleset);
+	free((char *)mrule->path);
+	free(mrule);
+}
+
+static enum rule_iter_action
+rule_dir_pop(struct ruleset *ruleset, struct rule *r, const char *path,
+    void *cookie)
+{
+	struct merge_rule *mrule;
+
+	mrule = TAILQ_FIRST(&r->merge_rule_chain);
+	if (mrule == NULL)
+		return RULE_ITER_CONTINUE;
+
+	if (strcmp(mrule->path, path) == 0)
+		rule_dir_free(r, mrule);
+
+	/*
+	 * If there's a rule earlier in the chain, then we messed up somewhere
+	 * along the line.
+	 */
+	TAILQ_FOREACH(mrule, &r->merge_rule_chain, entries) {
+		assert(strcmp(mrule->path, path) != 0);
+	}
+
+	return RULE_ITER_CONTINUE;
+}
+
+void
+rules_dir_pop(const char *path, size_t stripdir)
+{
+
+	(void)rule_dir_iter(&global_ruleset, path + stripdir, 1,
+	    &rule_dir_pop, NULL);
+	rule_dir_depth--;
 }
 
 int
