@@ -1,0 +1,14 @@
+build_task:
+  matrix:
+    - name: FreeBSD 12
+      freebsd_instance:
+        image: freebsd-12-4-release-amd64
+    - name: FreeBSD 13
+      freebsd_instance:
+        image: freebsd-13-2-release-amd64
+  configure_script:
+    env CFLAGS="-Werror" ./configure
+  build_script:
+    make
+  smoketest_script:
+    sh .github/smoke-test.sh
