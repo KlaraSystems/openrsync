@@ -43,7 +43,7 @@
 /*
  * We allocate our file list in chunk sizes so as not to do it one by
  * one.
- * Preferrably we get one or two allocation.
+ * Preferably we get one or two allocation.
  */
 #define	FLIST_CHUNK_SIZE (1024)
 
