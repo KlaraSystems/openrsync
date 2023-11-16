@@ -1,4 +1,4 @@
-/*	$Id$ */
+/*	$OpenBSD: extern.h,v 1.45 2023/04/28 10:24:38 claudio Exp $ */
 /*
  * Copyright (c) 2019 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -77,6 +77,11 @@
 extern int poll_timeout;
 
 /*
+ * Use this for --contimeout.
+ */
+extern int poll_contimeout;
+
+/*
  * Operating mode for a client or a server.
  * Sender means we synchronise local files with those from remote.
  * Receiver is the opposite.
@@ -147,6 +152,8 @@ struct	opts {
 	int		 no_motd;		/* --no-motd */
 	int		 numeric_ids;		/* --numeric-ids */
 	int		 one_file_system;	/* -x */
+	int		 ignore_times;		/* -I */
+	int		 size_only;		/* --size-only */
 	int		 alt_base_mode;
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */

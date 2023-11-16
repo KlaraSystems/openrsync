@@ -21,10 +21,11 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl aDglnoprtvx
+.Op Fl aDgIlnoprtVvx
 .Op Fl e Ar program
 .Op Fl -address Ns = Ns Ar sourceaddr
 .Op Fl -compare-dest Ns = Ns Ar directory
+.Op Fl -contimeout Ns = Ns Ar seconds
 .Op Fl -del
 .Op Fl -exclude Ar pattern
 .Op Fl -exclude-from Ns = Ns Ar file
@@ -36,8 +37,8 @@
 .Op Fl -numeric-ids
 .Op Fl -port Ns = Ns Ar service
 .Op Fl -rsync-path Ns = Ns Ar program
+.Op Fl -size-only
 .Op Fl -timeout Ns = Ns Ar seconds
-.Op Fl -version
 .Ar source ...
 .Ar directory
 .Sh DESCRIPTION
@@ -76,6 +77,10 @@ directories may be provided.
 If
 .Ar directory
 is a relative path, it is relative to the destination directory.
+.It Fl -contimeout Ns = Ns Ar seconds
+Set the connection timeout in seconds.
+Exit if no connection established within the specified time.
+The default is 0, which means no timeout.
 .It Fl D
 Also transfer device and special files.
 Shorthand for
@@ -88,6 +93,9 @@ not found in
 directories.
 Only applicable with
 .Fl r .
+.It Fl e Ar program , Fl -rsh Ns = Ns Ar program
+Specify alternative communication program, defaults to
+.Xr ssh 1 .
 .It Fl -exclude Ar pattern
 Exclude files matching
 .Em pattern .
@@ -98,21 +106,8 @@ and
 .Em rules
 from
 .Em file .
-.It Fl -include Ar pattern
-Include files matching
-.Em pattern .
-.It Fl -include-from Ns = Ns Ar file
-Load
-.Em patterns
-and
-.Em rules
-from
-.Em file .
 .It Fl -devices
 Also transfer device files.
-.It Fl e Ar program , Fl -rsh Ns = Ns Ar program
-Specify alternative communication program, defaults to
-.Xr ssh 1 .
 .It Fl g , -group
 Set the group name to match the source.
 For example, group
@@ -124,6 +119,18 @@ If
 .Fl -numeric-ids
 is also given or if the remote group name is unknown on the local machine,
 set the numeric group ID to match the source instead.
+.It Fl I , -ignore-times
+Do not skip based on file size and modification time.
+.It Fl -include Ar pattern
+Include files matching
+.Em pattern .
+.It Fl -include-from Ns = Ns Ar file
+Load
+.Em patterns
+and
+.Em rules
+from
+.Em file .
 .It Fl l , -links
 Also transfer symbolic links.
 The link is transferred as a standalone file: if the destination does
@@ -197,6 +204,8 @@ Run
 .Ar program
 on the remote host instead of the default
 .Pa rsync .
+.It Fl -size-only
+Skip files based only on size, don't check timestamp.
 .It Fl -specials
 Also transfer fifo and unix domain socket files.
 .It Fl -timeout Ns = Ns Ar seconds
@@ -206,6 +215,8 @@ The default is 0, which means no timeout.
 .It Fl t , -times
 Set destination file and directory modification time to match the source
 when it is updated or created.
+.It Fl V , -version
+Print version and exit.
 .It Fl v , -verbose
 Increase verbosity.
 Specify once for files being transferred, twice for specific status,
@@ -216,8 +227,6 @@ Do not cross filesystem boundaries.
 If this option is repeated, all mount point directories from the copy are
 omitted.
 Otherwise, it includes an empty directory at each mount point it encounters.
-.It Fl -version
-Print version and exit.
 .El
 .Pp
 A remote

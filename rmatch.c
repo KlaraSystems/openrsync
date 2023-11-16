@@ -12,7 +12,7 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- */
+/*	$OpenBSD: rmatch.c,v 1.3 2022/12/26 19:16:02 jmc Exp $	*/
 
 /*
  * Copyright (c) 1989, 1993, 1994
@@ -126,7 +126,7 @@ rangematch(const char **pp, char test)
 			case RANGE_NOMATCH:
 				continue;
 			default:
-				/* invalid character class, treat litterally. */
+				/* invalid character class, treat literally. */
 				break;
 			}
 		}
@@ -156,7 +156,7 @@ rangematch(const char **pp, char test)
 
 /*
  * Single character match, advances pattern as much as needed.
- * Return 0 on match and !0 (aka 1) on missmatch.
+ * Return 0 on match and !0 (aka 1) on mismatch.
  * When matched pp is advanced to the end of the pattern matched.
  */
 static int

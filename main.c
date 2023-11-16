@@ -39,6 +39,7 @@
 #include "extern.h"
 
 int verbose;
+int poll_contimeout;
 int poll_timeout;
 
 /*
@@ -238,24 +239,21 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 		j = strlen(cp);
 		if (f->remote &&
 		    strncasecmp(cp, "rsync://", 8) == 0) {
-			/* rsync://path */
+			/* rsync://host[:port]/path */
+			size_t module_offset = len;
 			cp += 8;
-			
-			/* 
-			 * FIXME: broken.
-			 * URIs can allow colons too.
-			 * Fix this after merge.
-			 */
-
-			if ((ccp = strchr(cp, ':')) != NULL) /* skip :port */
+			/* skip :port */
+			if ((ccp = strchr(cp, ':')) != NULL) {
 				*ccp = '\0';
+				module_offset += strcspn(ccp + 1, "/") + 1;
+			}
 			if (strncmp(cp, f->host, len) ||
 			    (cp[len] != '/' && cp[len] != '\0'))
 				errx(ERR_SYNTAX, "different remote host: %s",
 				    f->sources[i]);
 			memmove(f->sources[i],
-				f->sources[i] + len + 8 + 1,
-				j - len - 8);
+				f->sources[i] + module_offset + 8 + 1,
+				j - module_offset - 8);
 		} else if (f->remote && strncmp(cp, "::", 2) == 0) {
 			/* ::path */
 			memmove(f->sources[i],
@@ -291,7 +289,6 @@ static struct opts	 opts;
 #define OP_PORT		1001
 #define OP_RSYNCPATH	1002
 #define OP_TIMEOUT	1003
-#define OP_VERSION	1004
 #define OP_EXCLUDE	1005
 #define OP_INCLUDE	1006
 #define OP_EXCLUDE_FROM	1007
@@ -301,6 +298,7 @@ static struct opts	 opts;
 #define OP_LINK_DEST	1011
 #define OP_MAX_SIZE	1012
 #define OP_MIN_SIZE	1013
+#define OP_CONTIMEOUT	1014
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -311,6 +309,7 @@ const struct option	 lopts[] = {
     { "link-dest",	required_argument, NULL,		OP_LINK_DEST },
 #endif
     { "compress",	no_argument,	NULL,			'z' },
+    { "contimeout",	required_argument, NULL,		OP_CONTIMEOUT },
     { "del",		no_argument,	&opts.del,		1 },
     { "delete",		no_argument,	&opts.del,		1 },
     { "devices",	no_argument,	&opts.devices,		1 },
@@ -321,6 +320,7 @@ const struct option	 lopts[] = {
     { "group",		no_argument,	&opts.preserve_gids,	1 },
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
     { "help",		no_argument,	NULL,			'h' },
+    { "ignore-times",	no_argument,	NULL,			'I' },
     { "include",	required_argument, NULL,		OP_INCLUDE },
     { "include-from",	required_argument, NULL,		OP_INCLUDE_FROM },
     { "links",		no_argument,	&opts.preserve_links,	1 },
@@ -340,6 +340,7 @@ const struct option	 lopts[] = {
     { "rsync-path",	required_argument, NULL,		OP_RSYNCPATH },
     { "sender",		no_argument,	&opts.sender,		1 },
     { "server",		no_argument,	&opts.server,		1 },
+    { "size-only",	no_argument,	&opts.size_only,	1 },
     { "specials",	no_argument,	&opts.specials,		1 },
 #if 0
     { "sync-file",	required_argument, NULL,		6 },
@@ -350,7 +351,7 @@ const struct option	 lopts[] = {
     { "no-times",	no_argument,	&opts.preserve_times,	0 },
     { "verbose",	no_argument,	&verbose,		1 },
     { "no-verbose",	no_argument,	&verbose,		0 },
-    { "version",	no_argument,	NULL,			OP_VERSION },
+    { "version",	no_argument,	NULL,			'V' },
     { NULL,		0,		NULL,			0 }
 };
 
@@ -374,7 +375,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "Dae:ghlnoprtvxz", lopts, &lidx))
+	while ((c = getopt_long(argc, argv, "aDe:ghIlnoprtVvxz", lopts, &lidx))
 	    != -1) {
 		switch (c) {
 		case 'D':
@@ -397,6 +398,9 @@ main(int argc, char *argv[])
 		case 'g':
 			opts.preserve_gids = 1;
 			break;
+		case 'I':
+			opts.ignore_times = 1;
+			break;
 		case 'l':
 			opts.preserve_links = 1;
 			break;
@@ -418,6 +422,10 @@ main(int argc, char *argv[])
 		case 'v':
 			verbose++;
 			break;
+		case 'V':
+			fprintf(stderr, "openrsync: protocol version %u\n",
+			    RSYNC_PROTOCOL);
+			exit(0);
 		case 'x':
 			opts.one_file_system++;
 			break;
@@ -434,6 +442,12 @@ main(int argc, char *argv[])
 #endif
 		case OP_ADDRESS:
 			opts.address = optarg;
+			break;
+		case OP_CONTIMEOUT:
+			poll_contimeout = strtonum(optarg, 0, 60*60, &errstr);
+			if (errstr != NULL)
+				errx(ERR_SYNTAX, "timeout is %s: %s",
+				    errstr, optarg);
 			break;
 		case OP_PORT:
 			opts.port = optarg;
@@ -508,10 +522,6 @@ basedir:
 				err(1, "bad min-size");
 			opts.min_size = tmpint;
 			break;
-		case OP_VERSION:
-			fprintf(stderr, "openrsync: protocol version %u\n",
-			    RSYNC_PROTOCOL);
-			exit(0);
 		case 'h':
 		default:
 			goto usage;
@@ -528,6 +538,12 @@ basedir:
 
 	if (opts.port == NULL)
 		opts.port = (char *)"rsync";
+
+	/* by default and for --contimeout=0 disable poll_contimeout */
+	if (poll_contimeout == 0)
+		poll_contimeout = -1;
+	else
+		poll_contimeout *= 1000;
 
 	/* by default and for --timeout=0 disable poll_timeout */
 	if (poll_timeout == 0)
@@ -649,11 +665,12 @@ basedir:
 	exit(rc);
 usage:
 	fprintf(stderr, "usage: %s"
-	    " [-aDglnoprtvx] [-e program] [--address=sourceaddr]\n"
-	    "\t[--compare-dest=dir] [--del] [--exclude] [--exclude-from=file]\n"
-	    "\t[--include] [--include-from=file] [--no-motd] [--numeric-ids]\n"
-	    "\t[--port=portnumber] [--rsync-path=program] [--timeout=seconds]\n"
-	    "\t[--version] source ... directory\n",
+	    " [-aDgIlnoprtVvx] [-e program] [--address=sourceaddr]\n"
+	    "\t[--contimeout=seconds] [--compare-dest=dir] [--del] [--exclude]\n"
+	    "\t[--exclude-from=file] [--include] [--include-from=file]\n"
+	    "\t[--no-motd] [--numeric-ids] [--port=portnumber]\n"
+	    "\t[--rsync-path=program] [--size-only] [--timeout=seconds]\n"
+	    "\tsource ... directory\n",
 	    getprogname());
 	exit(ERR_SYNTAX);
 }

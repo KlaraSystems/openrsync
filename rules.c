@@ -214,7 +214,7 @@ parse_rule(char *line, enum rule_type def)
 		/* comment */
 		return 0;
 	case '\0':
-		/* ingore empty lines */
+		/* ignore empty lines */
 		return 0;
 	default:
 		len = strcspn(line, " _");
