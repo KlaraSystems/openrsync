@@ -41,10 +41,10 @@
 void
 addargs(arglist *args, const char *fmt, ...)
 {
-	va_list	 	 ap;
-	char		*cp;
+	va_list	 ap;
+	char	*cp;
 	unsigned int	 nalloc;
-	int	 	 r;
+	int	 r;
 
 	va_start(ap, fmt);
 	r = vasprintf(&cp, fmt, ap);
