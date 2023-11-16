@@ -1,4 +1,4 @@
-/*	$Id$ */
+/*	$OpenBSD: extern.h,v 1.45 2023/04/28 10:24:38 claudio Exp $ */
 /*
  * Copyright (c) 2019 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -88,6 +88,11 @@ enum basemode {
  * All poll events will use it and catch time-outs.
  */
 extern int poll_timeout;
+
+/*
+ * Use this for --contimeout.
+ */
+extern int poll_contimeout;
 
 /*
  * Operating mode for a client or a server.

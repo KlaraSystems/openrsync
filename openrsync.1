@@ -30,6 +30,7 @@
 .Op Fl -bwlimit Ns = Ns limit
 .Op Fl -checksum-seed Ns = Ns NUM
 .Op Fl -compare-dest Ns = Ns Ar directory
+.Op Fl -contimeout Ns = Ns Ar seconds
 .Op Fl -copy-dest Ns = Ns Ar directory
 .Op Fl -del
 .Op Fl -delay-updates
@@ -179,6 +180,10 @@ directories may be provided.
 If
 .Ar directory
 is a relative path, it is relative to the destination directory.
+.It Fl -contimeout Ns = Ns Ar seconds
+Set the connection timeout in seconds.
+Exit if no connection established within the specified time.
+The default is 0, which means no timeout.
 .It Fl -copy-dest Ns = Ns Ar directory
 Use directory as an alternate base directory to compare files against on the
 destination machine.

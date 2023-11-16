@@ -286,8 +286,6 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--remove-source-files");
 	if (f->mode == FARGS_SENDER && sess->opts->ignore_times > 0)
 		addargs(&args, "--ignore-times");
-	if (sess->opts->size_only > 0)
-		addargs(&args, "--size-only");
 	if (sess->opts->bwlimit >= 1024) {
 		addargs(&args, "--bwlimit=%lld",
 		    (long long)(sess->opts->bwlimit / 1024));
@@ -319,15 +317,20 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "%s", sess->opts->filesfrom_path);
 	}
 
-	/* only add --compare-dest, etc if this is the sender */
-	if (sess->opts->alt_base_mode != 0 &&
-	    f->mode == FARGS_SENDER) {
-		for (j = 0; j < MAX_BASEDIR; j++) {
-			if (sess->opts->basedir[j] == NULL)
-				break;
-			addargs(&args, "%s=%s",
-			    alt_base_mode(sess->opts->alt_base_mode),
-			    sess->opts->basedir[j]);
+	/* extra options for the receiver (local is sender) */
+	if (f->mode == FARGS_SENDER) {
+		if (sess->opts->size_only)
+			addargs(&args, "--size-only");
+
+		/* only add --compare-dest, etc if this is the sender */
+		if (sess->opts->alt_base_mode != 0) {
+			for (j = 0; j < MAX_BASEDIR; j++) {
+				if (sess->opts->basedir[j] == NULL)
+					break;
+				addargs(&args, "%s=%s",
+				    alt_base_mode(sess->opts->alt_base_mode),
+				    sess->opts->basedir[j]);
+			}
 		}
 	}
 

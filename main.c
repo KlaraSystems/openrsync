@@ -43,6 +43,7 @@
 extern struct cleanup_ctx *cleanup_ctx;
 
 int verbose;
+int poll_contimeout;
 int poll_timeout;
 
 /*
@@ -300,24 +301,21 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 		j = strlen(cp);
 		if (f->remote &&
 		    strncasecmp(cp, "rsync://", 8) == 0) {
-			/* rsync://path */
+			/* rsync://host[:port]/path */
+			size_t module_offset = len;
 			cp += 8;
-			
-			/* 
-			 * FIXME: broken.
-			 * URIs can allow colons too.
-			 * Fix this after merge.
-			 */
-
-			if ((ccp = strchr(cp, ':')) != NULL) /* skip :port */
+			/* skip :port */
+			if ((ccp = strchr(cp, ':')) != NULL) {
 				*ccp = '\0';
+				module_offset += strcspn(ccp + 1, "/") + 1;
+			}
 			if (strncmp(cp, f->host, len) ||
 			    (cp[len] != '/' && cp[len] != '\0'))
 				errx(ERR_SYNTAX, "different remote host: %s",
 				    f->sources[i]);
 			memmove(f->sources[i],
-				f->sources[i] + len + 8 + 1,
-				j - len - 8);
+				f->sources[i] + module_offset + 8 + 1,
+				j - module_offset - 8);
 		} else if (f->remote && strncmp(cp, "::", 2) == 0) {
 			/* ::path */
 			memmove(f->sources[i],
@@ -549,6 +547,7 @@ static struct opts	 opts;
 #define OP_PORT		1001
 #define OP_RSYNCPATH	1002
 #define OP_TIMEOUT	1003
+#define OP_CONTIMEOUT	1004
 
 #define OP_EXCLUDE	1005
 #define OP_NO_D		1006
@@ -599,6 +598,7 @@ static const struct option	 lopts[] = {
     { "copy-dest",	required_argument, NULL,		OP_COPY_DEST },
     { "link-dest",	required_argument, NULL,		OP_LINK_DEST },
     { "compress",	no_argument,	NULL,			'z' },
+    { "contimeout",	required_argument, NULL,		OP_CONTIMEOUT },
     { "copy-dirlinks",	no_argument,	NULL,			'k' },
     { "copy-links",	no_argument,	&opts.copy_links,	'L' },
     { "cvs-exclude",	no_argument,	NULL,			'C' },
@@ -657,10 +657,10 @@ static const struct option	 lopts[] = {
     { "rsync-path",	required_argument, NULL,		OP_RSYNCPATH },
     { "sender",		no_argument,	&opts.sender,		1 },
     { "server",		no_argument,	&opts.server,		1 },
+    { "size-only",	no_argument,	&opts.size_only,	1 },
     { "sockopts",	required_argument,	NULL,		OP_SOCKOPTS },
     { "specials",	no_argument,	&opts.specials,		1 },
     { "no-specials",	no_argument,	&opts.specials,		0 },
-    { "size-only",	no_argument,	&opts.size_only,	1 },
     { "sparse",		no_argument,	NULL,			'S' },
     { "suffix",		required_argument,	NULL,		OP_BACKUP_SUFFIX },
     { "super",		no_argument,	&opts.supermode,	SMODE_ON },
@@ -681,11 +681,12 @@ static const struct option	 lopts[] = {
     { "no-W",		no_argument,	&opts.whole_file,	0 },
     { "progress",	no_argument,	&opts.progress,		1 },
     { "no-progress",	no_argument,	&opts.progress,		0 },
-    { "version",	no_argument,	NULL,			'V' },
+    { "backup",		no_argument,	NULL,			'b' },
     { "relative",	no_argument,	NULL,			'R' },
     { "no-R",		no_argument,	NULL,			OP_NO_RELATIVE },
     { "no-relative",	no_argument,	NULL,			OP_NO_RELATIVE },
     { "remove-source-files",	no_argument,	&opts.remove_source,	1 },
+    { "version",	no_argument,	NULL,			'V' },
     { "dirs",		no_argument,	NULL,			'd' },
     { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
@@ -698,7 +699,8 @@ usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
 	    " [-46BCDFHIKLPRSWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
-	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--compare-dest=dir] [--copy-dest=dir]\n"
+	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--compare-dest=dir]\n"
+	    "\t[--contimeout] [--copy-dest=dir]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
@@ -877,6 +879,12 @@ main(int argc, char *argv[])
 #endif
 		case OP_ADDRESS:
 			opts.address = optarg;
+			break;
+		case OP_CONTIMEOUT:
+			poll_contimeout = strtonum(optarg, 0, 60*60, &errstr);
+			if (errstr != NULL)
+				errx(ERR_SYNTAX, "timeout is %s: %s",
+				    errstr, optarg);
 			break;
 		case OP_PORT:
 			opts.port = optarg;
@@ -1154,6 +1162,12 @@ basedir:
 
 	if (opts.port == NULL)
 		opts.port = (char *)"rsync";
+
+	/* by default and for --contimeout=0 disable poll_contimeout */
+	if (poll_contimeout == 0)
+		poll_contimeout = -1;
+	else
+		poll_contimeout *= 1000;
 
 	/* by default and for --timeout=0 disable poll_timeout */
 	if (poll_timeout == 0)
