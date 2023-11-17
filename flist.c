@@ -973,7 +973,6 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 	idents_free(uids, uidsz);
 	return 1;
 out:
-	flist_free(fl, flsz);
 	idents_free(gids, gidsz);
 	idents_free(uids, uidsz);
 	*sz = 0;
