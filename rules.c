@@ -88,8 +88,8 @@ enum rule_iter_action {
 	RULE_ITER_SKIP,		/* Skip further processing of this rule. */
 	RULE_ITER_CONTINUE,	/* Contine as normal. */
 };
-typedef enum rule_iter_action (rule_dir_iter_fn)(struct ruleset *,
-    struct rule *, const char *, void *);
+typedef enum rule_iter_action (rule_iter_fn)(struct ruleset *, struct rule *,
+    const char *, void *);
 
 /*
  * Return 0 to continue rule processing, -1 for exclude and 1 for include.
@@ -1247,8 +1247,8 @@ rule_match_impl(struct ruleset *ruleset, struct rule_match_ctx *ctx)
  * dir-merge rules nested inside get freed first.
  */
 static int
-rule_dir_iter(struct ruleset *ruleset, const char *path, int postcall,
-    rule_dir_iter_fn *iter_fn, void *cookie)
+rule_iter(struct ruleset *ruleset, const char *path, enum rule_type filter,
+    int postcall, rule_iter_fn *iter_fn, void *cookie)
 {
 	struct merge_rule *mrule;
 	struct rule *r;
@@ -1256,35 +1256,33 @@ rule_dir_iter(struct ruleset *ruleset, const char *path, int postcall,
 	enum rule_iter_action ract;
 	int ret = 0;
 
-	/*
-	 * No need to traverse any of this if we already know there's nothing
-	 * to discover.
-	 */
-	if (ruleset->numdrules == 0)
-		return 1;
-
 	for (i = 0; i < ruleset->numrules; i++) {
 		r = &ruleset->rules[i];
 
-		if (r->type != RULE_DIR_MERGE)
+		if (filter != RULE_NONE && r->type != filter)
 			continue;
 
 		/*
-		 * See if we have a dir-merge file to pick up from this one.
+		 * If we're not a dir-merge rule, we might as well call the
+		 * callback here regardless of `postcall` since there is no
+		 * post-order.
 		 */
 		ract = RULE_ITER_CONTINUE;
-		if (!postcall)
+		if (!postcall || r->type != RULE_DIR_MERGE)
 			ract = (*iter_fn)(ruleset, r, path, cookie);
 		if (ract == RULE_ITER_HALT)
 			return 0;
 		else if (ract == RULE_ITER_SKIP)
 			continue;
 
+		if (r->type != RULE_DIR_MERGE)
+			continue;
+
 		TAILQ_FOREACH(mrule, &r->merge_rule_chain, entries) {
 			if (!mrule->inherited && rule_dir_depth > mrule->depth)
 				continue;
 
-			ret = rule_dir_iter(mrule->ruleset, path, postcall,
+			ret = rule_iter(mrule->ruleset, path, filter, postcall,
 			    iter_fn, cookie);
 			if (!ret)
 				return ret;
@@ -1352,8 +1350,8 @@ rules_dir_push(const char *path, size_t stripdir)
 {
 
 	rule_dir_depth++;
-	(void)rule_dir_iter(&global_ruleset, path, 0, &rule_dir_push,
-	    &stripdir);
+	(void)rule_iter(&global_ruleset, path, RULE_DIR_MERGE, 0,
+	    &rule_dir_push, &stripdir);
 }
 
 static void
@@ -1394,7 +1392,7 @@ void
 rules_dir_pop(const char *path, size_t stripdir)
 {
 
-	(void)rule_dir_iter(&global_ruleset, path + stripdir, 1,
+	(void)rule_iter(&global_ruleset, path + stripdir, RULE_DIR_MERGE, 1,
 	    &rule_dir_pop, NULL);
 	rule_dir_depth--;
 }
