@@ -92,7 +92,7 @@ blkhash_set(struct blktab *p, const struct blkset *bset)
 {
 	size_t	 i, idx;
 
-	if (bset == NULL)
+	if (bset == NULL || bset->blksz == 0)
 		return 1;
 
 	/* Wipe clean the table. */
