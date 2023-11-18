@@ -42,6 +42,7 @@ struct rule;
 struct ruleset {
 	struct ruleset	*parent_set;
 	struct rule	*rules;
+	size_t		 lclear;	/* latest clear rule */
 	size_t		 numrules;	/* number of rules */
 	size_t		 rulesz;	/* available size */
 #ifndef NDEBUG
@@ -85,6 +86,7 @@ struct rule_match_ctx {
 
 enum rule_iter_action {
 	RULE_ITER_HALT,		/* Halt iteration entirely. */
+	RULE_ITER_HALT_CHAIN,	/* Halt this merge chain. */
 	RULE_ITER_SKIP,		/* Skip further processing of this rule. */
 	RULE_ITER_CONTINUE,	/* Contine as normal. */
 };
@@ -105,7 +107,9 @@ static const char builtin_cvsignore[] =
 static char		 rule_base[MAXPATHLEN];
 static char		*rule_base_cwdend;
 
-static struct ruleset	 global_ruleset;
+static struct ruleset	 global_ruleset = {
+	.lclear = (size_t)-1,
+};
 
 static size_t		 rule_dir_depth;
 
@@ -675,6 +679,8 @@ parse_rule_impl(struct ruleset *ruleset, const char *line, enum rule_type def,
 		r->omodifiers = r->modifiers = modifiers;
 		if (type == RULE_MERGE || type == RULE_DIR_MERGE)
 			r->modifiers &= MOD_MERGE_MASK;
+		if (type == RULE_CLEAR)
+			ruleset->lclear = r - ruleset->rules;
 		parse_pattern(r, pattern);
 		if (type == RULE_MERGE || type == RULE_DIR_MERGE) {
 			if ((modifiers & MOD_MERGE_EXCLUDE_FILE) != 0) {
@@ -944,6 +950,12 @@ static inline int
 rule_actionable(const struct rule *r, enum fmode rulectx, int perishing)
 {
 
+	/*
+	 * If we encounter a clear rule, that means we didn't catch the latest
+	 * clear rule, or we did something else wrong.
+	 */
+	assert(r->type != RULE_CLEAR);
+
 	if ((r->modifiers & MOD_PERISHABLE) != 0 && perishing) {
 		return 0;
 	}
@@ -1193,6 +1205,17 @@ rule_match_evaluate(struct ruleset *ruleset, struct rule *r, const char *path,
 {
 	struct rule_match_ctx *ctx = cookie;
 
+	/*
+	 * If this ruleset has a clear rule in it, skip until we hit it.
+	 */
+	assert(r >= ruleset->rules && r < ruleset->rules + ruleset->numrules);
+	if (ruleset->lclear != (size_t)-1 &&
+	    (size_t)(r - ruleset->rules) < ruleset->lclear)
+		return RULE_ITER_SKIP;
+
+	if (r->type == RULE_CLEAR)
+		return RULE_ITER_HALT_CHAIN;
+
 	/* Rule out merge rules and other meta-actions. */
 	if (!rule_actionable(r, ctx->rulectx, ctx->perishing))
 		return RULE_ITER_CONTINUE;
@@ -1212,15 +1235,15 @@ rule_match_evaluate(struct ruleset *ruleset, struct rule *r, const char *path,
  * Popping a directory will want to call the iterator in post-order so that any
  * dir-merge rules nested inside get freed first.
  */
-static int
-rule_iter(struct ruleset *ruleset, const char *path, enum rule_type filter,
+static enum rule_iter_action
+rule_iter_impl(struct ruleset *ruleset, const char *path, enum rule_type filter,
     int postcall, rule_iter_fn *iter_fn, void *cookie)
 {
 	struct merge_rule *mrule;
 	struct rule *r;
 	size_t i;
-	enum rule_iter_action ract;
-	int ret = 0;
+	enum rule_iter_action ract = RULE_ITER_CONTINUE;
+	bool haltchain = false;
 
 	for (i = 0; i < ruleset->numrules; i++) {
 		r = &ruleset->rules[i];
@@ -1237,9 +1260,20 @@ rule_iter(struct ruleset *ruleset, const char *path, enum rule_type filter,
 		if (!postcall || r->type != RULE_DIR_MERGE)
 			ract = (*iter_fn)(ruleset, r, path, cookie);
 		if (ract == RULE_ITER_HALT)
-			return 0;
-		else if (ract == RULE_ITER_SKIP)
+			break;
+		else if (ract == RULE_ITER_HALT_CHAIN) {
+			/*
+			 * We should continue processing this set and any
+			 * dir-merge rules contained within it, but the parent
+			 * caller should not do any more chain processing at
+			 * this level.
+			 */
+			haltchain = true;
+			ract = RULE_ITER_CONTINUE;
+		} else if (ract == RULE_ITER_SKIP) {
+			ract = RULE_ITER_CONTINUE;
 			continue;
+		}
 
 		if (r->type != RULE_DIR_MERGE)
 			continue;
@@ -1248,20 +1282,55 @@ rule_iter(struct ruleset *ruleset, const char *path, enum rule_type filter,
 			if (!mrule->inherited && rule_dir_depth > mrule->depth)
 				continue;
 
-			ret = rule_iter(mrule->ruleset, path, filter, postcall,
-			    iter_fn, cookie);
-			if (!ret)
-				return ret;
+			ract = rule_iter_impl(mrule->ruleset, path, filter,
+			    postcall, iter_fn, cookie);
+			if (ract == RULE_ITER_HALT_CHAIN) {
+				ract = RULE_ITER_CONTINUE;
+				break;
+			} else if (ract != RULE_ITER_CONTINUE) {
+				/* Shouldn't be able to see SKIP here. */
+				assert(ract == RULE_ITER_HALT);
+				goto out;
+			}
 		}
 
 		if (postcall) {
 			ract = (*iter_fn)(ruleset, r, path, cookie);
 			assert(ract != RULE_ITER_SKIP);
-			if (ract == RULE_ITER_HALT)
-				return 0;
+			if (ract == RULE_ITER_HALT_CHAIN) {
+				haltchain = true;
+				ract = RULE_ITER_CONTINUE;
+			} else if (ract != RULE_ITER_CONTINUE) {
+				assert(ract == RULE_ITER_HALT);
+				break;
+			}
 		}
 	}
 
+	/* If we're not otherwise halting, bubble up the HALT_CHAIN. */
+	if (ract == RULE_ITER_CONTINUE && haltchain)
+		ract = RULE_ITER_HALT_CHAIN;
+out:
+	return ract;
+}
+
+static int
+rule_iter(struct ruleset *ruleset, const char *path, enum rule_type filter,
+    int postcall, rule_iter_fn *iter_fn, void *cookie)
+{
+	enum rule_iter_action ret;
+
+	ret = rule_iter_impl(ruleset, path, filter, postcall, iter_fn, cookie);
+
+	/*
+	 * The implementation returns a rule_iter_action in case it's nested,
+	 * we may need to propagate up a HALT_CHAIN or some such.  We'll just
+	 * convert it at the boundary here -- we shouldn't ever observe a
+	 * SKIP here, because that's internal to the iterator.
+	 */
+	assert(ret != RULE_ITER_SKIP);
+	if (ret != RULE_ITER_CONTINUE && ret != RULE_ITER_HALT_CHAIN)
+		return 0;
 	return 1;
 }
 
@@ -1300,6 +1369,7 @@ rule_dir_push(struct ruleset *parent, struct rule *r, const char *path,
 		err(ERR_NOMEM, "strdup");
 
 	mrule->ruleset->parent_set = parent;
+	mrule->ruleset->lclear = (size_t)-1;
 	mrule->parent_rule = r;
 	mrule->inherited = (r->modifiers & MOD_MERGE_NO_INHERIT) == 0;
 	mrule->depth = rule_dir_depth;
