@@ -76,10 +76,10 @@ struct rule {
 
 struct rule_match_ctx {
 	char		 abspath[PATH_MAX];
-	const char	*path;
 	const char	*basename;
 	int		 isdir;
 	int		 perishing;
+	int		 match;
 	enum fmode	 rulectx;
 };
 
@@ -94,10 +94,6 @@ typedef enum rule_iter_action (rule_iter_fn)(struct ruleset *, struct rule *,
 /*
  * Return 0 to continue rule processing, -1 for exclude and 1 for include.
  */
-typedef int (match_action_fn)(struct rule *, struct rule_match_ctx *);
-static match_action_fn rule_match_action_xfer;
-static match_action_fn rule_match_action_merge;
-
 static const char builtin_cvsignore[] =
 	"RCS SCCS CVS CVS.adm RCSLOG cvslog.* tags "
 	"TAGS .make.state .nse_depinfo *~ #* .#* ,* "
@@ -117,7 +113,6 @@ static void parse_file_impl(struct ruleset *, const char *, enum rule_type,
     unsigned int, bool);
 static int parse_rule_impl(struct ruleset *, const char *, enum rule_type,
     unsigned int);
-static int rule_match_impl(struct ruleset *, struct rule_match_ctx *);
 
 /* up to protocol 29 filter rules only support - + ! and no modifiers */
 
@@ -945,12 +940,12 @@ recv_rules(struct sess *sess, int fd)
 	} while (1);
 }
 
-static inline match_action_fn *
+static inline int
 rule_actionable(const struct rule *r, enum fmode rulectx, int perishing)
 {
 
 	if ((r->modifiers & MOD_PERISHABLE) != 0 && perishing) {
-		return NULL;
+		return 0;
 	}
 
 	switch (r->type) {
@@ -960,18 +955,18 @@ rule_actionable(const struct rule *r, enum fmode rulectx, int perishing)
 			return 0;
 		/* FALLTHROUGH */
 	case RULE_INCLUDE:
-		return &rule_match_action_xfer;
+		return 1;
 	/* Sender side */
 	case RULE_HIDE:
 	case RULE_SHOW:
 		if (rulectx == FARGS_SENDER)
-			return &rule_match_action_xfer;
+			return 1;
 		break;
 	/* Receiver side */
 	case RULE_PROTECT:
 	case RULE_RISK:
 		if (rulectx == FARGS_RECEIVER)
-			return &rule_match_action_xfer;
+			return 1;
 		break;
 	/* Meta, never actionable */
 	case RULE_CLEAR:
@@ -981,7 +976,7 @@ rule_actionable(const struct rule *r, enum fmode rulectx, int perishing)
 		break;
 	}
 
-	return NULL;
+	return 0;
 }
 
 static inline int
@@ -1103,32 +1098,10 @@ rules_base(const char *root)
 }
 
 static int
-rule_match_action_merge(struct rule *r, struct rule_match_ctx *ctx)
+rule_match_action_xfer(struct rule *r, const char *path,
+    struct rule_match_ctx *ctx)
 {
-	struct merge_rule *mrule;
-	int ret;
-
-	/*
-	 * We may have simply not encountered any of the relevant files yet,
-	 * in which case we're just a NOP.
-	 */
-	ret = 0;
-	TAILQ_FOREACH(mrule, &r->merge_rule_chain, entries) {
-		if (!mrule->inherited && rule_dir_depth > mrule->depth)
-			continue;
-
-		ret = rule_match_impl(mrule->ruleset, ctx);
-		if (ret != 0)
-			return ret;
-	}
-
-	return 0;
-}
-
-static int
-rule_match_action_xfer(struct rule *r, struct rule_match_ctx *ctx)
-{
-	const char *p = NULL, *path = ctx->path;
+	const char *p = NULL;
 
 	if (r->onlydir && !ctx->isdir)
 		return 0;
@@ -1214,28 +1187,21 @@ rule_match_action_xfer(struct rule *r, struct rule_match_ctx *ctx)
 	return 0;
 }
 
-static int
-rule_match_impl(struct ruleset *ruleset, struct rule_match_ctx *ctx)
+static enum rule_iter_action
+rule_match_evaluate(struct ruleset *ruleset, struct rule *r, const char *path,
+    void *cookie)
 {
-	struct rule *r;
-	match_action_fn *hdl;
-	size_t i;
-	int ret;
+	struct rule_match_ctx *ctx = cookie;
 
-	for (i = 0; i < ruleset->numrules; i++) {
-		r = &ruleset->rules[i];
+	/* Rule out merge rules and other meta-actions. */
+	if (!rule_actionable(r, ctx->rulectx, ctx->perishing))
+		return RULE_ITER_CONTINUE;
 
-		/* Rule out merge rules and other meta-actions. */
-		hdl = rule_actionable(r, ctx->rulectx, ctx->perishing);
-		if (hdl == NULL)
-			continue;
+	ctx->match = rule_match_action_xfer(r, path, ctx);
+	if (ctx->match != 0)
+		return RULE_ITER_HALT;
 
-		ret = (*hdl)(r, ctx);
-		if (ret != 0)
-			return ret;
-	}
-
-	return 0;
+	return RULE_ITER_CONTINUE;
 }
 
 /*
@@ -1405,8 +1371,8 @@ rules_match(const char *path, int isdir, enum fmode rulectx, int perishing)
 	assert(rule_base != NULL);
 
 	ctx.abspath[0] = '\0';
-	ctx.path = path;
 	ctx.isdir = isdir;
+	ctx.match = 0;
 	ctx.perishing = perishing;
 	ctx.rulectx = rulectx;
 
@@ -1416,6 +1382,8 @@ rules_match(const char *path, int isdir, enum fmode rulectx, int perishing)
 	else
 		ctx.basename = path;
 
-	return rule_match_impl(&global_ruleset, &ctx);
+	(void)rule_iter(&global_ruleset, path, RULE_NONE, 0,
+	    rule_match_evaluate, &ctx);
+	return ctx.match;
 }
 
