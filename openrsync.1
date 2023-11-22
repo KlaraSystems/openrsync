@@ -213,6 +213,11 @@ Also transfer device files.
 .It Fl e Ar program , Fl -rsh Ns = Ns Ar program
 Specify alternative communication program, defaults to
 .Xr ssh 1 .
+The
+.Ev RSYNC_RSH
+environment variable will be used if an
+.Fl e
+option is not present.
 .It Fl g , -group
 Set the group name to match the source.
 For example, group
@@ -412,7 +417,20 @@ The destination
 .Ar directory
 must be a directory and is created if not found.
 .\" .Sh PATTERNS AND RULES
-.\" .Sh ENVIRONMENT
+.Sh ENVIRONMENT
+The following environment variables affect execution of
+.Nm :
+.Bl -tag -width "RSYNC_RSH"
+.It Ev RSYNC_RSH
+This variable specifies the remote shell to use for remote connections.
+The default remote shell is
+.Xr ssh 1
+if neither
+.Ev RSYNC_RSH
+nor
+.Fl -rsh
+are specified.
+.El
 .\" .Sh FILES
 .Sh EXIT STATUS
 The
