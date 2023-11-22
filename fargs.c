@@ -60,6 +60,12 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		rsync_path = (char *)RSYNC_PATH;
 
 	if (f->host != NULL) {
+		const char *rsh_prog;
+
+		rsh_prog = sess->opts->ssh_prog;
+		if (rsh_prog == NULL)
+			rsh_prog = getenv("RSYNC_RSH");
+
 		/*
 		 * Splice arguments from -e "foo bar baz" into array
 		 * elements required for execve(2).
@@ -67,8 +73,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		 * whitespace into the array.
 		 */
 
-		if (sess->opts->ssh_prog) {
-			ap = strdup(sess->opts->ssh_prog);
+		if (rsh_prog != NULL) {
+			ap = strdup(rsh_prog);
 			if (ap == NULL)
 				err(ERR_NOMEM, NULL);
 
