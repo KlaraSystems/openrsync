@@ -74,7 +74,9 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 
 			while ((arg = strsep(&ap, " \t")) != NULL) {
 				if (arg[0] == '\0') {
-					ap++;	/* skip separators */
+					/* We could be at the end anyways. */
+					if (ap != NULL)
+						ap++;	/* skip separators */
 					continue;
 				}
 
