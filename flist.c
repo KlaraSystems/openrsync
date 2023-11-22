@@ -630,33 +630,41 @@ static int
 flist_append(struct sess *sess, struct flist *f, const struct stat *st,
     const char *path, struct flist **flp, size_t *sz, size_t *max)
 {
-	size_t entry = *sz - 1;
 	/*
 	 * Copy the full path for local addressing and transmit
 	 * only the filename part for the receiver, unless
 	 * --relative is given.
 	 */
 
-	if ((flp[entry]->path = strdup(path)) == NULL) {
+	if ((f->path = strdup(path)) == NULL) {
 		ERR("strdup");
 		return 0;
 	}
 
 	if (!sess->opts->relative) {
-		if ((flp[entry]->wpath = strrchr(flp[entry]->path, '/')) == NULL)
-			flp[entry]->wpath = flp[entry]->path;
+		if ((f->wpath = strrchr(f->path, '/')) == NULL)
+			f->wpath = f->path;
 		else
-			flp[entry]->wpath++;
+			f->wpath++;
 	} else {
-		if (flp[entry]->path[0] == '/')
-			flp[entry]->wpath = flp[entry]->path + 1;
-		else
-			flp[entry]->wpath = flp[entry]->path;
+		size_t idx = (*sz) - 1;
 
-		if (!flist_append_dirs(flp[entry], flp[entry]->path, flp, sz, max)) {
+		if (f->path[0] == '/')
+			f->wpath = f->path + 1;
+		else
+			f->wpath = f->path;
+
+		if (!flist_append_dirs(f, f->path, flp, sz, max)) {
 			ERR("flist_append_dirs");
 			return 0;
 		}
+
+		/*
+		 * flist_append_dirs() may re-allocate our flist out from
+		 * underneath us, reload the flist entry we're working on as
+		 * needed.
+		 */
+		f = &(*flp)[idx];
 	}
 
 	/*
@@ -665,13 +673,13 @@ flist_append(struct sess *sess, struct flist *f, const struct stat *st,
 	 * No need to warn about it here.
 	 */
 
-	flist_copy_stat(flp[entry], st);
+	flist_copy_stat(f, st);
 
 	/* Optionally copy link information. */
 
 	if (S_ISLNK(st->st_mode)) {
-		flp[entry]->link = symlink_read(flp[entry]->path);
-		if (flp[entry]->link == NULL) {
+		f->link = symlink_read(f->path);
+		if (f->link == NULL) {
 			ERRX1("symlink_read");
 			return 0;
 		}
