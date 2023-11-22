@@ -1303,7 +1303,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 			continue;
 		}
 
-		f = &(*flp[*sz]);
+		f = &(*flp)[*sz];
 		(*sz)++;
 		assert(f != NULL);
 
