@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 
 #include <assert.h>
+#include <ctype.h>
 #if HAVE_ERR
 # include <err.h>
 #endif
@@ -44,12 +45,60 @@ alt_base_mode(int mode)
 	}
 }
 
+/*
+ * Parses the program, adding each word to the current arguments as it goes.
+ */
+static void
+fargs_cmdline_prog(arglist *argsp, const char *prog)
+{
+	const char *arg, *walker;
+	char quotec;
+
+	quotec = '\0';
+	for (walker = arg = prog; *walker != '\0'; walker++) {
+		/* Add what we have so far once we hit whitespace. */
+		if (isspace(*walker)) {
+			addargs(argsp, "%.*s", (int)(walker - arg), arg);
+
+			/* Skip entire sequence of whitespace. */
+			while (isspace(*(walker + 1)))
+				walker++;
+
+			arg = walker + 1;
+			continue;
+		} else if (*walker == '"' || *walker == '\'') {
+			quotec = *walker;
+
+			/*
+			 * Skip to the closing quote; smb rsync doesn't seem to
+			 * even try to deal with escaped quotes.  If we didn't
+			 * find a closing quote, we'll bail out and report the
+			 * error.
+			 */
+			walker = strchr(walker + 1, quotec);
+			if (walker == NULL)
+				break;
+
+			quotec = '\0';
+			continue;
+		}
+	}
+
+	if (quotec != '\0') {
+		errx(ERR_SYNTAX,
+		    "Missing terminating `%c` in specified remote-shell command",
+		    quotec);
+	} else if (walker > arg) {
+		addargs(argsp, "%.*s", (int)(walker - arg), arg);
+	}
+}
+
 char **
 fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 {
 	arglist		 args;
 	size_t		 j;
-	char		*rsync_path, *ap, *arg;
+	char		*rsync_path;
 
 	memset(&args, 0, sizeof args);
 
@@ -73,22 +122,9 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		 * whitespace into the array.
 		 */
 
-		if (rsh_prog != NULL) {
-			ap = strdup(rsh_prog);
-			if (ap == NULL)
-				err(ERR_NOMEM, NULL);
-
-			while ((arg = strsep(&ap, " \t")) != NULL) {
-				if (arg[0] == '\0') {
-					/* We could be at the end anyways. */
-					if (ap != NULL)
-						ap++;	/* skip separators */
-					continue;
-				}
-
-				addargs(&args, "%s", arg);
-			}
-		} else
+		if (rsh_prog != NULL)
+			fargs_cmdline_prog(&args, rsh_prog);
+		else
 			addargs(&args, "ssh");
 
 		addargs(&args, "%s", f->host);
