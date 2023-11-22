@@ -218,6 +218,11 @@ The
 environment variable will be used if an
 .Fl e
 option is not present.
+Note that
+.Nm
+will generally handle quotes, but it makes no attempt to deal with escape
+sequences.
+In particular, escaped quotation marks will not be escaped.
 .It Fl g , -group
 Set the group name to match the source.
 For example, group
