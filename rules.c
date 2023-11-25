@@ -131,6 +131,10 @@ parse_command(const char *command, size_t len)
 	const char *mod;
 	size_t	i;
 
+	/* Command has been omitted, short-circuit. */
+	if (len == 0)
+		return RULE_NONE;
+
 	mod = memchr(command, ',', len);
 	if (mod != NULL) {
 		/* XXX modifiers not yet implemented */
@@ -204,7 +208,7 @@ parse_pattern(struct rule *r, char *pattern)
 int
 parse_rule(char *line, enum rule_type def)
 {
-	enum rule_type type;
+	enum rule_type type = RULE_NONE;
 	struct rule *r;
 	char *pattern;
 	size_t len;
@@ -218,8 +222,10 @@ parse_rule(char *line, enum rule_type def)
 		/* ingore empty lines */
 		return 0;
 	default:
-		len = strcspn(line, " _");
-		type = parse_command(line, len);
+		if (def == RULE_NONE) {
+			len = strcspn(line, " _");
+			type = parse_command(line, len);
+		}
 		if (type == RULE_NONE) {
 			if (def == RULE_NONE)
 				return -1;
