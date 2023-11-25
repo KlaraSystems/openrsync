@@ -583,12 +583,9 @@ flist_append_dirs(struct flist *f, const char *path,
 		ERR("strdup");
 		return 0;
 	}
-	if (begin[0] == '/') {
-		wbegin = begin+1;
-		while (wbegin[0] == '/')
-			wbegin++;
-	} else
-		wbegin = begin;
+	wbegin = begin;
+	while (wbegin[0] == '/')
+		wbegin++;
 	if ((pos = strrchr(wbegin, '/')) != NULL) {
 		*pos = '\0';
 		if ((stat(begin, &st)) == -1) {
@@ -610,8 +607,7 @@ flist_append_dirs(struct flist *f, const char *path,
 				ERRX1("flist_append_dirs");
 				goto out;
 			}
-		} else
-			free(begin);
+		}
 	}
 	return 1;
 
