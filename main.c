@@ -782,6 +782,7 @@ basedir:
 
 	close(fds[0]);
 
+#if 0
 	/*
 	 * The server goes into an infinite sleep loop once it's concluded to
 	 * avoid closing the various pipes.  This gives us time to finish
@@ -790,7 +791,7 @@ basedir:
 	 * to shutdown.
 	 */
 	kill(child, SIGUSR2);
-
+#endif
 	if (waitpid(child, &st, 0) == -1)
 		err(ERR_WAITPID, "waitpid");
 
