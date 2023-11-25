@@ -359,10 +359,13 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
 struct dlrename_entry {
 	char *from;  /* Will be free()ed after use */
 	const char *to;    /* Will not be free()ed after use */
+	const struct flist *file;
 	char *rmdir; /* Directory to remove, will free() */
 };
 struct dlrename {
 	struct dlrename_entry *entries;
+	struct download *dl;
+	const struct hardlinks *hl;
 	int n;
 	int fd;
 };
@@ -372,17 +375,38 @@ delayed_renames(struct sess *sess)
 {
 	int i;
 	struct dlrename *dlr = sess->dlrename;
+	const struct flist *hl_p = NULL;
+	struct download *p;
 
 	if (dlr == NULL)
 		return;
 
+	p = dlr->dl;
 	for (i = 0; i < dlr->n; i++) {
 		LOG3("mv '%s' -> '%s'", dlr->entries[i].from,
 			dlr->entries[i].to);
+		if (sess->opts->hard_links)
+			hl_p = find_hl(dlr->entries[i].file, dlr->hl);
 		if (renameat(dlr->fd, dlr->entries[i].from, dlr->fd,
 				dlr->entries[i].to) == -1) {
 			ERR("rename '%s' -> '%s'", dlr->entries[i].from,
 				dlr->entries[i].to);
+		}
+		if (hl_p != NULL) {
+			const char *path = dlr->entries[i].to;
+
+			if (unlinkat(p->rootfd, path, 0) == -1)
+				if (errno != ENOENT)
+					ERRX1("unlink");
+
+			if (linkat(p->rootfd, hl_p->path, p->rootfd, path,
+			    0) == -1) {
+				LOG0("While hard linking '%s' to '%s' ",
+				    hl_p->path, path);
+				ERRX1("linkat");
+			}
+
+			hl_p = NULL;
 		}
 		if (unlinkat(dlr->fd, dlr->entries[i].rmdir, AT_REMOVEDIR) == 
 			-1) {
@@ -487,6 +511,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			}
 			renamer = sess->dlrename;
 			renamer->entries = NULL;
+			renamer->hl = hl;
+			renamer->dl = p;
 			renamer->n = 0;
 			renamer->fd = p->rootfd;
 		} else
@@ -855,16 +881,28 @@ again:
 			}
 		}
 		usethis = buf2;
-	} else
+	} else {
 		usethis = f->path;
-	if (sess->opts->hard_links)
-		hl_p = find_hl(f, hl);
+		if (sess->opts->hard_links)
+			hl_p = find_hl(f, hl);
+	}
 	if (!sess->opts->inplace &&
 	    renameat(p->rootfd, p->fname, p->rootfd, usethis) == -1) {
 		ERR("%s: renameat: %s", p->fname, usethis);
 		goto out;
 	}
-	if (hl_p != 0) {
+	if (sess->opts->dlupdates) {
+		struct dlrename_entry *entry = &renamer->entries[renamer->n - 1];
+
+		entry->from = strdup(usethis);
+		if (entry->from == NULL) {
+			ERR("strdup");
+			goto out;
+		}
+
+		entry->file = f;
+		entry->to = f->path;
+	} else if (hl_p != NULL) {
 		if (unlinkat(p->rootfd, f->path, 0) == -1)
 			if (errno != ENOENT)
 				ERRX1("unlink");
