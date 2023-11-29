@@ -28,6 +28,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <poll.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -268,32 +269,28 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 	char		*tofree;
 	int		 rc = 0, dfd = -1, phase = 0, c;
 	int32_t		 ioerror;
-#ifndef	O_DIRECTORY
 	struct stat	 st;
-#endif
 	struct pollfd	 pfd[PFD__MAX];
 	struct download	*dl = NULL;
 	struct upload	*ul = NULL;
 	mode_t		 oumask;
 	struct info_for_hardlink *hl = NULL;
 	struct hardlinks hls;
+	bool		 root_missing = false;
 
 	if (pledge("stdio unix rpath wpath cpath dpath fattr chown getpw unveil", NULL) == -1)
 		err(ERR_IPC, "pledge");
 
 	/*
-	 * Create the path for our destination directory, if we're not
-	 * in dry-run mode (which would otherwise crash w/the pledge).
-	 * This uses our current umask: we might set the permissions on
-	 * this directory in post_dir().
+	 * If the root doesn't exist, we may be substituting cwd instead as the
+	 * root if we're only transferring a single file.  We won't know until
+	 * after the file list is transferred, so we open it up to cwd
+	 * proactively.
 	 */
-
-	if (!sess->opts->dry_run) {
-		if ((tofree = strdup(root)) == NULL)
-			err(ERR_NOMEM, NULL);
-		if (mkpath(tofree) < 0)
-			err(ERR_FILE_IO, "%s: mkpath", tofree);
-		free(tofree);
+	if (stat(root, &st) == -1 && errno == ENOENT) {
+		root_missing = true;
+		if (unveil(".", "rwc") == -1)
+			err(ERR_IPC, ".: unveil");
 	}
 
 	/*
@@ -364,6 +361,54 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 		LOG1("Transfer starting: %zu files", flsz);
 
 	LOG2("%s: receiver destination", root);
+
+	/*
+	 * Create the path for our destination directory, if we're not
+	 * in dry-run mode (which would otherwise crash w/the pledge).
+	 * This uses our current umask: we might set the permissions on
+	 * this directory in post_dir().
+	 */
+	if (!sess->opts->dry_run) {
+		/*
+		 * If we're only transferring a single non-directory, then the
+		 * root is actually cwd and the destination specified in args is
+		 * the filename.
+		 *
+		 * The receiver doesn't do this if the destination has a
+		 * trailing slash to indicate that it's actually a directory.
+		 */
+		if (root_missing && flsz == 1 && !S_ISDIR(fl[0].st.mode) &&
+		    root[strlen(root) - 1] != '/' &&
+		    (!sess->opts->relative || strchr(fl[0].path, '/') == NULL)) {
+			char *rpath;
+			const char *wpath;
+
+			free(fl[0].path);
+			fl[0].path = rpath = strdup(root);
+
+			/*
+			 * If we're not in relative mode, we strip the leading
+			 * directory part anyways.  If we are in relative mode,
+			 * we're not hitting this path unless it's in the
+			 * current directory.
+			 */
+			wpath = strrchr(rpath, '/');
+			if (wpath != NULL)
+				wpath++;
+			else
+				wpath = rpath;
+			fl[0].wpath = wpath;
+
+			root = ".";
+		} else {
+			if ((tofree = strdup(root)) == NULL)
+				err(ERR_NOMEM, NULL);
+			if (mkpath(tofree) < 0)
+				err(ERR_FILE_IO, "%s: mkpath", tofree);
+			free(tofree);
+		}
+	}
+
 
 	/*
 	 * Disable umask() so we can set permissions fully.
