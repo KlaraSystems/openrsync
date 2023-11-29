@@ -320,7 +320,7 @@ static struct opts	 opts;
 #define OP_DEL_DURING	1022
 #define OP_DEL_DELAY	1023
 #define OP_DEL_AFTER	1024
-#define OP_RELATIVE	1025
+
 #define OP_NO_RELATIVE	1026
 #define OP_DIRS		1027
 #define OP_NO_DIRS	1028
@@ -391,7 +391,8 @@ const struct option	 lopts[] = {
     { "progress",	no_argument,	NULL,			OP_PROGRESS },
     { "backup",		no_argument,	NULL,			OP_BACKUP },
     { "version",	no_argument,	NULL,			OP_VERSION },
-    { "relative",	no_argument,	NULL,			OP_RELATIVE },
+    { "relative",	no_argument,	NULL,			'R' },
+    { "no-R",		no_argument,	NULL,			OP_NO_RELATIVE },
     { "no-relative",	no_argument,	NULL,			OP_NO_RELATIVE },
     { "dirs",		no_argument,	NULL,			OP_DIRS },
     { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
@@ -421,7 +422,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "DHISVade:ghklLnoprtvxz", lopts,
+	while ((c = getopt_long(argc, argv, "DHIRSVade:ghklLnoprtvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case 'D':
@@ -620,7 +621,7 @@ basedir:
 		case OP_IGNORE_NON_EXISTING:
 		        opts.ign_non_exist++;
 			break;
-		case OP_RELATIVE:
+		case 'R':
 		        opts.relative++;
 			break;
 		case OP_NO_RELATIVE:
