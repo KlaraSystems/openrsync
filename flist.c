@@ -424,6 +424,13 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 
 		if (S_ISREG(f->st.mode))
 			sess->total_size += f->st.size;
+
+		if (sess->opts->checksum) {
+			if (!io_write_buf(sess, fdout, f->md, sizeof(f->md))) {
+				ERRX1("io_write_buf checksum");
+				goto out;
+			}
+		}
 	}
 
 	/* Signal end of file list. */
@@ -888,6 +895,13 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 
 		if (S_ISREG(ff->st.mode))
 			sess->total_size += ff->st.size;
+
+		if (sess->opts->checksum) {
+			if (!io_read_buf(sess, fd, ff->md, sizeof(ff->md))) {
+				ERRX1("io_read_buf");
+				goto out;
+			}
+		}
 	}
 
 	/* Conditionally read the user/group list. */
@@ -941,7 +955,7 @@ out:
 }
 
 static int
-flist_gen_dirent_file(const char *type, struct sess *sess, char *root,
+flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
     struct flist **fl, size_t *sz, size_t *max, const struct stat *st)
 {
 	struct flist	*f;
@@ -962,6 +976,18 @@ flist_gen_dirent_file(const char *type, struct sess *sess, char *root,
 		ERRX1("flist_append");
 		return 0;
 	}
+
+	if (sess->opts->checksum &&
+	    S_ISREG(f->st.mode) && f->st.size > 0) {
+		int rc;
+
+		rc = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
+		if (rc) {
+			ERRX1("hash_file_by_path");
+			return 0;
+		}
+	}
+
 	return 1;
 }
 
@@ -1033,7 +1059,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		ERR("%s: (l)stat", root);
 		return 0;
 	} else if (S_ISREG(st.st_mode)) {
-		return flist_gen_dirent_file("file", sess, root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "file", root, fl, sz, max, &st);
 	} else if (S_ISLNK(st.st_mode)) {
 		/*
 		 * How does this work?
@@ -1062,9 +1088,9 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			}
 		}
 
-		return flist_gen_dirent_file("symlink", sess, root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "symlink", root, fl, sz, max, &st);
 	} else if (!S_ISDIR(st.st_mode)) {
-		return flist_gen_dirent_file("special", sess, root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "special", root, fl, sz, max, &st);
 	}
 
 	if (stripdir == -1)
@@ -1215,6 +1241,20 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			}
 		}
 
+		if (sess->opts->checksum &&
+		    S_ISREG(f->st.mode) && f->st.size > 0) {
+			const char *relpath;
+
+			relpath = strrchr(f->path, '/');
+			relpath = (relpath != NULL) ? (relpath + 1) : f->path;
+
+			rc = hash_file_by_path(AT_FDCWD, relpath, f->st.size, f->md);
+			if (rc) {
+				ERRX1("hash_file_by_path");
+				goto out;
+			}
+		}
+
 		/* Reset errno for next fts_read() call. */
 		errno = 0;
 	}
@@ -1325,6 +1365,15 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 		if (!flist_append(sess, f, &st, argv[i], flp, sz, &max)) {
 			ERRX1("flist_append");
 			goto out;
+		}
+
+		if (sess->opts->checksum &&
+		    S_ISREG(f->st.mode) && f->st.size > 0) {
+			ret = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
+			if (ret) {
+				ERRX1("hash_file_by_path");
+				goto out;
+			}
 		}
 	}
 
