@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl abDgklLnoprtuvx
+.Op Fl abcDgklLnoprtuvx
 .Op Fl e Ar program
 .Op Fl -address Ns = Ns Ar sourceaddr
 .Op Fl -backup
@@ -80,6 +80,10 @@ as the source address for connections, which is useful on machines with
 multiple interfaces.
 .It Fl b , -backup
 Make a backup of changed files with ~ suffix.
+.It Fl c , -checksum
+Use full-file checksums to determine which files have changed and should
+be transferred, rather than the usual file size and modification time
+"quick check".
 .It Fl -compare-dest Ns = Ns Ar directory
 Use directory as an alternate base directory to compare files against on the
 destination machine.

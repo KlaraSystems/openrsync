@@ -329,6 +329,7 @@ static struct opts	 opts;
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "archive",	no_argument,	NULL,			'a' },
+    { "checksum",	no_argument,	NULL,			'c' },
     { "compare-dest",	required_argument, NULL,		OP_COMP_DEST },
 #if 0
     { "copy-dest",	required_argument, NULL,		OP_COPY_DEST },
@@ -433,7 +434,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "DHILRSVabde:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "DHILRSVabcde:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case 'D':
@@ -455,6 +456,9 @@ main(int argc, char *argv[])
 			break;
 		case 'b':
 		        opts.backup++;
+			break;
+		case 'c':
+			opts.checksum = 1;
 			break;
 		case 'd':
 			opts.dirs = 1;
@@ -828,7 +832,7 @@ basedir:
 	exit(rc);
 usage:
 	fprintf(stderr, "usage: %s"
-	    " [-DLadgklnoprtuvx] [-e program] [--address=sourceaddr]\n"
+	    " [-DLacdgklnoprtuvx] [-e program] [--address=sourceaddr]\n"
 	    "\t[--compare-dest=dir] [--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"

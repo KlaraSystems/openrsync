@@ -19,6 +19,8 @@
 
 #include <fts.h>
 
+#include "md4.h"
+
 #if !HAVE_PLEDGE
 # define pledge(x, y) (1)
 #endif
@@ -142,12 +144,17 @@ struct	flstat {
 
 /*
  * A list of files with their statistics.
+ * Note that the md[] field is only used by the --checksum option, and
+ * hence could be eliminated (when not needed) by making struct flist
+ * a variably-sized structure and handling its variability in both the
+ * sender and receiver.
  */
 struct	flist {
 	char		*path; /* path relative to root */
 	const char	*wpath; /* "working" path for receiver */
 	struct flstat	 st; /* file information */
 	char		*link; /* symlink target or NULL */
+	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
 };
 
 /*
@@ -157,6 +164,7 @@ struct	flist {
 struct	opts {
 	int		 sender;		/* --sender */
 	int		 server;		/* --server */
+	int		 checksum;		/* -c */
 	int		 recursive;		/* -r */
 	int		 dry_run;		/* -n */
 	int		 inplace;		/* --inplace */
@@ -450,6 +458,7 @@ void		 hash_slow(const void *, size_t, unsigned char *,
 		    const struct sess *);
 void		 hash_file(const void *, size_t, unsigned char *,
 		    const struct sess *);
+int		 hash_file_by_path(int, const char *, size_t, unsigned char *);
 
 void		 copy_file(int, const char *, const struct flist *);
 
