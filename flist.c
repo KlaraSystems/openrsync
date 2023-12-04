@@ -184,18 +184,16 @@ flist_topdirs(struct sess *sess, struct flist *fl, size_t flsz)
 
 /*
  * Filter through the fts() file information.
- * We want directories (pre-order), regular files, and symlinks.
+ * We want directories (pre-order) and regular files.
  * Everything else is skipped and possibly warned about.
  * Return zero to skip, non-zero to examine.
  */
 int
-flist_fts_check(struct sess *sess, FTSENT *ent)
+flist_fts_check(struct sess *sess, FTSENT *ent, enum fmode fmode)
 {
 
 	if (ent->fts_info == FTS_F  ||
-	    ent->fts_info == FTS_D ||
-	    ent->fts_info == FTS_SL ||
-	    ent->fts_info == FTS_SLNONE)
+	    ent->fts_info == FTS_D)
 		return 1;
 
 	if (ent->fts_info == FTS_DC) {
@@ -208,12 +206,24 @@ flist_fts_check(struct sess *sess, FTSENT *ent)
 	} else if (ent->fts_info == FTS_ERR) {
 		errno = ent->fts_errno;
 		WARN("%s", ent->fts_path);
+	} else if (ent->fts_info == FTS_SL || ent->fts_info == FTS_SLNONE) {
+		/*
+		 * If we're the receiver, we need to skip symlinks unless we're
+		 * doing --preserve-links or --copy-dirlinks.  If we're the
+		 * sender, we need to send the link along.
+		 */
+		if (sess->opts->preserve_links || sess->opts->copy_dirlinks ||
+		    fmode == FARGS_SENDER) {
+			return 1;
+		}
+		WARNX("%s: skipping symlink (5)", ent->fts_path);
 	} else if (ent->fts_info == FTS_DEFAULT) {
 		if ((sess->opts->devices && (S_ISBLK(ent->fts_statp->st_mode) ||
 		    S_ISCHR(ent->fts_statp->st_mode))) ||
 		    (sess->opts->specials &&
 		    (S_ISFIFO(ent->fts_statp->st_mode) ||
-		    S_ISSOCK(ent->fts_statp->st_mode)))) {
+		    S_ISSOCK(ent->fts_statp->st_mode))) ||
+		    fmode == FARGS_SENDER) {
 			return 1;
 		}
 		WARNX("%s: skipping special", ent->fts_path);
@@ -941,6 +951,35 @@ flist_gen_dirent_file(const char *type, struct sess *sess, char *root,
 	return 1;
 }
 
+static ssize_t
+flist_dirent_strip(const char *root)
+{
+	char	 *cp;
+	ssize_t	 stripdir;
+
+	/*
+	 * If we end with a slash, it means that we're not supposed to
+	 * copy the directory part itself---only the contents.
+	 * So set "stripdir" to be what we take out.
+	 */
+	stripdir = strlen(root);
+	assert(stripdir > 0);
+	if (root[stripdir - 1] != '/')
+		stripdir = 0;
+
+	/*
+	 * If we're not stripping anything, then see if we need to strip
+	 * out the leading material in the path up to and including the
+	 * last directory component.
+	 */
+
+	if (stripdir == 0)
+		if ((cp = strrchr(root, '/')) != NULL)
+			stripdir = cp - root + 1;
+
+	return (stripdir);
+}
+
 /*
  * Generate a flist possibly-recursively given a file root, which may
  * also be a regular file or symlink.
@@ -949,14 +988,15 @@ flist_gen_dirent_file(const char *type, struct sess *sess, char *root,
  */
 static int
 flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
-    size_t *max, int recu)
+    size_t *max, ssize_t stripdir)
 {
-	char		*cargv[2], *cp;
+	char		*cargv[2];
 	int		 rc = 0, flag;
 	FTS		*fts;
 	FTSENT		*ent;
 	struct flist	*f;
-	size_t		 i, flsz = 0, nxdev = 0, stripdir;
+	size_t		 i, flsz = 0, nxdev = 0;
+	ssize_t		 pstripdir = stripdir;
 	dev_t		*newxdev, *xdev = NULL;
 	struct stat	 st, st2;
 	int              ret;
@@ -994,53 +1034,27 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 				return 0;
 			}
 			if (S_ISDIR(st2.st_mode)) {
+				if (stripdir == -1)
+					stripdir = flist_dirent_strip(root);
 				if (readlink(root, buf, sizeof(buf)) == -1) {
 					ERR("%s: readlink", root);
 					return 0;
 				}
 				snprintf(buf2, sizeof(buf2), "%s/", root);
 				LOG4("symlinks: recursing '%s' -> '%s' '%s'\n", root, buf, buf2);
-				flist_gen_dirent(sess, buf2, fl, sz, max, 1);
+				flist_gen_dirent(sess, buf2, fl, sz, max,
+				    stripdir);
 				return 1;
 			}
 		}
-		if (!sess->opts->preserve_links) {
-			WARNX("%s: skipping symlink (1)", root);
-			return 1;
-		}
 
 		return flist_gen_dirent_file("symlink", sess, root, fl, sz, max, &st);
-	} else if (sess->opts->devices &&
-	    (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
-		return flist_gen_dirent_file("special", sess, root, fl, sz, max, &st);
-	} else if (sess->opts->specials &&
-	    (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode))) {
-		return flist_gen_dirent_file("special", sess, root, fl, sz, max, &st);
 	} else if (!S_ISDIR(st.st_mode)) {
-		WARNX("%s: skipping special", root);
-		return 1;
+		return flist_gen_dirent_file("special", sess, root, fl, sz, max, &st);
 	}
 
-	/*
-	 * If we end with a slash, it means that we're not supposed to
-	 * copy the directory part itself---only the contents.
-	 * So set "stripdir" to be what we take out.
-	 */
-
-	stripdir = strlen(root);
-	assert(stripdir > 0);
-	if (root[stripdir - 1] != '/')
-		stripdir = 0;
-
-	/*
-	 * If we're not stripping anything, then see if we need to strip
-	 * out the leading material in the path up to and including the
-	 * last directory component.
-	 */
-
-	if (stripdir == 0)
-		if ((cp = strrchr(root, '/')) != NULL)
-			stripdir = cp - root + 1;
+	if (stripdir == -1)
+		stripdir = flist_dirent_strip(root);
 
 	/*
 	 * If we're recursive, then we need to take down all of the
@@ -1058,7 +1072,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 
 	errno = 0;
 	while ((ent = fts_read(fts)) != NULL) {
-		if (!flist_fts_check(sess, ent)) {
+		if (!flist_fts_check(sess, ent, FARGS_SENDER)) {
 			errno = 0;
 			continue;
 		}
@@ -1081,13 +1095,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 						continue;
 					}
 					flist_gen_dirent(sess, ent->fts_path, fl, sz,
-					        max, 1);
-					continue;
-				}
-			} else {
-				if (!sess->opts->preserve_links) {
-					WARNX("%s: skipping symlink (2)",
-					    ent->fts_path);
+					        max, stripdir);
 					continue;
 				}
 			}
@@ -1167,18 +1175,20 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 			}
 		}
 
-		if (recu) {
-			// Must not have "foo/." dir specs.
-			// If we do mkdir fails.
-			int sz2 = strlen(f->path);
+		if (pstripdir != -1) {
+			/*
+			 * We recursed; must not have "foo/." dir specs.
+			 * If we do mkdir fails.
+			 */
+			size_t sz2 = strlen(f->path);
 
-			if (sz2 >= 2 && f->path[sz2 - 1] == '.' && 
+			if (sz2 >= 2 && f->path[sz2 - 1] == '.' &&
 			    f->path[sz2 - 2] == '/') {
 				(f->path)[sz2 - 2] = '\0';
 			}
-			f->wpath = f->path;
-		} else
-			f->wpath = f->path + stripdir;
+		}
+
+		f->wpath = f->path + stripdir;
 		flist_copy_stat(f, ent->fts_statp);
 
 		/* Optionally copy link information. */
@@ -1221,7 +1231,7 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct flist **flp,
 	size_t		 i, max = 0;
 
 	for (i = 0; i < argc; i++)
-		if (!flist_gen_dirent(sess, argv[i], flp, sz, &max, 0))
+		if (!flist_gen_dirent(sess, argv[i], flp, sz, &max, -1))
 			break;
 
 	if (i == argc) {
@@ -1285,20 +1295,6 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 				WARNX("%s: skipping directory", argv[i]);
 				continue;
 			}
-		} else if (S_ISLNK(st.st_mode)) {
-			if (!sess->opts->preserve_links) {
-				WARNX("%s: skipping symlink (3)", argv[i]);
-				continue;
-			}
-		} else if (sess->opts->devices &&
-		    (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
-			/* Valid. */
-		} else if (sess->opts->specials &&
-		    (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode))) {
-			/* Valid. */
-		} else if (!S_ISREG(st.st_mode)) {
-			WARNX("%s: skipping special", argv[i]);
-			continue;
 		}
 
 		/* filter files */
@@ -1664,7 +1660,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 	while ((ent = fts_read(fts)) != NULL) {
 		if (ent->fts_info == FTS_NS)
 			continue;
-		if (!flist_fts_check(sess, ent)) {
+		if (!flist_fts_check(sess, ent, FARGS_RECEIVER)) {
 			errno = 0;
 			continue;
 		} else if (stripdir >= ent->fts_pathlen)
@@ -1695,6 +1691,10 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 				continue;
 		}
 
+		/* This is for macOS fts, which returns "foo//bar" */
+		if (ent->fts_path[stripdir] == '/') {
+			stripdir++;
+		}
 		/* filter files on delete */
 		if (!sess->opts->del_excl && rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D)) == -1) {

@@ -19,6 +19,9 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include COMPAT_ENDIAN_H
+#ifdef __APPLE__
+#include <sys/time.h>
+#endif
 
 #include <assert.h>
 #include <errno.h>

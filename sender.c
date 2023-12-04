@@ -405,6 +405,18 @@ rsync_sender(struct sess *sess, int fdin,
 		}
 	}
 
+	/* Client sends zero-length exclusions if deleting. */
+	if (!sess->opts->server && sess->opts->del)
+		send_rules(sess, fdout);
+
+	/*
+	 * If we're the server, read our exclusion list.  We need to do this
+	 * early as some rules may hide files from the transfer.
+	 */
+
+	if (sess->opts->server)
+		recv_rules(sess, fdin);
+
 	/*
 	 * Generate the list of files we want to send from our
 	 * command-line input.
@@ -415,10 +427,6 @@ rsync_sender(struct sess *sess, int fdin,
 		ERRX1("flist_gen");
 		goto out;
 	}
-
-	/* Client sends zero-length exclusions if deleting. */
-	if (!sess->opts->server && sess->opts->del)
-		send_rules(sess, fdout);
 
 	/*
 	 * Then the file list in any mode.
@@ -443,14 +451,6 @@ rsync_sender(struct sess *sess, int fdin,
 		LOG1("Transfer starting: %zu files", flsz);
 
 	/*
-	 * If we're the server, read our exclusion list.
-	 * This is always 0 for now.
-	 */
-
-	if (sess->opts->server)
-		recv_rules(sess, fdin);
-
-	/*
 	 * Set up our poll events.
 	 * We start by polling only in receiver requests, enabling other
 	 * poll events on demand.
@@ -464,7 +464,8 @@ rsync_sender(struct sess *sess, int fdin,
 	pfd[2].events = POLLIN;
 
 	for (;;) {
-		assert(pfd[0].fd != -1);
+		pfd[0].fd = (pfd[1].fd >= 0 && wbufsz > 0) ? -1 : fdin;
+
 		if ((c = poll(pfd, 3, poll_timeout)) == -1) {
 			ERR("poll");
 			goto out;
