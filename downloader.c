@@ -169,8 +169,8 @@ download_partial_path(struct sess *sess, const struct flist *f,
 	dir = f->path;
 	dirsep = strrchr(dir, '/');
 	if (dirsep == NULL) {
-		dir = "./";
-		dirlen = 1;	/* Copy the NUL byte. */
+		dir = ".";
+		dirlen = 1;
 	} else {
 		/*
 		 * For all other subdirectories, we'll do a half-hearted
@@ -335,8 +335,15 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 		 * situation so that the user can manually recover the partial
 		 * file and make a decision on it.
 		 */
-		if (renameat(p->rootfd, p->fname, pdfd, fname) == -1)
+		if (move_file(p->rootfd, p->fname, pdfd, fname) == -1) {
+			/*
+			 * Don't leave the partial file laying around if
+			 * --partial-dir was requested and we can't manage it.
+			 */
+			if (pdfd != p->rootfd)
+				(void)unlinkat(p->rootfd, p->fname, 0);
 			return 0;
+		}
 	} else {
 		(void)unlinkat(p->rootfd, p->fname, 0);
 	}
@@ -1188,9 +1195,9 @@ again:
 			hl_p = find_hl(f, hl);
 	}
 	if (!download_is_inplace(sess, p, false) &&
-	    renameat(f->pdfd >= 0 ? f->pdfd : p->rootfd, p->fname, p->rootfd,
+	    move_file(f->pdfd >= 0 ? f->pdfd : p->rootfd, p->fname, p->rootfd,
 	    usethis) == -1) {
-		ERR("%s: renameat: %s", p->fname, usethis);
+		ERR("%s: move_file: %s", p->fname, f->path);
 		goto out;
 	}
 	if (sess->opts->dlupdates) {

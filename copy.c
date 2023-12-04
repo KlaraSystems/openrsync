@@ -18,8 +18,10 @@
 #if HAVE_ERR
 # include <err.h>
 #endif
+#include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include "extern.h"
@@ -63,6 +65,46 @@ copy_internal(int fromfd, int tofd)
 	if (ftruncate(tofd, lseek(tofd, 0, SEEK_CUR)) == -1)
 		return -1;
 	return 0;
+}
+
+int
+move_file(int fromdfd, const char *fname, int todfd, const char *tname)
+{
+	int fromfd, tofd;
+	int ret, serrno;
+
+	/* We'll try a rename(2) first. */
+	ret = renameat(fromdfd, fname, todfd, tname);
+	if (ret == 0)
+		return (0);
+	if (ret == -1 && errno != EXDEV)
+		return (ret);
+
+	/* Fallback to a copy. */
+	fromfd = openat(fromdfd, fname, O_RDONLY | O_NOFOLLOW);
+	if (fromfd == -1)
+		return (-1);
+	tofd = openat(todfd, tname,
+	    O_WRONLY | O_NOFOLLOW | O_TRUNC | O_CREAT | O_EXCL,
+	    0600);
+	if (tofd == -1) {
+		serrno = errno;
+		close(fromfd);
+		errno = serrno;
+		return (-1);
+	}
+
+	ret = copy_internal(fromfd, tofd);
+
+	serrno = errno;
+	close(fromfd);
+	close(tofd);
+	errno = serrno;
+
+	if (ret == 0)
+		(void)unlinkat(fromdfd, fname, 0);
+
+	return (ret);
 }
 
 void

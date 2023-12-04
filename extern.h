@@ -515,6 +515,7 @@ void		 hash_file(const void *, size_t, unsigned char *,
 		    const struct sess *);
 int		 hash_file_by_path(int, const char *, size_t, unsigned char *);
 
+int		 move_file(int, const char *, int, const char *);
 void		 copy_file(int, const char *, const struct flist *);
 
 int		 mkpath(char *);
