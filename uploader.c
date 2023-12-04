@@ -638,13 +638,17 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 			continue;
 		}
 
-		if (!flist_fts_check(sess, ent)) {
+		if (!flist_fts_check(sess, ent, FARGS_RECEIVER)) {
 			errno = 0;
 			continue;
 		}
 
 		assert(ent->fts_statp != NULL);
 
+		/* This is for macOS fts, which returns "foo//bar" */
+		if (ent->fts_path[stripdir] == '/') {
+			stripdir++;
+		}
 		if (!sess->opts->del_excl && rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D)) == -1) {
 			WARNX("skip excluded file %s",
@@ -842,7 +846,8 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
  *     1 if file exists and is possible match
  *     2 if file exists but quick check failed
  *     3 if file does not exist
- * The stat pointer st is only valid for 0, 1, and 2 returns.
+ *     4 if file exists but should be ignored
+ * The stat pointer st is only valid for 0, 1, 2, and 4 returns.
  */
 static int
 check_file(int rootfd, const struct flist *f, struct stat *st,
@@ -860,13 +865,8 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		ERR("%s: fstatat", f->path);
 		return -1;
 	}
-	if (sess->opts->ign_exist) {
-		LOG1("Skip existing '%s'", f->path);
-		return 0;
-	}
 
-
-	if (sess->opts->hard_links) {
+	if (!sess->opts->ign_exist && sess->opts->hard_links) {
 		/*
 		 * This covers the situation where a hardlink is sent,
 		 * but non-hardlinked files with identical contents
@@ -894,6 +894,11 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 	/* non-regular file needs attention */
 	if (!S_ISREG(st->st_mode))
 		return 2;
+
+	if (sess->opts->ign_exist) {
+		LOG1("Skip existing '%s'", f->path);
+		return 4;
+	}
 
 	/* quick check if file is the same */
 	/* TODO: add support for --checksum and --size-only */
@@ -953,6 +958,8 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 	rc = check_file(p->rootfd, f, &st, sess, hl);
 	if (rc == -1)
 		return -1;
+	if (rc == 4)
+		return 0;
 	if (rc == 2 && !S_ISREG(st.st_mode)) {
 		int uflags = 0;
 		bool do_unlink = false;

@@ -382,11 +382,41 @@ send_rules(struct sess *sess, int fd)
 		err(ERR_SOCK_IO, "send rules");
 }
 
+/*
+ * + rules are sent without the command in some circumstances, so see if we have
+ * what looks like an unsalted exclude rule.
+ */
+static enum rule_type
+rule_xfer_type(const char **linep)
+{
+	const char *line = *linep;
+	size_t len;
+	enum rule_type type;
+
+	if (line[1] != ' ' && line[1] != '_')
+		return RULE_EXCLUDE;
+
+	len = strcspn(line, " _");
+
+	/*
+	 * Not completely sure... see if this matches one of our rule prefixes.
+	 * If it doesn't, we have to assume that it's an exclude rule.
+	 */
+	type = parse_command(line, len);
+	if (type != RULE_NONE)
+		*linep = line + len + 1;
+	else
+		type = RULE_EXCLUDE;
+	return type;
+}
+
 void
 recv_rules(struct sess *sess, int fd)
 {
 	char line[8192];
+	char *rule;
 	size_t len;
+	enum rule_type type;
 
 	do {
 		if (!io_read_size(sess, fd, &len))
@@ -399,7 +429,10 @@ recv_rules(struct sess *sess, int fd)
 		if (!io_read_buf(sess, fd, line, len))
 			err(ERR_SOCK_IO, "receive rules");
 		line[len] = '\0';
-		if (parse_rule(line, RULE_NONE) == -1)
+
+		rule = &line[0];
+		type = rule_xfer_type(&rule);
+		if (parse_rule(rule, type) == -1)
 			errx(ERR_PROTOCOL, "syntax error in received rules");
 	} while (1);
 }

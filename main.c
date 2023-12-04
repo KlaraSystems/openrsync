@@ -299,9 +299,9 @@ static struct opts	 opts;
 #define OP_PORT		1001
 #define OP_RSYNCPATH	1002
 #define OP_TIMEOUT	1003
-#define OP_VERSION	1004
+
 #define OP_EXCLUDE	1005
-#define OP_IGNORE_TIMES	1006
+#define OP_NO_D		1006
 #define OP_INCLUDE	1007
 #define OP_EXCLUDE_FROM	1008
 #define OP_INCLUDE_FROM	1009
@@ -312,7 +312,7 @@ static struct opts	 opts;
 #define OP_MIN_SIZE	1014
 #define OP_SPARSE	1015
 #define OP_PROGRESS	1016
-#define OP_BACKUP	1017
+
 #define OP_IGNORE_EXISTING	1018
 #define OP_IGNORE_NON_EXISTING	1019
 #define OP_DEL			1020
@@ -322,7 +322,7 @@ static struct opts	 opts;
 #define OP_DEL_AFTER	1024
 
 #define OP_NO_RELATIVE	1026
-#define OP_DIRS		1027
+
 #define OP_NO_DIRS	1028
 #define OP_FILESFROM	1029
 
@@ -337,6 +337,7 @@ const struct option	 lopts[] = {
     { "compress",	no_argument,	NULL,			'z' },
     { "copy-dirlinks",	no_argument,	NULL,			'k' },
     { "copy-links",	no_argument,	&opts.copy_links,	'L' },
+    { "no-D",		no_argument,	NULL,			OP_NO_D },
     { "del",		no_argument,	NULL,			OP_DEL },
     { "delete",		no_argument,	NULL,			OP_DEL },
     { "delete-before",	no_argument,	NULL,		OP_DEL_BEFORE },
@@ -346,55 +347,64 @@ const struct option	 lopts[] = {
     { "delete-excluded",	no_argument,	&opts.del_excl,	1 },
     { "devices",	no_argument,	&opts.devices,		1 },
     { "no-devices",	no_argument,	&opts.devices,		0 },
-    { "dry-run",	no_argument,	&opts.dry_run,		1 },
+    { "dry-run",	no_argument,	NULL,			'n' },
     { "exclude",	required_argument, NULL,		OP_EXCLUDE },
     { "exclude-from",	required_argument, NULL,		OP_EXCLUDE_FROM },
-    { "group",		no_argument,	&opts.preserve_gids,	1 },
+    { "existing",	no_argument, NULL,			OP_IGNORE_NON_EXISTING },
+    { "group",		no_argument,	NULL,			'g' },
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
+    { "no-g",		no_argument,	&opts.preserve_gids,	0 },
     { "hard-links",	no_argument,	&opts.hard_links,	'H' },
     { "help",		no_argument,	NULL,			'h' },
     { "ignore-existing", no_argument,	NULL,			OP_IGNORE_EXISTING },
     { "ignore-non-existing", no_argument, NULL,			OP_IGNORE_NON_EXISTING },
-    { "ignore-times",	no_argument,	NULL,			OP_IGNORE_TIMES },
+    { "ignore-times",	no_argument,	NULL,			'I' },
     { "include",	required_argument, NULL,		OP_INCLUDE },
     { "include-from",	required_argument, NULL,		OP_INCLUDE_FROM },
     /* XXX --inplace should also imply --partial */
-    { "inplace",	no_argument,	&opts.inplace,			1 },
-    { "links",		no_argument,	&opts.preserve_links,	1 },
+    { "inplace",	no_argument,	&opts.inplace,		1 },
+    { "links",		no_argument,	NULL,			'l' },
     { "max-size",	required_argument, NULL,		OP_MAX_SIZE },
     { "min-size",	required_argument, NULL,		OP_MIN_SIZE },
     { "no-links",	no_argument,	&opts.preserve_links,	0 },
+    { "no-l",		no_argument,	&opts.preserve_links,	0 },
     { "no-motd",	no_argument,	&opts.no_motd,		1 },
     { "numeric-ids",	no_argument,	&opts.numeric_ids,	1 },
-    { "owner",		no_argument,	&opts.preserve_uids,	1 },
+    { "owner",		no_argument,	NULL,			'o' },
     { "no-owner",	no_argument,	&opts.preserve_uids,	0 },
-    { "perms",		no_argument,	&opts.preserve_perms,	1 },
+    { "no-o",		no_argument,	&opts.preserve_uids,	0 },
+    { "one-file-system",no_argument,	NULL,			'x' },
+    { "perms",		no_argument,	NULL,			'p' },
     { "no-perms",	no_argument,	&opts.preserve_perms,	0 },
+    { "no-p",		no_argument,	&opts.preserve_perms,	0 },
     { "port",		required_argument, NULL,		OP_PORT },
-    { "recursive",	no_argument,	&opts.recursive,	1 },
+    { "recursive",	no_argument,	NULL,			'r' },
     { "no-recursive",	no_argument,	&opts.recursive,	0 },
+    { "no-r",		no_argument,	&opts.recursive,	0 },
     { "rsh",		required_argument, NULL,		'e' },
     { "rsync-path",	required_argument, NULL,		OP_RSYNCPATH },
     { "sender",		no_argument,	&opts.sender,		1 },
     { "server",		no_argument,	&opts.server,		1 },
     { "specials",	no_argument,	&opts.specials,		1 },
-    { "sparse",		no_argument,	&opts.sparse,		OP_SPARSE },
+    { "sparse",		no_argument,	NULL,			'S' },
 #if 0
     { "sync-file",	required_argument, NULL,		6 },
 #endif
     { "no-specials",	no_argument,	&opts.specials,		0 },
     { "timeout",	required_argument, NULL,		OP_TIMEOUT },
-    { "times",		no_argument,	&opts.preserve_times,	1 },
+    { "times",		no_argument,	NULL,			't' },
     { "no-times",	no_argument,	&opts.preserve_times,	0 },
-    { "verbose",	no_argument,	&verbose,		1 },
+    { "no-t",		no_argument,	&opts.preserve_times,	0 },
+    { "verbose",	no_argument,	NULL,			'v' },
     { "no-verbose",	no_argument,	&verbose,		0 },
+    { "no-v",		no_argument,	&verbose,		0 },
     { "progress",	no_argument,	NULL,			OP_PROGRESS },
-    { "backup",		no_argument,	NULL,			OP_BACKUP },
-    { "version",	no_argument,	NULL,			OP_VERSION },
+    { "backup",		no_argument,	NULL,			'b' },
+    { "version",	no_argument,	NULL,			'V' },
     { "relative",	no_argument,	NULL,			'R' },
     { "no-R",		no_argument,	NULL,			OP_NO_RELATIVE },
     { "no-relative",	no_argument,	NULL,			OP_NO_RELATIVE },
-    { "dirs",		no_argument,	NULL,			OP_DIRS },
+    { "dirs",		no_argument,	NULL,			'd' },
     { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
     { "delay-updates",	no_argument,	&opts.dlupdates,	1 },
@@ -422,7 +432,7 @@ main(int argc, char *argv[])
 
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "DHIRSVade:ghklLnoprtvxz", lopts,
+	while ((c = getopt_long(argc, argv, "DHILRSVabde:ghklnoprtvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case 'D':
@@ -441,6 +451,9 @@ main(int argc, char *argv[])
 			opts.preserve_uids = 1;
 			opts.devices = 1;
 			opts.specials = 1;
+			break;
+		case 'b':
+		        opts.backup++;
 			break;
 		case 'd':
 			opts.dirs = 1;
@@ -517,9 +530,6 @@ main(int argc, char *argv[])
 			if (parse_rule(optarg, RULE_EXCLUDE) == -1)
 				errx(ERR_SYNTAX, "syntax error in exclude: %s",
 				    optarg);
-			break;
-		case OP_IGNORE_TIMES:
-			opts.ignore_times++;
 			break;
 		case OP_INCLUDE:
 			if (parse_rule(optarg, RULE_INCLUDE) == -1)
@@ -609,11 +619,12 @@ basedir:
 				err(1, "bad min-size");
 			opts.min_size = tmpint;
 			break;
+		case OP_NO_D:
+			opts.devices = 0;
+			opts.specials = 0;
+			break;
 		case OP_PROGRESS:
 		        opts.progress++;
-			break;
-		case OP_BACKUP:
-		        opts.backup++;
 			break;
 		case OP_IGNORE_EXISTING:
 		        opts.ign_exist++;
@@ -627,9 +638,6 @@ basedir:
 		case OP_NO_RELATIVE:
 		        opts_no_relative++;
 			break;
-		case OP_DIRS:
-		        opts.dirs++;
-			break;
 		case OP_NO_DIRS:
 		        opts_no_dirs++;
 			break;
@@ -637,7 +645,6 @@ basedir:
 		        opts.filesfrom = optarg;
 			break;
 		case 'V':
-		case OP_VERSION:
 			fprintf(stderr, "openrsync: protocol version %u\n",
 			    RSYNC_PROTOCOL);
 			exit(0);
@@ -793,6 +800,7 @@ basedir:
 	 */
 	kill(child, SIGUSR2);
 #endif
+
 	if (waitpid(child, &st, 0) == -1)
 		err(ERR_WAITPID, "waitpid");
 

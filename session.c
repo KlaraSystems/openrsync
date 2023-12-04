@@ -102,7 +102,7 @@ sess_stats_send(struct sess *sess, int fd)
 {
 	uint64_t tw, tr, ts;
 
-	if (verbose == 0)
+	if (!sess->opts->server && verbose == 0)
 		return 1;
 
 	tw = sess->total_write;
@@ -122,7 +122,8 @@ sess_stats_send(struct sess *sess, int fd)
 		}
 	}
 
-	stats_log(sess, tr, tw, ts);
+	if (verbose > 0)
+		stats_log(sess, tr, tw, ts);
 	return 1;
 }
 
@@ -138,7 +139,7 @@ sess_stats_recv(struct sess *sess, int fd)
 {
 	uint64_t tr, tw, ts;
 
-	if (sess->opts->server || verbose == 0)
+	if (sess->opts->server)
 		return 1;
 
 	if (!io_read_ulong(sess, fd, &tw)) {
@@ -152,6 +153,7 @@ sess_stats_recv(struct sess *sess, int fd)
 		return 0;
 	}
 
-	stats_log(sess, tr, tw, ts);
+	if (verbose > 0)
+		stats_log(sess, tr, tw, ts);
 	return 1;
 }
