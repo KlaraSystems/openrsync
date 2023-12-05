@@ -783,8 +783,15 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 				}
 				ff->st.uid = uival;
 			} else if (fflast == NULL) {
-				ERRX("same uid without last entry");
-				goto out;
+				/*
+				 * rsync 2.6.9 would sometimes send some of
+				 * these because it used a comparison against a
+				 * static 0 for uid/gid in determining this
+				 * without checking if it had actually send a
+				 * file before.
+				 */
+				WARNX1("same uid without last entry");
+				ff->st.uid = 0;
 			} else
 				ff->st.uid = fflast->st.uid;
 		}
@@ -799,8 +806,15 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 				}
 				ff->st.gid = uival;
 			} else if (fflast == NULL) {
-				ERRX("same gid without last entry");
-				goto out;
+				/*
+				 * rsync 2.6.9 would sometimes send some of
+				 * these because it used a comparison against a
+				 * static 0 for uid/gid in determining this
+				 * without checking if it had actually send a
+				 * file before.
+				 */
+				WARNX1("same gid without last entry");
+				ff->st.gid = 0;
 			} else
 				ff->st.gid = fflast->st.gid;
 		}
