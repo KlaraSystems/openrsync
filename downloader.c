@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -477,6 +478,22 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 	return 1;
 }
 
+static inline bool
+download_is_inplace(struct sess *sess, struct download *p, bool resumed_only)
+{
+
+	if (!sess_is_inplace(sess))
+		return false;
+	if (!resumed_only)
+		return true;
+
+	/*
+	 * We're definitely inplace, but we're only a resumed transfer if we
+	 * actually have the previous file mapped.
+	 */
+	return p->ofd >= 0;
+}
+
 /*
  * The downloader waits on a file the sender is going to give us, opens
  * and mmaps the existing file, opens a temporary file, dumps the file
@@ -632,7 +649,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 		*ofd = -1;
 
 		/* Create the temporary file. */
-		if (sess->opts->inplace) {
+		if (download_is_inplace(sess, p, false)) {
 			char *basename;
 
 			p->fd = openat(p->rootfd, f->path, O_RDWR | O_CREAT | O_NONBLOCK,
@@ -763,7 +780,7 @@ again:
 
 		assert(p->map != MAP_FAILED);
 
-		if (sess->opts->inplace && p->ofd >= 0 && p->total == off) {
+		if (download_is_inplace(sess, p, true) && p->total == off) {
 			/* Flush any pending data before we seek ahead. */
 			buf_copy(NULL, 0, p, sess);
 			if (lseek(p->fd, sz, SEEK_CUR) == -1) {
