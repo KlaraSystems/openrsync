@@ -490,4 +490,11 @@ int              read_filesfrom(struct sess *sess, const char *basedir);
 void		 cleanup_filesfrom(struct sess *sess);
 void		 delayed_renames(struct sess *sess);
 
+static inline int
+sess_is_inplace(struct sess *sess)
+{
+
+	return sess->opts->inplace;
+}
+
 #endif /*!EXTERN_H*/
