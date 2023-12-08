@@ -739,6 +739,8 @@ again:
 
 		return 1;
 	} else if (rawtok < 0) {
+		off_t off;
+
 		tok = -rawtok - 1;
 		if (tok >= p->blk.blksz) {
 			ERRX("%s: token not in block set: %zu (have %zu blocks)",
@@ -748,7 +750,8 @@ again:
 		sz = tok == p->blk.blksz - 1 ? p->blk.rem : p->blk.len;
 		assert(sz);
 		assert(p->map != MAP_FAILED);
-		buf = p->map + (tok * p->blk.len);
+		off = tok * p->blk.len;
+		buf = p->map + off;
 
 		/*
 		 * Now we read from our block.
@@ -759,7 +762,15 @@ again:
 		 */
 
 		assert(p->map != MAP_FAILED);
-		if (!buf_copy(buf, sz, p, sess)) {
+
+		if (sess->opts->inplace && p->ofd >= 0 && p->total == off) {
+			/* Flush any pending data before we seek ahead. */
+			buf_copy(NULL, 0, p, sess);
+			if (lseek(p->fd, sz, SEEK_CUR) == -1) {
+				ERRX1("lseek");
+				goto out;
+			}
+		} else if (!buf_copy(buf, sz, p, sess)) {
 			ERRX1("buf_copy");
 			goto out;
 		}
