@@ -681,7 +681,17 @@ parse_rule_impl(struct ruleset *ruleset, const char *line, enum rule_type def,
 			r->modifiers &= MOD_MERGE_MASK;
 		if (type == RULE_CLEAR)
 			ruleset->lclear = r - ruleset->rules;
-		parse_pattern(r, pattern);
+
+		/*
+		 * Merge rules are processed just once and may be an absolute
+		 * path, while dir-merge rules are processed once per directory
+		 * we traverse in the transfer.
+		 */
+		if (type == RULE_MERGE)
+			r->pattern = pattern;
+		else
+			parse_pattern(r, pattern);
+
 		if (type == RULE_MERGE || type == RULE_DIR_MERGE) {
 			if ((modifiers & MOD_MERGE_EXCLUDE_FILE) != 0) {
 				if (parse_rule_impl(ruleset, r->pattern,
