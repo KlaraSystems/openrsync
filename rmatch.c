@@ -260,8 +260,12 @@ matchsub(const char **pp, const char **ss, const char *end, int wild)
 		/* eat possible escape char before '/' */
 		if (pattern[0] == '\\' && pattern[1] == '/')
 			pattern++;
-		if (pattern[0] == '/')
+		if (pattern[0] == '/') {
+			/* hit the barrier but we still have characters left */
+			if (string < end)
+				return 1;
 			break;
+		}
 
 		/* check if there are still characters available to compare */
 		if (string >= end)
