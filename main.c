@@ -750,6 +750,7 @@ basedir:
 		/* XXX Samba rsync would normalize this path a little better. */
 		partial_dir = opts.partial_dir;
 		if (partial_dir[0] == '\0' || strcmp(partial_dir, ".") == 0) {
+			free(opts.partial_dir);
 			opts.partial_dir = NULL;
 		} else {
 			char *endp;
