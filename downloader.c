@@ -340,10 +340,14 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 			 * Don't leave the partial file laying around if
 			 * --partial-dir was requested and we can't manage it.
 			 */
-			if (pdfd != p->rootfd)
+			if (pdfd != p->rootfd) {
 				(void)unlinkat(p->rootfd, p->fname, 0);
+				close(pdfd);
+			}
 			return 0;
 		}
+		if (pdfd != p->rootfd)
+			close(pdfd);
 	} else {
 		(void)unlinkat(p->rootfd, p->fname, 0);
 	}

@@ -955,7 +955,9 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
  * Check an alternate dir (e.g., copy dest mode dir) for a suitable version of
  * the file.
  *
- * Returns -1 on error, 0 on success, or 1 to keep trying further dirs.
+ * Returns -1 on error, 0 on success, or 1 to keep trying further dirs.  The
+ * *savedfd will be updated if we determine a match is a viable candidate for
+ * *matchdir.
  */
 static int
 pre_file_check_altdir(struct sess *sess, const struct upload *p,
@@ -979,6 +981,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 			if (unlinkat(p->rootfd, f->path, 0) == -1 &&
 			    errno != ENOENT) {
 				ERR("%s: unlinkat", f->path);
+				close(dfd);
 				return -1;
 			}
 		}
@@ -1013,10 +1016,18 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 	} else if ((x == 1 || x == 2) && *matchdir == NULL) {
 		/* found a local file that is a close match */
 		*matchdir = root;
+		if (savedfd != NULL) {
+			int prevfd;
+
+			if ((prevfd = *savedfd) != -1)
+				close(prevfd);
+			*savedfd = dfd;
+			/* Don't close() it. */
+			dfd = -1;
+		}
 	}
-	if (savedfd != NULL)
-		*savedfd = dfd;
-	else
+
+	if (dfd != -1)
 		close(dfd);
 	return 1;
 }
@@ -1142,7 +1153,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 		    sess->opts->alt_base_mode, NULL, false);
 
 		if (ret <= 0) {
-			if (partialdir != NULL)
+			if (pdfd != -1)
 				close(pdfd);
 			return ret;
 		}
@@ -1152,6 +1163,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 	 * partialdir is a special case, we'll work on it from there.
 	 */
 	if (matchdir != NULL && partialdir == NULL) {
+		assert(pdfd == -1);
 		/* copy match from basedir into root as a start point */
 		copy_file(p->rootfd, matchdir, f);
 		if (fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW) ==
@@ -1162,19 +1174,21 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 	}
 
 	if (partialdir != NULL) {
-
 		*size = psize;
 		*filefd = openat(pdfd, download_partial_filepath(f),
 		    O_RDONLY | O_NOFOLLOW);
 
-		if (*filefd >= 0)
+		if (*filefd != -1)
 			f->pdfd = pdfd;
 	} else {
+		assert(pdfd == -1);
 		*size = st.st_size;
 		*filefd = openat(p->rootfd, f->path, O_RDONLY | O_NOFOLLOW);
 	}
 	if (*filefd == -1 && errno != ENOENT) {
 		ERR("%s: openat", f->path);
+		if (pdfd != -1)
+			close(pdfd);
 		return -1;
 	}
 
