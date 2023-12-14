@@ -155,6 +155,7 @@ struct	flist {
 	struct flstat	 st; /* file information */
 	char		*link; /* symlink target or NULL */
 	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
+	int		 redo; /* flagged for redo */
 };
 
 /*
@@ -279,6 +280,30 @@ struct	blkset {
 };
 
 /*
+ * Context for the role (sender/receiver).  The role may embed this into their
+ * own context struct.
+ */
+struct	role {
+	int		 append;		/* Append mode active */
+
+	/*
+	 * We basically track two different forms of phase: the metadata phase,
+	 * and the transfer phase.  The metadata phase may be advanced from the
+	 * transfer phase, as we'll immediately move on to checking for or
+	 * processing redo entries when the first phase's file requests are
+	 * done.
+	 *
+	 * Each role has its own way of tracking these, so we just have them
+	 * drop a pointer here to avoid having to keep things in sync.  `append`
+	 * above will be reset as the transfer phase progresses, so parts
+	 * dealing with block metadata should check `*phase` *and* `append` to
+	 * determine if they need to send/receive block checksums, and anything
+	 * part of the data transfer process should just be checking `append`.
+	 */
+	const int	*phase;			/* Metadata phase */
+};
+
+/*
  * Values required during a communication session.
  */
 struct	sess {
@@ -296,6 +321,7 @@ struct	sess {
 	char             **filesfrom; /* Contents of files-from */
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
 	struct dlrename    *dlrename; /* Deferred renames for --delay-update */
+	struct role	  *role; /* Role context */
 };
 
 /*
@@ -434,11 +460,13 @@ int	rsync_uploader(struct upload *, int *, struct sess *, int *,
 		       const struct hardlinks *);
 int	rsync_uploader_tail(struct upload *, struct sess *);
 
-struct download	*download_alloc(struct sess *, int, const struct flist *,
-		    size_t, int);
+struct download	*download_alloc(struct sess *, int, struct flist *, size_t,
+		    int);
+size_t		 download_needs_redo(struct download *);
 void		 download_free(struct download *);
 struct upload	*upload_alloc(const char *, int, int, size_t,
 		    const struct flist *, size_t, mode_t);
+void		upload_next_phase(struct upload *);
 void		upload_free(struct upload *);
 int		upload_del(struct upload *, struct sess *);
 
