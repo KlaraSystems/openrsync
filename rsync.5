@@ -400,9 +400,13 @@ whole-file long checksum (16 bytes)
 The sender then either handles the next queued file or, if the receiver
 has written a phase change, the phase change step.
 .Pp
-If the sender is the server and
+The receiver may need to request a redo for files that did not match the final
+whole-file long checksum, which it should do at this time or it will send
+another phase change.
+.Pp
+If the sender is the server, then the sender must send statistics whether
 .Fl v
-has been specified, the sender must send statistics.
+has been specified or not.
 .Pp
 .Bl -enum -compact
 .It
@@ -457,10 +461,25 @@ date, defined by having the same file size and timestamp, and send it to
 the server.
 Symbolic links and directory entries are never sent to the server.
 .Pp
-After the second phase has completed and prior to writing the
-end-of-data signal, the client receiver reads statistics.
-This is only performed with
-.Pq Fl v .
+After the second phase has completed, there is an optional redo phase that may
+follow.
+This proceeds in an identical fashion to the second phase, but with the checksum
+length increased to the full MD4 size.
+This phase is primarily designed to catch files that may have changed while the
+transfer was in progress, but it also catches incorrectly selected blocks from
+the second phase.
+Such blocks may happen due to relatively rare collisions in the short hash and
+the two-byte version of the long hash that the second phase uses.
+Regardless of needing to redo any files, the receiver sends one more end of
+phase marker to signal the end of file transfers.
+.Pp
+Following the optional redo phase and prior to writing the end-of-data signal,
+the client receiver reads statistics.
+This is performed regardless of
+.Pq Fl v ,
+but will only be written out if
+.Fl v
+has been specified.
 .Pp
 .Bl -enum -compact
 .It
