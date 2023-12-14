@@ -65,6 +65,7 @@ struct	upload {
 	size_t		    dflsz; /* size of delayed delete list */
 	size_t		    dflmax; /* allocated size of delayed delete list */
 	int		   *newdir; /* non-zero if mkdir'd */
+	int		    phase; /* current uploader phase (transfer, redo) */
 };
 
 /*
@@ -905,7 +906,7 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		return 4;
 	}
 
-	if (sess->opts->append) {
+	if (sess->role->append) {
 		if (st->st_size >= f->st.size) {
 			LOG1("Skip append '%s'", f->path);
 			return 4;
@@ -1137,6 +1138,19 @@ upload_alloc(const char *root, int rootfd, int fdout,
 	return p;
 }
 
+void
+upload_next_phase(struct upload *p)
+{
+
+	assert(p->state == UPLOAD_FINISHED);
+
+	/* Reset for the redo phase. */
+	p->state = UPLOAD_FIND_NEXT;
+	p->idx = 0;
+	p->phase++;
+	p->csumlen = CSUM_LENGTH_PHASE2;
+}
+
 /*
  * Perform all cleanups and free.
  * Passing a NULL to this function is ok.
@@ -1171,6 +1185,9 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	size_t		    i, pos, sz;
 	off_t		    offs, filesize;
 	int		    c;
+
+	if (sess->role->phase == NULL)
+		sess->role->phase = &u->phase;
 
 	/* Once finished this should never get called again. */
 	assert(u->state != UPLOAD_FINISHED);
@@ -1233,6 +1250,8 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		assert(*fileoutfd != -1);
 
 		for ( ; u->idx < u->flsz; u->idx++) {
+			if (u->phase > 0 && !u->fl[u->idx].redo)
+				continue;
 			if (S_ISDIR(u->fl[u->idx].st.mode))
 				c = pre_dir(u, sess);
 			else if (S_ISLNK(u->fl[u->idx].st.mode))
@@ -1287,7 +1306,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		init_blkset(&blk, filesize);
 		assert(blk.blksz);
 
-		if (sess->opts->append)
+		if (u->phase == 0 && sess->role->append)
 			goto skipmap;
 
 		blk.blks = calloc(blk.blksz, sizeof(struct blk));
@@ -1355,7 +1374,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	    sizeof(int32_t) + /* checksum length */
 	    sizeof(int32_t);  /* block remainder */
 
-	if (!sess->opts->append) {
+	if (u->phase > 0 || !sess->role->append) {
 		u->bufsz += blk.blksz *
 			(sizeof(int32_t) + /* short checksum */
 			 blk.csum); /* long checksum */
@@ -1378,7 +1397,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.csum);
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.rem);
 
-	if (!sess->opts->append) {
+	if (!sess->role->append) {
 		for (i = 0; i < blk.blksz; i++) {
 			io_buffer_int(u->buf, &pos, u->bufsz,
 				      blk.blks[i].chksum_short);

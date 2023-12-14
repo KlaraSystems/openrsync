@@ -73,13 +73,14 @@ struct	download {
 	MD4_CTX		    ctx; /* current hashing context */
 	off_t		    downloaded; /* total downloaded */
 	off_t		    total; /* total in file */
-	const struct flist *fl; /* file list */
+	struct flist	   *fl; /* file list */
 	size_t		    flsz; /* size of file list */
 	int		    rootfd; /* destination directory */
 	int		    fdin; /* read descriptor from sender */
 	char		   *obuf; /* pre-write buffer */
 	size_t		    obufsz; /* current size of obuf */
 	size_t		    obufmax; /* max size we'll wbuffer */
+	size_t		    needredo; /* needs redo phase */
 };
 
 
@@ -183,8 +184,8 @@ download_cleanup(struct download *p, int cleanup)
  * On success, download_free() must be called with the pointer.
  */
 struct download *
-download_alloc(struct sess *sess, int fdin,
-	const struct flist *fl, size_t flsz, int rootfd)
+download_alloc(struct sess *sess, int fdin, struct flist *fl, size_t flsz,
+	int rootfd)
 {
 	struct download	*p;
 
@@ -198,6 +199,7 @@ download_alloc(struct sess *sess, int fdin,
 	p->flsz = flsz;
 	p->rootfd = rootfd;
 	p->fdin = fdin;
+	p->needredo = 0;
 	download_reinit(sess, p, 0);
 	p->obufsz = 0;
 	p->obuf = NULL;
@@ -208,6 +210,13 @@ download_alloc(struct sess *sess, int fdin,
 		return NULL;
 	}
 	return p;
+}
+
+size_t
+download_needs_redo(struct download *p)
+{
+
+	return p->needredo;
 }
 
 /*
@@ -511,7 +520,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 {
 	int		 c;
 	int32_t		 idx, rawtok;
-	const struct flist *f, *hl_p = NULL;
+	const struct flist *hl_p = NULL;
+	struct  flist	*f;
 	size_t		 sz, tok;
 	struct stat	 st, st2;
 	char		*buf = NULL;
@@ -675,7 +685,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 
 			LOG3("%s: writing inplace", f->path);
 
-			if (sess->opts->append && p->mapsz > 0) {
+			if (sess->role->append && p->mapsz > 0) {
 				MD4_Update(&p->ctx, p->map, p->mapsz);
 
 				if (lseek(p->fd, 0, SEEK_END) != st.st_size) {
@@ -840,9 +850,25 @@ again:
 		ERRX1("io_read_buf");
 		goto out;
 	} else if (memcmp(md, ourmd, MD4_DIGEST_LENGTH)) {
-		ERRX("%s: hash does not match", p->fname);
-		goto out;
+		/*
+		 * If this is our second shot at a file and it still doesn't
+		 * match, we'll just give up.
+		 */
+		WARNX("%s: hash does not match, %s redo", p->fname,
+		    f->redo ? "will not" : "will");
+		if (f->redo)
+			goto out;
+
+		f->redo = 1;
+		p->needredo++;
+		goto done;
 	}
+
+	/*
+	 * Once we successfully transfer it, unmark it for redo so that we don't
+	 * erroneously clean it up later.
+	 */
+	f->redo = 0;
 
 	if (sess->opts->backup) {
 		if (fstatat(p->rootfd, f->path, &st2, 0) == -1) {
@@ -958,7 +984,12 @@ again:
 	if (sess->opts->progress)
 		fprintf(stderr, "\n");
 	log_file(sess, p, f);
-	download_cleanup(p, 0);
+done:
+	/*
+	 * If we're redoing it, then we need to go ahead and clean up the file
+	 * or move it into a --partial-dir.
+	 */
+	download_cleanup(p, f->redo);
 	return 1;
 out:
 	download_cleanup(p, 1);

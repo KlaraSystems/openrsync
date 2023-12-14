@@ -264,6 +264,7 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 int
 rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 {
+	struct role	 receiver;
 	struct flist	*fl = NULL, *dfl = NULL;
 	size_t		 i, flsz = 0, dflsz = 0;
 	char		*tofree;
@@ -280,6 +281,17 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 
 	if (pledge("stdio unix rpath wpath cpath dpath fattr chown getpw unveil", NULL) == -1)
 		err(ERR_IPC, "pledge");
+
+	/*
+	 * The receiver's metadata phase is actually tracked in the uploader, so
+	 * we'll just leave it NULL for now and let the uploader set it.  It
+	 * won't be used in anything the receiver calls for now, but it's good
+	 * to keep track of it properly anyways.
+	 */
+	memset(&receiver, 0, sizeof(receiver));
+	receiver.append = sess->opts->append;
+	receiver.phase = NULL;
+	sess->role = &receiver;
 
 	/*
 	 * If the root doesn't exist, we may be substituting cwd instead as the
@@ -578,24 +590,47 @@ rsync_receiver(struct sess *sess, int fdin, int fdout, const char *root)
 				ERRX1("rsync_downloader");
 				goto out;
 			} else if (c == 0) {
-				assert(phase == 0);
-				phase++;
-				LOG2("%s: receiver ready for phase 2 data", root);
-				break;
-			}
+				size_t cnt;
 
-			/*
-			 * FIXME: if we have any errors during the
-			 * download, most notably files getting out of
-			 * sync between the send and the receiver, then
-			 * here we should bump our checksum length and
-			 * go into the second phase.
-			 */
+				assert(phase == 0 || phase == 1);
+				phase++;
+
+				/*
+				 * If we don't have any files here, we'll just
+				 * bail out immediately and close out the phase
+				 * after the receiver loop. We could instead
+				 * just reset the uploader and let it roll
+				 * through the flist and realize nothing needs
+				 * done, then close out the phase as we did in
+				 * the first phase, but it seems relatively
+				 * harmless to optimize this.
+				 */
+				if (phase == 2 ||
+				    !(cnt = download_needs_redo(dl)))
+					break;
+
+				LOG2("%s: receiver ready for phase %d data (%zu to redo)",
+				    root, phase + 1, cnt);
+
+				sess->role->append = 0;
+
+				/*
+				 * Signal the uploader to start over, and
+				 * re-enable polling.
+				 */
+				upload_next_phase(ul);
+				pfd[PFD_SENDER_OUT].fd = fdout;
+				continue;
+			}
 		}
 	}
 
-	/* Properly close us out by progressing through the phases. */
-
+	/*
+	 * Properly close us out by progressing through the phases.  This is not
+	 * necessary if we went through a redo phase, as the uploader will have
+	 * sent the second end-of-phase and the downloader will have already
+	 * eaten the ack.
+	 */
 	if (phase == 1) {
 		if (!io_write_int(sess, fdout, -1)) {
 			ERRX1("io_write_int");

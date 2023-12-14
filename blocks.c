@@ -264,7 +264,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 	 */
 
 	if (st->mapsz && blks->blksz) {
-		if (sess->opts->append) {
+		if (sess->role->append) {
 			assert((off_t)st->mapsz > blks->size);
 			st->offs = blks->size;
 			last = st->offs;
@@ -408,7 +408,7 @@ blk_recv(struct sess *sess, int fd, const char *path)
 	    s->blksz, s->len, s->rem, s->csum);
 
 	if (s->blksz) {
-		if (sess->opts->append) {
+		if (*sess->role->phase == 0 && sess->role->append) {
 			if (s->rem > 0)
 				offs = (s->blksz - 1) * s->len + s->rem;
 			else

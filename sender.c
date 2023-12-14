@@ -195,6 +195,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 
 		send_up_reset(up);
 		(*phase)++;
+		sess->role->append = 0;
 		return 1;
 	case BLKSTAT_NEXT:
 		/*
@@ -229,15 +230,6 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			return 0;
 		}
 		io_lowbuffer_int(sess, *wb, &pos, *wbsz, -1);
-
-		if (sess->opts->server && sess->rver > 27) {
-			if (!io_lowbuffer_alloc(sess,
-			    wb, wbsz, wbmax, isz)) {
-				ERRX1("io_lowbuffer_alloc");
-				return 0;
-			}
-			io_lowbuffer_int(sess, *wb, &pos, *wbsz, -1);
-		}
 		up->stat.curst = BLKSTAT_PHASE;
 	} else if (sess->opts->dry_run) {
 		if (!sess->opts->server)
@@ -362,10 +354,11 @@ int
 rsync_sender(struct sess *sess, int fdin,
 	int fdout, size_t argc, char **argv)
 {
+	struct role	    sender;
 	struct flist	   *fl = NULL;
 	const struct flist *f;
 	size_t		    i, flsz = 0, phase = 0;
-	int		    rc = 0, c;
+	int		    rc = 0, c, metadata_phase = 0;
 	int32_t		    idx;
 	struct pollfd	    pfd[3];
 	struct send_dlq	    sdlq;
@@ -381,6 +374,11 @@ rsync_sender(struct sess *sess, int fdin,
 		ERR("pledge");
 		return 0;
 	}
+
+	memset(&sender, 0, sizeof(sender));
+	sender.append = sess->opts->append;
+	sender.phase = &metadata_phase;
+	sess->role = &sender;
 
 	memset(&up, 0, sizeof(struct send_up));
 	TAILQ_INIT(&sdlq);
@@ -530,6 +528,16 @@ rsync_sender(struct sess *sess, int fdin,
 			if (idx == -1) {
 				if (++markers == PHASE_MAX)
 					shutdown = 1;
+
+				/*
+				 * We track the metadata phase separately
+				 * because blk_find() needs to observe that the
+				 * overall session is still in append mode, but
+				 * send_dl_enqueue() needs to know that it
+				 * should look for any incoming block
+				 * information.
+				 */
+				metadata_phase++;
 			}
 			if (!send_dl_enqueue(sess,
 			    &sdlq, idx, fl, flsz, fdin)) {
