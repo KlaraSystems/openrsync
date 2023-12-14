@@ -332,6 +332,8 @@ extern int verbose;
 	rsync_errx1( (_fmt), ##__VA_ARGS__)
 #define WARNX(_fmt, ...) \
 	rsync_warnx( (_fmt), ##__VA_ARGS__)
+#define WARNX1(_fmt, ...) \
+	rsync_warnx1( (_fmt), ##__VA_ARGS__)
 #define WARN(_fmt, ...) \
 	rsync_warn(0,  (_fmt), ##__VA_ARGS__)
 #define WARN1(_fmt, ...) \
