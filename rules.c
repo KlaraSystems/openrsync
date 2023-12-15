@@ -1209,6 +1209,17 @@ rule_match_action_xfer(struct rule *r, const char *path,
 	return 0;
 }
 
+static bool
+rule_cleared(struct ruleset *ruleset, struct rule *r)
+{
+
+	assert(r >= ruleset->rules && r < ruleset->rules + ruleset->numrules);
+	if (ruleset->lclear == (size_t)-1)
+		return false;
+
+	return (size_t)(r - ruleset->rules) < ruleset->lclear;
+}
+
 static enum rule_iter_action
 rule_match_evaluate(struct ruleset *ruleset, struct rule *r, const char *path,
     void *cookie)
@@ -1218,9 +1229,7 @@ rule_match_evaluate(struct ruleset *ruleset, struct rule *r, const char *path,
 	/*
 	 * If this ruleset has a clear rule in it, skip until we hit it.
 	 */
-	assert(r >= ruleset->rules && r < ruleset->rules + ruleset->numrules);
-	if (ruleset->lclear != (size_t)-1 &&
-	    (size_t)(r - ruleset->rules) < ruleset->lclear)
+	if (rule_cleared(ruleset, r))
 		return RULE_ITER_SKIP;
 
 	if (r->type == RULE_CLEAR)
@@ -1352,6 +1361,16 @@ rule_dir_push(struct ruleset *parent, struct rule *r, const char *path,
 	struct stat st;
 	struct merge_rule *mrule;
 	size_t stripdir = *(size_t *)cookie;
+
+	/*
+	 * This is just a bit of an optimization; if we had a clear rule appear
+	 * after this in the parent chain, then we won't be evaluating these
+	 * rules anyways so we can skip checking for them entirely.  Even if
+	 * we didn't do this here, rule_match_evaluate() would still do the
+	 * right thing and skip any chains we loaded.
+	 */
+	if (rule_cleared(parent, r))
+		return RULE_ITER_SKIP;
 
 	/* Not worried about truncation; stat() will fail. */
 	(void) snprintf(mfile, sizeof(mfile), "%s/%s", path, r->pattern);
