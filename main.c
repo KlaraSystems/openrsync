@@ -325,9 +325,11 @@ static struct opts	 opts;
 
 #define OP_NO_DIRS	1028
 #define OP_FILESFROM	1029
+#define OP_APPEND	1030
 
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
+    { "append",		no_argument,	NULL,			OP_APPEND },
     { "archive",	no_argument,	NULL,			'a' },
     { "checksum",	no_argument,	NULL,			'c' },
     { "compare-dest",	required_argument, NULL,		OP_COMP_DEST },
@@ -652,6 +654,9 @@ basedir:
 		case OP_FILESFROM:
 		        opts.filesfrom = optarg;
 			break;
+		case OP_APPEND:
+			opts.append++;
+			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",
 			    RSYNC_PROTOCOL);
@@ -833,7 +838,8 @@ basedir:
 usage:
 	fprintf(stderr, "usage: %s"
 	    " [-DLacdgklnoprtuvx] [-e program] [--address=sourceaddr]\n"
-	    "\t[--compare-dest=dir] [--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
+	    "\t[--append] [--compare-dest=dir]\n"
+	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
 	    "\t[--port=portnumber] [--relative] [--rsync-path=program] [--timeout=seconds]\n"

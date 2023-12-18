@@ -118,6 +118,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 			errx(1, "bogus delete mode %d\n", sess->opts->del);
 		}
 	}
+	if (sess->opts->append)
+		addargs(&args, "--append");
 	if (sess->opts->checksum)
 		addargs(&args, "-c");
 	if (sess->opts->del_excl)

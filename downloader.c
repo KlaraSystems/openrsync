@@ -674,6 +674,15 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			}
 
 			LOG3("%s: writing inplace", f->path);
+
+			if (sess->opts->append && p->mapsz > 0) {
+				MD4_Update(&p->ctx, p->map, p->mapsz);
+
+				if (lseek(p->fd, 0, SEEK_END) != st.st_size) {
+					ERRX1("lseek");
+					goto out;
+				}
+			}
 		} else {
 			if (mktemplate(&p->fname, f->path,
 			    sess->opts->recursive || sess->opts->relative) ==
@@ -917,7 +926,7 @@ again:
 		if (sess->opts->hard_links)
 			hl_p = find_hl(f, hl);
 	}
-	if (!sess->opts->inplace &&
+	if (!download_is_inplace(sess, p, false) &&
 	    renameat(p->rootfd, p->fname, p->rootfd, usethis) == -1) {
 		ERR("%s: renameat: %s", p->fname, usethis);
 		goto out;

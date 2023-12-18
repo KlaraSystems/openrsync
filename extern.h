@@ -164,6 +164,7 @@ struct	flist {
 struct	opts {
 	int		 sender;		/* --sender */
 	int		 server;		/* --server */
+	int		 append;		/* --append */
 	int		 checksum;		/* -c */
 	int		 recursive;		/* -r */
 	int		 dry_run;		/* -n */
@@ -506,7 +507,7 @@ static inline int
 sess_is_inplace(struct sess *sess)
 {
 
-	return sess->opts->inplace;
+	return sess->opts->inplace || sess->opts->append;
 }
 
 #endif /*!EXTERN_H*/
