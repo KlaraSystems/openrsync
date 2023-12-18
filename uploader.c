@@ -905,6 +905,14 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		return 4;
 	}
 
+	if (sess->opts->append) {
+		if (st->st_size >= f->st.size) {
+			LOG1("Skip append '%s'", f->path);
+			return 4;
+		}
+		return 2;
+	}
+
 	/* quick check if file is the same */
 	/* TODO: add support for --size-only */
 	if (st->st_size == f->st.size) {
@@ -1279,6 +1287,9 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		init_blkset(&blk, filesize);
 		assert(blk.blksz);
 
+		if (sess->opts->append)
+			goto skipmap;
+
 		blk.blks = calloc(blk.blksz, sizeof(struct blk));
 		if (blk.blks == NULL) {
 			ERR("calloc");
@@ -1309,18 +1320,21 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			}
 			init_blk(&blk.blks[i], &blk, offs, i, mbuf, sess);
 			offs += blk.len;
-			LOG3(
+			LOG4(
 			    "i=%ld, offs=%lld, msz=%ld, blk.len=%lu, blk.rem=%lu",
 			    i, (long long)offs, msz, blk.len, blk.rem);
 			i++;
 		} while (i < blk.blksz);
 
 		free(mbuf);
-		close(*fileinfd);
-		*fileinfd = -1;
+
 		LOG3("%s: mapped %jd B with %zu blocks",
 		    u->fl[u->idx].path, (intmax_t)blk.size,
 		    blk.blksz);
+
+	  skipmap:
+		close(*fileinfd);
+		*fileinfd = -1;
 	} else {
 		if (*fileinfd != -1) {
 			close(*fileinfd);
@@ -1339,10 +1353,13 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	    sizeof(int32_t) + /* block count */
 	    sizeof(int32_t) + /* block length */
 	    sizeof(int32_t) + /* checksum length */
-	    sizeof(int32_t) + /* block remainder */
-	    blk.blksz *
-	    (sizeof(int32_t) + /* short checksum */
-	    blk.csum); /* long checksum */
+	    sizeof(int32_t);  /* block remainder */
+
+	if (!sess->opts->append) {
+		u->bufsz += blk.blksz *
+			(sizeof(int32_t) + /* short checksum */
+			 blk.csum); /* long checksum */
+	}
 
 	if (u->bufsz > u->bufmax) {
 		if ((bufp = realloc(u->buf, u->bufsz)) == NULL) {
@@ -1360,11 +1377,14 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.len);
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.csum);
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.rem);
-	for (i = 0; i < blk.blksz; i++) {
-		io_buffer_int(u->buf, &pos, u->bufsz,
-			blk.blks[i].chksum_short);
-		io_buffer_buf(u->buf, &pos, u->bufsz,
-			blk.blks[i].chksum_long, blk.csum);
+
+	if (!sess->opts->append) {
+		for (i = 0; i < blk.blksz; i++) {
+			io_buffer_int(u->buf, &pos, u->bufsz,
+				      blk.blks[i].chksum_short);
+			io_buffer_buf(u->buf, &pos, u->bufsz,
+				      blk.blks[i].chksum_long, blk.csum);
+		}
 	}
 	assert(pos == u->bufsz);
 

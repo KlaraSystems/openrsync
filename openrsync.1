@@ -24,6 +24,7 @@
 .Op Fl abcDgklLnoprtuvx
 .Op Fl e Ar program
 .Op Fl -address Ns = Ns Ar sourceaddr
+.Op Fl -append
 .Op Fl -backup
 .Op Fl -compare-dest Ns = Ns Ar directory
 .Op Fl -copy-links
@@ -78,6 +79,14 @@ When connecting to an rsync daemon, use
 .Ar sourceaddr
 as the source address for connections, which is useful on machines with
 multiple interfaces.
+.It Fl -append
+If the destination file exists and is shorter than the source file then rsync
+will append the difference to the destination file.
+If after the transfer the whole-file checksums do not match then the
+destination file will be updated via the usual block-based delta-merge
+protocol.
+This option implies
+.Fl -inplace .
 .It Fl b , -backup
 Make a backup of changed files with ~ suffix.
 .It Fl c , -checksum

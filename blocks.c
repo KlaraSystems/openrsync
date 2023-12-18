@@ -100,6 +100,11 @@ blkhash_set(struct blktab *p, const struct blkset *bset)
 	for (i = 0; i < p->qsz; i++)
 		TAILQ_INIT(&p->q[i]);
 
+	/* bset->blks will be NULL in append mode */
+
+	if (bset->blks == NULL)
+		return 1;
+
 	/* Fill in the hashtable. */
 
 	p->blks = reallocarray(p->blks, bset->blksz, sizeof(struct blkhash));
@@ -259,6 +264,13 @@ blk_match(struct sess *sess, const struct blkset *blks,
 	 */
 
 	if (st->mapsz && blks->blksz) {
+		if (sess->opts->append) {
+			assert((off_t)st->mapsz > blks->size);
+			st->offs = blks->size;
+			last = st->offs;
+			goto append;
+		}
+
 		/*
 		 * Stop searching at the length of the file minus the
 		 * size of the last block.
@@ -301,6 +313,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 
 		/* Emit remaining data and send terminator token. */
 
+	  append:
 		sz = st->mapsz - last;
 		LOG4("%s: flushing remaining %jd B",
 		    path, (intmax_t)sz);
@@ -395,6 +408,14 @@ blk_recv(struct sess *sess, int fd, const char *path)
 	    s->blksz, s->len, s->rem, s->csum);
 
 	if (s->blksz) {
+		if (sess->opts->append) {
+			if (s->rem > 0)
+				offs = (s->blksz - 1) * s->len + s->rem;
+			else
+				offs = s->blksz * s->len;
+			goto skipmap;
+		}
+
 		s->blks = calloc(s->blksz, sizeof(struct blk));
 		if (s->blks == NULL) {
 			ERR("calloc");
@@ -437,6 +458,7 @@ blk_recv(struct sess *sess, int fd, const char *path)
 		    path, b->idx, b->len);
 	}
 
+  skipmap:
 	s->size = offs;
 	LOG3("%s: read blocks: %zu blocks, %jd B total blocked data",
 	    path, s->blksz, (intmax_t)s->size);
