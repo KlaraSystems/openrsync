@@ -158,8 +158,11 @@ struct	flist {
 	struct flstat	 st; /* file information */
 	char		*link; /* symlink target or NULL */
 	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
-	int		 redo; /* flagged for redo */
+	int		 curst; /* flagged for redo, or complete? */
 };
+
+#define	FLIST_COMPLETE		0x01
+#define	FLIST_REDO		0x02
 
 /*
  * Options passed into the command line.

@@ -1101,11 +1101,11 @@ again:
 		 * match, we'll just give up.
 		 */
 		WARNX("%s: hash does not match, %s redo", p->fname,
-		    f->redo ? "will not" : "will");
-		if (f->redo)
+		    (f->curst & FLIST_REDO) != 0 ? "will not" : "will");
+		if ((f->curst & FLIST_REDO) != 0)
 			goto out;
 
-		f->redo = 1;
+		f->curst |= FLIST_REDO;
 		p->needredo++;
 		goto done;
 	}
@@ -1114,7 +1114,7 @@ again:
 	 * Once we successfully transfer it, unmark it for redo so that we don't
 	 * erroneously clean it up later.
 	 */
-	f->redo = 0;
+	f->curst &= ~FLIST_REDO;
 
 	if (sess->opts->backup) {
 		if (fstatat(p->rootfd, f->path, &st2, 0) == -1) {
@@ -1236,7 +1236,7 @@ done:
 	 * If we're redoing it, then we need to go ahead and clean up the file
 	 * or move it into a --partial-dir.
 	 */
-	download_cleanup(sess, p, f->redo);
+	download_cleanup(sess, p, (f->curst & FLIST_REDO) != 0);
 	return 1;
 out:
 	download_cleanup(sess, p, 1);
