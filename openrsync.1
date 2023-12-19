@@ -51,6 +51,7 @@
 .Op Fl -numeric-ids
 .Op Fl -partial
 .Op Fl -port Ns = Ns Ar service
+.Op Fl -remove-source-files
 .Op Fl -relative
 .Op Fl -rsync-path Ns = Ns Ar program
 .Op Fl -timeout Ns = Ns Ar seconds
@@ -315,6 +316,21 @@ directory itself.
 If
 .Ar source
 is a file, this has no effect.
+.It Fl -remove-source-files
+Remove
+.Ar source
+files as they are transferred into
+.Ar directory .
+Files are only removed once they are confirmed to be fully in place.
+By default
+.Nm
+will delete files as the transfer progresses, but given its asynchronous nature
+there may be a noticeable delay between a given file finishing its transfer and
+its subsequent removal.
+.Pp
+When combined with
+.Fl -delay-updates ,
+files will be removed in a larger batch toward the end of the transfer.
 .It Fl -relative
 Normally, pathnames on the commandline omit the directory components.
 This option will include the dir components.

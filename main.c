@@ -436,6 +436,7 @@ const struct option	 lopts[] = {
     { "relative",	no_argument,	NULL,			'R' },
     { "no-R",		no_argument,	NULL,			OP_NO_RELATIVE },
     { "no-relative",	no_argument,	NULL,			OP_NO_RELATIVE },
+    { "remove-source-files",	no_argument,	&opts.remove_source,	1 },
     { "dirs",		no_argument,	NULL,			'd' },
     { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
@@ -954,8 +955,8 @@ usage:
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
-	    "\t[--partial] [--port=portnumber] [--relative] [--rsync-path=program] [--timeout=seconds]\n"
-	    "\t[--version] source ... directory\n",
+	    "\t[--partial] [--port=portnumber] [--relative] [--remove-source-files]\n"
+	    "\t[--rsync-path=program] [--timeout=seconds] [--version] source ... directory\n",
 	    getprogname());
 	exit(ERR_SYNTAX);
 }
