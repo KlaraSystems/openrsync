@@ -598,6 +598,11 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				assert(phase == 0 || phase == 1);
 				phase++;
 
+				/* Process any delayed updates */
+				delayed_renames(sess);
+				free(sess->dlrename);
+				sess->dlrename = NULL;
+
 				/*
 				 * If we don't have any files here, we'll just
 				 * bail out immediately and close out the phase
