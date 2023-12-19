@@ -192,6 +192,9 @@ struct	flist {
 #define	FLIST_REDO		0x02	/* Finished, but go again */
 #define	FLIST_SUCCESS		0x04	/* Finished and in place */
 #define	FLIST_FAILED		0x08	/* Failed */
+#define	FLIST_SUCCESS_ACKED	0x10	/* Sent success message */
+
+#define	FLIST_FINAL_BITS	(FLIST_SUCCESS | FLIST_REDO | FLIST_FAILED)
 
 /*
  * Options passed into the command line.
@@ -478,6 +481,7 @@ int	io_read_size(struct sess *, int, size_t *);
 int	io_read_ulong(struct sess *, int, uint64_t *);
 int	io_write_buf(struct sess *, int, const void *, size_t);
 int	io_write_byte(struct sess *, int, uint8_t);
+int	io_write_int_tagged(struct sess *, int, int32_t, enum iotag);
 int	io_write_int(struct sess *, int, int32_t);
 int	io_write_uint(struct sess *, int, uint32_t);
 int	io_write_line(struct sess *, int, const char *);
@@ -526,7 +530,8 @@ void		 download_interrupted(struct sess *, struct download *);
 void		 download_free(struct sess *, struct download *);
 struct upload	*upload_alloc(const char *, int, int, size_t,
 		   struct flist *, size_t, mode_t);
-void		upload_next_phase(struct upload *);
+void		upload_next_phase(struct upload *, struct sess *, int);
+void		upload_ack_complete(struct upload *, struct sess *, int);
 void		upload_free(struct upload *);
 int		upload_del(struct upload *, struct sess *);
 

@@ -95,6 +95,17 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	} else {
 		LOG2("client starting receiver: %s",
 		    f->host == NULL ? "(local)" : f->host);
+
+		/*
+		 * The client traditionally doesn't multiplex writes, but it
+		 * does need to do so after the version exchange in the case of
+		 * --remove-source-files in the reciever role -- it may need to
+		 * send SUCCESS messages to confirm that a transfer has
+		 * completed.
+		 */
+		if (sess.opts->remove_source)
+			sess.mplex_writes = 1;
+
 		if (!rsync_receiver(&sess, cleanup_ctx, fd, fd, f->sink)) {
 			ERRX1("rsync_receiver");
 			goto out;
