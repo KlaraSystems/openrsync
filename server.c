@@ -131,6 +131,8 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 			goto out;
 		}
 
+		if (sess.opts->remove_source)
+			sess.mplex_reads = 1;
 		if (!rsync_sender(&sess, fdin, fdout, argc, argv)) {
 			ERRX1("rsync_sender");
 			goto out;

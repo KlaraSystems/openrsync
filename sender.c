@@ -36,6 +36,12 @@
 
 #define PHASE_MAX	2
 
+struct	success_ctx {
+	struct sess	*sess;
+	struct flist	*fl;
+	size_t		 flsz;
+};
+
 /*
  * A request from the receiver to download updated file data.
  */
@@ -340,6 +346,47 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 	return 1;
 }
 
+static int
+file_success(void *cookie, const void *data, size_t datasz)
+{
+	struct success_ctx *sctx = cookie;
+	size_t pos = 0;
+	int32_t idx;
+
+	io_unbuffer_int(data, &pos, datasz, &idx);
+	if (pos != datasz) {
+		ERRX("bad success payload size %zu", datasz);
+		return 0;
+	}
+
+	if (idx < 0 || (size_t)idx >= sctx->flsz) {
+		ERRX("success idx %d out of range", idx);
+		return 0;
+	}
+
+	if (sctx->sess->opts->remove_source) {
+		struct flist *fl;
+		struct stat sb;
+
+		fl = &sctx->fl[idx];
+		if (lstat(fl->path, &sb) == -1) {
+			/* Nothing left to do here. */
+			return 1;
+		}
+
+		if (sb.st_size != fl->st.size || sb.st_mtime != fl->st.mtime) {
+			ERRX("%s: not removed, size or mtime changed",
+			    fl->path);
+			return 1;
+		}
+
+		if (unlink(fl->path) == -1)
+			ERR("%s: unlink", fl->path);
+	}
+
+	return 1;
+}
+
 /*
  * A client sender manages the read-only source files and sends data to
  * the receiver as requested.
@@ -355,6 +402,7 @@ rsync_sender(struct sess *sess, int fdin,
 	int fdout, size_t argc, char **argv)
 {
 	struct role	    sender;
+	struct success_ctx  sctx;
 	struct flist	   *fl = NULL;
 	const struct flist *f;
 	size_t		    i, flsz = 0, phase = 0;
@@ -449,6 +497,18 @@ rsync_sender(struct sess *sess, int fdin,
 		goto out;
 	} else if (!sess->opts->server)
 		LOG1("Transfer starting: %zu files", flsz);
+
+	if (sess->opts->remove_source) {
+		sctx.sess = sess;
+		sctx.fl = fl;
+		sctx.flsz = flsz;
+
+		if (!io_register_handler(IT_SUCCESS, &file_success, &sctx)) {
+			ERRX("Failed to install remove-source-files handler; exiting");
+			rc = 1;
+			goto out;
+		}
+	}
 
 	/*
 	 * Set up our poll events.
