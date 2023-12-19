@@ -130,22 +130,33 @@ io_write_blocking(int fd, const void *buf, size_t sz)
  * Returns zero on failure, non-zero on success (all bytes written to
  * the descriptor).
  */
-int
-io_write_buf(struct sess *sess, int fd, const void *buf, size_t sz)
+static int
+io_write_buf_tagged(struct sess *sess, int fd, const void *buf, size_t sz,
+    enum iotag iotag)
 {
 	int32_t	 tag, tagbuf;
 	size_t	 wsz;
 	int	 c;
 
 	if (!sess->mplex_writes) {
+		/*
+		 * If we try to write non-data to a non-multiplexed socket, then
+		 * we're going to have a bad time.
+		 */
+		assert(iotag == IT_DATA);
+
 		c = io_write_blocking(fd, buf, sz);
 		sess->total_write += sz;
 		return c;
 	}
 
+	/*
+	 * Some things can send 0-byte buffers in the reference implementation,
+	 * but I think those are all peer messages rather than client <-> server
+	 */
 	while (sz > 0) {
 		wsz = (sz < 0xFFFFFF) ? sz : 0xFFFFFF;
-		tag = (7 << 24) + wsz;
+		tag = ((iotag + IOTAG_OFFSET) << 24) + wsz;
 		tagbuf = htole32(tag);
 		if (!io_write_blocking(fd, &tagbuf, sizeof(tagbuf))) {
 			ERRX1("io_write_blocking");
@@ -161,6 +172,13 @@ io_write_buf(struct sess *sess, int fd, const void *buf, size_t sz)
 	}
 
 	return 1;
+}
+
+int
+io_write_buf(struct sess *sess, int fd, const void *buf, size_t sz)
+{
+
+	return (io_write_buf_tagged(sess, fd, buf, sz, IT_DATA));
 }
 
 /*
@@ -292,10 +310,9 @@ io_read_flush(struct sess *sess, int fd)
 	tag = le32toh(tagbuf);
 	sess->mplex_read_remain = tag & 0xFFFFFF;
 	tag >>= 24;
-	if (tag == 7)
+	tag -= IOTAG_OFFSET;
+	if (tag == IT_DATA)
 		return 1;
-
-	tag -= 7;
 
 	if (sess->mplex_read_remain > sizeof(mpbuf)) {
 		ERRX("multiplex buffer overflow");
@@ -318,12 +335,7 @@ io_read_flush(struct sess *sess, int fd)
 	LOG0("%.*s", (int)sess->mplex_read_remain, mpbuf);
 	sess->mplex_read_remain = 0;
 
-	/*
-	 * I only know that a tag of one means an error.
-	 * This means that we should exit.
-	 */
-
-	if (tag == 1) {
+	if (tag == IT_ERROR_XFER || tag == IT_ERROR) {
 		ERRX1("error from remote host");
 		return 0;
 	}
