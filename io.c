@@ -16,6 +16,9 @@
 #include "config.h"
 
 #include <sys/stat.h>
+#if HAVE_SYS_QUEUE
+#include <sys/queue.h>
+#endif
 
 #include <assert.h>
 #include COMPAT_ENDIAN_H
@@ -28,6 +31,16 @@
 #include <unistd.h>
 
 #include "extern.h"
+
+struct io_tag_handler {
+	SLIST_ENTRY(io_tag_handler)	 entry;
+	io_tag_handler_fn		*handler;
+	void				*cookie;
+	enum iotag			 tag;
+};
+
+static SLIST_HEAD(, io_tag_handler) io_tag_handlers =
+    SLIST_HEAD_INITIALIZER(io_tag_handlers);
 
 /*
  * A non-blocking check to see whether there's POLLIN data in fd.
@@ -276,6 +289,51 @@ io_read_blocking(int fd, void *buf, size_t sz)
 	return 1;
 }
 
+int
+io_register_handler(enum iotag tag, io_tag_handler_fn *fn, void *cookie)
+{
+	struct io_tag_handler *ihandler;
+
+#ifndef NDEBUG
+	SLIST_FOREACH(ihandler, &io_tag_handlers, entry) {
+		assert(ihandler->tag != tag);
+	}
+#endif
+
+	ihandler = malloc(sizeof(*ihandler));
+	if (ihandler == NULL) {
+		ERR("malloc");
+		return 0;
+	}
+
+	ihandler->handler = fn;
+	ihandler->cookie = cookie;
+	ihandler->tag = tag;
+	SLIST_INSERT_HEAD(&io_tag_handlers, ihandler, entry);
+	return 1;
+}
+
+/*
+ * Call a handler for the tag with the given buffer.
+ * Returns 1 if the tag was handled, and sets *ret to the handler's return
+ * value, or 0 if the tag was not handled.
+ */
+static int
+io_call_handler(enum iotag tag, const void *buffer, size_t bufsz, int *ret)
+{
+	struct io_tag_handler *ihandler;
+
+	SLIST_FOREACH(ihandler, &io_tag_handlers, entry) {
+		if (ihandler->tag == tag) {
+			*ret = (*ihandler->handler)(ihandler->cookie, buffer,
+			    bufsz);
+			return 1;
+		}
+	}
+
+	return (0);
+}
+
 /*
  * When we do a lot of writes in a row (such as when the sender emits
  * the file list), the server might be sending us multiplexed log
@@ -292,6 +350,8 @@ io_read_flush(struct sess *sess, int fd)
 {
 	int32_t	 tagbuf, tag;
 	char	 mpbuf[1024];
+	size_t	 mpbufsz;
+	int	 ret;
 
 	if (sess->mplex_read_remain)
 		return 1;
@@ -317,28 +377,46 @@ io_read_flush(struct sess *sess, int fd)
 	if (sess->mplex_read_remain > sizeof(mpbuf)) {
 		ERRX("multiplex buffer overflow");
 		return 0;
-	} else if (sess->mplex_read_remain == 0)
-		return 1;
-
-	if (!io_read_blocking(fd, mpbuf, sess->mplex_read_remain)) {
-		ERRX1("io_read_blocking");
-		return 0;
 	}
-	if (mpbuf[sess->mplex_read_remain - 1] == '\n')
-		mpbuf[--sess->mplex_read_remain] = '\0';
+
+	if ((mpbufsz = sess->mplex_read_remain) != 0) {
+		if (!io_read_blocking(fd, mpbuf, mpbufsz)) {
+			ERRX1("io_read_blocking");
+			return 0;
+		}
+		if (mpbuf[mpbufsz - 1] == '\n')
+			mpbuf[--mpbufsz] = '\0';
+
+		/*
+		 * We'll either handle the payload or it will get dropped; in
+		 * either case, there's nothing persisting for the caller to
+		 * be able to read -- zap the size.
+		 */
+		sess->mplex_read_remain = 0;
+	}
+
+	/*
+	 * We'll call the handler for all tagged data, regardless of whether it
+	 * had a non-empty payload.  Handlers should cope with having
+	 * insufficient data either way.
+	 */
+	if (io_call_handler(tag, mpbuf, mpbufsz, &ret))
+		return ret;
 
 	/*
 	 * Always print the server's messages, as the server
 	 * will control its own log levelling.
 	 */
+	if (tag >= IT_ERROR_XFER && tag <= IT_WARNING) {
+		if (mpbufsz != 0)
+			LOG0("%.*s", (int)mpbufsz, mpbuf);
 
-	LOG0("%.*s", (int)sess->mplex_read_remain, mpbuf);
-	sess->mplex_read_remain = 0;
-
-	if (tag == IT_ERROR_XFER || tag == IT_ERROR) {
-		ERRX1("error from remote host");
-		return 0;
+		if (tag == IT_ERROR_XFER || tag == IT_ERROR) {
+			ERRX1("error from remote host");
+			return 0;
+		}
 	}
+
 	return 1;
 }
 
