@@ -199,6 +199,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-L");
 	if (sess->opts->copy_dirlinks)
 		addargs(&args, "-k");
+	if (sess->opts->remove_source)
+		addargs(&args, "--remove-source-files");
 	if (f->mode == FARGS_SENDER && sess->opts->ignore_times > 0)
 		addargs(&args, "--ignore-times");
 	if (sess->opts->bwlimit >= 0)
