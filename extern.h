@@ -233,6 +233,7 @@ struct	opts {
 	int		 dirs;			/* -d --dirs */
 	int		 dlupdates;             /* --delay-updates */
 	int		 hard_links;		/* -H --hard-links */
+	int		 remove_source;		/* --remove-source-files */
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */
