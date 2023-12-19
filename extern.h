@@ -93,6 +93,31 @@ enum	fmode {
 	FARGS_RECEIVER
 };
 
+#define	IOTAG_OFFSET	7
+
+enum	compat_loglvl {
+	LOGNONE = 0,
+	/* Protocol == * */
+	LOGERROR_XFER,
+	LOGINFO,
+	/* Protocols >= 30 */
+	LOGERROR,
+	LOGWARNING,
+};
+
+enum	iotag {
+	IT_DATA = 0,
+
+	IT_ERROR_XFER = LOGERROR_XFER,
+	IT_INFO = LOGINFO,
+	IT_ERROR = LOGERROR,
+	IT_WARNING = LOGWARNING,
+
+	IT_SUCCESS = 100,
+	IT_DELETED,
+	IT_NO_SEND,
+};
+
 /*
  * Delete modes:
  * - unspecified: transforms into one of the below after option processing,
