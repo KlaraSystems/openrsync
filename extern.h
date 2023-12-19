@@ -118,6 +118,8 @@ enum	iotag {
 	IT_NO_SEND,
 };
 
+typedef int (io_tag_handler_fn)(void *, const void *, size_t sz);
+
 /*
  * Delete modes:
  * - unspecified: transforms into one of the below after option processing,
@@ -463,6 +465,7 @@ void	cleanup_set_child(struct cleanup_ctx *, pid_t);
 void	cleanup_set_session(struct cleanup_ctx *, struct sess *);
 void	cleanup_set_download(struct cleanup_ctx *, struct download *);
 
+int	io_register_handler(enum iotag, io_tag_handler_fn *, void *);
 int	io_read_buf(struct sess *, int, void *, size_t);
 int	io_read_byte(struct sess *, int, uint8_t *);
 int	io_read_check(int);
