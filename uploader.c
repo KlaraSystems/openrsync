@@ -68,6 +68,7 @@ struct	upload {
 	int		    fdout; /* write descriptor to sender */
 	struct flist	   *fl; /* file list */
 	size_t		    flsz; /* size of file list */
+	size_t		    nextack; /* next idx to acknowledge */
 	struct flist	   *dfl; /* delayed delete file list */
 	size_t		    dflsz; /* size of delayed delete list */
 	size_t		    dflmax; /* allocated size of delayed delete list */
@@ -1225,6 +1226,7 @@ upload_alloc(const char *root, int rootfd, int fdout,
 	p->fdout = fdout;
 	p->fl = fl;
 	p->flsz = flsz;
+	p->nextack = 0;
 	p->newdir = calloc(flsz, sizeof(int));
 	if (p->newdir == NULL) {
 		ERR("calloc");
@@ -1236,13 +1238,14 @@ upload_alloc(const char *root, int rootfd, int fdout,
 }
 
 void
-upload_next_phase(struct upload *p)
+upload_next_phase(struct upload *p, struct sess *sess, int fdout)
 {
 
 	assert(p->state == UPLOAD_FINISHED);
 
 	/* Reset for the redo phase. */
 	p->state = UPLOAD_FIND_NEXT;
+	p->nextack = 0;
 	p->idx = 0;
 	p->phase++;
 	p->csumlen = CSUM_LENGTH_PHASE2;
@@ -1262,6 +1265,63 @@ upload_free(struct upload *p)
 	free(p->newdir);
 	free(p->buf);
 	free(p);
+}
+
+void
+upload_ack_complete(struct upload *p, struct sess *sess, int fdout)
+{
+	struct flist *fl;
+	size_t idx;
+
+	assert(p->state != UPLOAD_WRITE);
+	if (p->nextack == p->flsz || !sess->opts->remove_source)
+		return;
+
+	/*
+	 * We'll halt at the next file the uploader needs to process since the
+	 * status of flist entries after that are irrelevant.
+	 */
+	for (idx = p->nextack; idx < p->idx; idx++) {
+		fl = &p->fl[idx];
+
+		/* Skip over non-files */
+		if (!S_ISREG(fl->st.mode))
+			continue;
+
+		/* Entry not yet processed by the downloader. */
+		if ((fl->curst & FLIST_FINAL_BITS) == 0)
+			break;
+
+		/*
+		 * Failed is only set if there's no hope of recovering, so we
+		 * can just skip this one entirely.
+		 */
+		if ((fl->curst & FLIST_FAILED) != 0)
+			continue;
+
+		/*
+		 * Redo entries in the redo phase have also not been processed,
+		 */
+		if (p->phase > 0 && (fl->curst & FLIST_REDO) != 0)
+			break;
+
+		/*
+		 * Any redo left, we can skip over -- they won't be completing,
+		 * if we're in the redo phase the downloader would have either
+		 * cleared the redo flag if it succeeded, or it would have
+		 * additionally marked it as having FAILED.
+		 */
+		if ((fl->curst & FLIST_REDO) != 0)
+			continue;
+
+		if ((fl->curst & (FLIST_SUCCESS | FLIST_SUCCESS_ACKED)) ==
+		    FLIST_SUCCESS) {
+			fl->curst |= FLIST_SUCCESS_ACKED;
+			io_write_int_tagged(sess, fdout, idx, IT_SUCCESS);
+		}
+	}
+
+	p->nextack = idx;
 }
 
 /*
@@ -1332,6 +1392,14 @@ rsync_uploader(struct upload *u, int *fileinfd,
 
 		u->state = UPLOAD_FIND_NEXT;
 		u->idx++;
+
+		/*
+		 * For delay-updates, there's no use scanning the flist for
+		 * every file since they won't flip to SUCCESS until after the
+		 * delayed updates have been processed.
+		 */
+		if (!sess->opts->dlupdates)
+			upload_ack_complete(u, sess, *fileoutfd);
 		return 1;
 	}
 

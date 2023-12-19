@@ -513,6 +513,20 @@ io_write_long(struct sess *sess, int fd, int64_t val)
 	return io_write_ulong(sess, fd, (uint64_t)val);
 }
 
+static int
+io_write_uint_tagged(struct sess *sess, int fd, uint32_t val, enum iotag tag)
+{
+	uint32_t	nv;
+
+	nv = htole32(val);
+
+	if (!io_write_buf_tagged(sess, fd, &nv, sizeof(uint32_t), tag)) {
+		ERRX1("io_write_buf");
+		return 0;
+	}
+	return 1;
+}
+
 /*
  * Like io_write_buf(), but for an unsigned integer.
  * Returns zero on failure, non-zero on success.
@@ -520,15 +534,14 @@ io_write_long(struct sess *sess, int fd, int64_t val)
 int
 io_write_uint(struct sess *sess, int fd, uint32_t val)
 {
-	uint32_t	nv;
 
-	nv = htole32(val);
+	return io_write_uint_tagged(sess, fd, val, IT_DATA);
+}
 
-	if (!io_write_buf(sess, fd, &nv, sizeof(uint32_t))) {
-		ERRX1("io_write_buf");
-		return 0;
-	}
-	return 1;
+int
+io_write_int_tagged(struct sess *sess, int fd, int32_t val, enum iotag tag)
+{
+	return io_write_uint_tagged(sess, fd, (uint32_t)val, tag);
 }
 
 /*

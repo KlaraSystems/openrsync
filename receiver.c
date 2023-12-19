@@ -604,6 +604,12 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				sess->dlrename = NULL;
 
 				/*
+				 * Downloader finished the last of this phase,
+				 * so finish up the tail end of acks.
+				 */
+				upload_ack_complete(ul, sess, fdout);
+
+				/*
 				 * If we don't have any files here, we'll just
 				 * bail out immediately and close out the phase
 				 * after the receiver loop. We could instead
@@ -626,7 +632,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				 * Signal the uploader to start over, and
 				 * re-enable polling.
 				 */
-				upload_next_phase(ul);
+				upload_next_phase(ul, sess, fdout);
 				pfd[PFD_SENDER_OUT].fd = fdout;
 				continue;
 			}
