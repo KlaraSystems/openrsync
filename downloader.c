@@ -601,7 +601,7 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
 struct dlrename_entry {
 	char *from;  /* Will be free()ed after use */
 	const char *to;    /* Will not be free()ed after use */
-	const struct flist *file;
+	struct flist *file;
 	char *rmdir; /* Directory to remove, will free() */
 };
 struct dlrename {
@@ -619,27 +619,34 @@ delayed_renames(struct sess *sess)
 	struct dlrename *dlr = sess->dlrename;
 	const struct flist *hl_p = NULL;
 	struct download *p;
+	int status;
 
 	if (dlr == NULL)
 		return;
 
 	p = dlr->dl;
 	for (i = 0; i < dlr->n; i++) {
+		status = FLIST_SUCCESS;
+
 		LOG3("mv '%s' -> '%s'", dlr->entries[i].from,
 			dlr->entries[i].to);
 		if (sess->opts->hard_links)
 			hl_p = find_hl(dlr->entries[i].file, dlr->hl);
 		if (renameat(dlr->fd, dlr->entries[i].from, dlr->fd,
 				dlr->entries[i].to) == -1) {
+			status = FLIST_FAILED;
 			ERR("rename '%s' -> '%s'", dlr->entries[i].from,
 				dlr->entries[i].to);
 		}
 		if (hl_p != NULL) {
 			const char *path = dlr->entries[i].to;
 
-			if (unlinkat(p->rootfd, path, 0) == -1)
-				if (errno != ENOENT)
+			if (unlinkat(p->rootfd, path, 0) == -1) {
+				if (errno != ENOENT) {
+					status = FLIST_FAILED;
 					ERRX1("unlink");
+				}
+			}
 
 			if (linkat(p->rootfd, hl_p->path, p->rootfd, path,
 			    0) == -1) {
@@ -656,6 +663,7 @@ delayed_renames(struct sess *sess)
 				ERR("rmdir '%s'", dlr->entries[i].rmdir);
 			}
 		}
+		dlr->entries[i].file->curst |= status;
 		free(dlr->entries[i].from);
 		free(dlr->entries[i].rmdir);
 		dlr->entries[i].from = NULL;
@@ -750,7 +758,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 	int		 c;
 	int32_t		 idx, rawtok;
 	const struct flist *hl_p = NULL;
-	struct  flist	*f;
+	struct  flist	*f = NULL;
 	size_t		 sz, tok;
 	struct stat	 st, st2;
 	char		*buf = NULL;
@@ -1102,8 +1110,10 @@ again:
 		 */
 		WARNX("%s: hash does not match, %s redo", p->fname,
 		    (f->curst & FLIST_REDO) != 0 ? "will not" : "will");
-		if ((f->curst & FLIST_REDO) != 0)
+		if ((f->curst & FLIST_REDO) != 0) {
+			f->curst |= FLIST_FAILED;
 			goto out;
+		}
 
 		f->curst |= FLIST_REDO;
 		p->needredo++;
@@ -1114,7 +1124,7 @@ again:
 	 * Once we successfully transfer it, unmark it for redo so that we don't
 	 * erroneously clean it up later.
 	 */
-	f->curst &= ~FLIST_REDO;
+	f->curst = (f->curst & ~FLIST_REDO) | FLIST_COMPLETE;
 
 	if (sess->opts->backup) {
 		if (fstatat(p->rootfd, f->path, &st2, 0) == -1) {
@@ -1215,15 +1225,20 @@ again:
 
 		entry->file = f;
 		entry->to = f->path;
-	} else if (hl_p != NULL) {
-		if (unlinkat(p->rootfd, f->path, 0) == -1)
-			if (errno != ENOENT)
-				ERRX1("unlink");
+		/* Status update is deferred until the update is done. */
+	} else {
+		f->curst |= FLIST_SUCCESS;
+		if (hl_p != NULL) {
+			if (unlinkat(p->rootfd, f->path, 0) == -1)
+				if (errno != ENOENT)
+					ERRX1("unlink");
 
-		if (linkat(p->rootfd, hl_p->path, p->rootfd, f->path, 0) == -1) {
-			LOG0("While hard linking '%s' to '%s' ",
-			    hl_p->path, f->path);
-			ERRX1("linkat");
+			if (linkat(p->rootfd, hl_p->path, p->rootfd, f->path,
+			    0) == -1) {
+				LOG0("While hard linking '%s' to '%s' ",
+				    hl_p->path, f->path);
+				ERRX1("linkat");
+			}
 		}
 	}
 
@@ -1239,6 +1254,8 @@ done:
 	download_cleanup(sess, p, (f->curst & FLIST_REDO) != 0);
 	return 1;
 out:
+	if (f != NULL)
+		f->curst |= FLIST_FAILED;
 	download_cleanup(sess, p, 1);
 	return -1;
 }

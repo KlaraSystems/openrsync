@@ -161,8 +161,10 @@ struct	flist {
 	int		 curst; /* flagged for redo, or complete? */
 };
 
-#define	FLIST_COMPLETE		0x01
-#define	FLIST_REDO		0x02
+#define	FLIST_COMPLETE		0x01	/* Finished */
+#define	FLIST_REDO		0x02	/* Finished, but go again */
+#define	FLIST_SUCCESS		0x04	/* Finished and in place */
+#define	FLIST_FAILED		0x08	/* Failed */
 
 /*
  * Options passed into the command line.
