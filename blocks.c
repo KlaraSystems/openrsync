@@ -107,9 +107,11 @@ blkhash_set(struct blktab *p, const struct blkset *bset)
 
 	/* Fill in the hashtable. */
 
+	if (bset->blksz == 0)
+		return 1;
 	p->blks = reallocarray(p->blks, bset->blksz, sizeof(struct blkhash));
 	if (p->blks == NULL) {
-		ERR("reallocarray");
+		ERR("reallocarray 3 %ld * %ld bytes", bset->blksz, sizeof(struct blkhash));
 		return 0;
 	}
 	for (i = 0; i < bset->blksz; i++) {

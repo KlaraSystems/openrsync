@@ -78,7 +78,15 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	LOG2("client detected client version %d, server version %d, seed %d",
 	    sess.lver, sess.rver, sess.seed);
 
-	sess.mplex_reads = 1;
+	/*
+	 * When --files-from is in effect, and the file is on the remote
+	 * side, we need to defer multiplexing.  The receiver just dumps
+	 * that file into the socket without further adherence to protocol.
+	 */
+	if (sess.opts->filesfrom_host)
+		sess.filesfrom_fd = fd;
+	else
+		sess.mplex_reads = 1;
 
 	/*
 	 * Now we need to get our list of files.

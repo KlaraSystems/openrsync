@@ -99,7 +99,7 @@ flist_dir_cmp(const void *p1, const void *p2)
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_dedupe(struct flist **fl, size_t *sz)
+flist_dedupe(const struct opts *opts, struct flist **fl, size_t *sz)
 {
 	size_t		 i, j;
 	struct flist	*new;
@@ -137,8 +137,13 @@ flist_dedupe(struct flist **fl, size_t *sz)
 		if (strcmp(f->path, fnext->path) == 0) {
 			new[j++] = *f;
 			i++;
-			WARNX("%s: duplicate path: %s",
-			    f->wpath, f->path);
+			/* 
+			 * Do not warn when we came up with the duplicates
+			 * ourselves from --relative.
+			 */
+			if (!opts->relative && !S_ISDIR(f->st.mode))
+				WARNX("%s: duplicate path: %s",
+					f->wpath, f->path);
 			free(fnext->path);
 			free(fnext->link);
 			fnext->path = fnext->link = NULL;
@@ -597,7 +602,7 @@ flist_realloc(struct flist **fl, size_t *sz, size_t *max)
 	pp = recallocarray(*fl, *max,
 		*max + FLIST_CHUNK_SIZE, sizeof(struct flist));
 	if (pp == NULL) {
-		ERR("recallocarray");
+		ERR("recallocarray flist");
 		return 0;
 	}
 	*fl = pp;
@@ -605,23 +610,87 @@ flist_realloc(struct flist **fl, size_t *sz, size_t *max)
 	for (size_t i = *sz; i < *max; i++)
 		(*fl)[i].pdfd = -1;
 	(*sz)++;
-
 	return 1;
 }
 
 /*
+ * Reallocate a file list in chunks of FLIST_CHUNK_SIZE;
+ * Returns -1 on failure, index of new element on success.
+ */
+long
+fl_new_index(struct fl *fl)
+{
+	if (flist_realloc(&fl->flp, &fl->sz, &fl->max) == 0)
+		return -1;
+
+	return fl->sz - 1;
+}
+
+/*
+ * Returns a pointer to the new element, or NULL on error.
+ */
+struct flist *
+fl_new(struct fl *fl)
+{
+	long index;
+
+	index = fl_new_index(fl);
+	if (index == -1)
+		return NULL;
+	return &(fl->flp[index]);
+}
+
+void
+fl_init(struct fl *fl)
+{
+	memset(fl, 0, sizeof(*fl));
+}
+
+long
+fl_curridx(struct fl *fl)
+{
+	assert(fl->sz);
+	return fl->sz - 1;
+}
+
+struct flist *
+fl_atindex(struct fl *fl, size_t idx)
+{
+	if (idx >= fl->sz) {
+		ERRX("flist index error");
+		return NULL;
+	}
+	return &(fl->flp[idx]);
+}
+
+void
+fl_print(const char *id, struct fl *fl)
+{
+	size_t i;
+
+	fprintf(stderr, "%s: fl_print sz %ld\n", id, fl->sz);
+	if (fl->sz  < 1)
+		return;
+	for (i = 0; i < fl->sz -1; i++) {
+		fprintf(stderr, "%s: fl idx %ld\n", id, i);
+		fprintf(stderr, "%s: fl path %p '%s'\n", id, fl->flp[i].path, fl->flp[i].path);
+		fprintf(stderr, "%s: fl wpath %p '%s'\n", id, fl->flp[i].wpath, fl->flp[i].wpath);
+	}
+}
+
+/*
  * Copy all the elements of path that are directories.
- * Note that flist_append_dirs expands flp, but
- * flist_append does not.
+ * We need those for --relative, because we need to
+ * restore their stat(2) values.
  */
 static int
-flist_append_dirs(struct flist *f, const char *path,
-    struct flist **flp, size_t *sz, size_t *max)
+flist_append_dirs(const char *path, struct fl *fl)
 {
 	char *begin;
 	char *wbegin;
 	char *pos;
 	struct stat st;
+	struct flist *f;
 
 	if ((begin = strdup(path)) == NULL) {
 		ERR("strdup");
@@ -636,23 +705,22 @@ flist_append_dirs(struct flist *f, const char *path,
 			ERR("%s: stat", begin);
 			goto out;
 		}
-		if (!flist_realloc(flp, sz, max)) {
+		if ((f = fl_new(fl)) == NULL) {
 			ERRX1("flist_realloc");
 			goto out;
 		}
-		f = &(*flp)[(*sz) - 1];
-		assert(f != NULL);
 		memset(f, 0, sizeof(struct flist));
 		f->path = begin;
 		f->wpath = wbegin;
 		flist_copy_stat(f, &st);
 		if (strchr(wbegin, '/') != NULL) {
-			if (!flist_append_dirs(f, begin, flp, sz, max)) {
+			if (!flist_append_dirs(begin, fl)) {
 				ERRX1("flist_append_dirs");
 				goto out;
 			}
 		}
 	}
+	/* Do not free() begin */
 	return 1;
 
 	/* Error */
@@ -667,15 +735,22 @@ flist_append_dirs(struct flist *f, const char *path,
  * Returns zero on failure, non-zero on success.
 */
 static int
-flist_append(struct sess *sess, struct flist *f, const struct stat *st,
-    const char *path, struct flist **flp, size_t *sz, size_t *max)
+flist_append(struct sess *sess, const struct stat *st,
+	const char *path, struct fl *fl)
 {
+	struct flist *f;
+	int oldidx;
+
+	if ((oldidx = fl_new_index(fl)) == -1) {
+		ERRX("fl_new failed");
+		return 0;
+	}
 	/*
 	 * Copy the full path for local addressing and transmit
 	 * only the filename part for the receiver, unless
 	 * --relative is given.
 	 */
-
+	f = fl_atindex(fl, oldidx);
 	if ((f->path = strdup(path)) == NULL) {
 		ERR("strdup");
 		return 0;
@@ -687,14 +762,11 @@ flist_append(struct sess *sess, struct flist *f, const struct stat *st,
 		else
 			f->wpath++;
 	} else {
-		size_t idx = (*sz) - 1;
-
 		if (f->path[0] == '/')
 			f->wpath = f->path + 1;
 		else
 			f->wpath = f->path;
-
-		if (!flist_append_dirs(f, f->path, flp, sz, max)) {
+		if (!flist_append_dirs(f->path, fl)) {
 			ERR("flist_append_dirs");
 			return 0;
 		}
@@ -704,7 +776,7 @@ flist_append(struct sess *sess, struct flist *f, const struct stat *st,
 		 * underneath us, reload the flist entry we're working on as
 		 * needed.
 		 */
-		f = &(*flp)[idx];
+		f = fl_atindex(fl, oldidx);
 	}
 
 	/*
@@ -725,6 +797,16 @@ flist_append(struct sess *sess, struct flist *f, const struct stat *st,
 		}
 	}
 
+	if (sess->opts->checksum && S_ISREG(f->st.mode) && f->st.size > 0) {
+		int rc;
+
+		rc = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
+		if (rc) {
+			ERRX1("hash_file_by_path");
+			return 0;
+		}
+	}
+
 	return 1;
 }
 
@@ -734,7 +816,7 @@ flist_append(struct sess *sess, struct flist *f, const struct stat *st,
  * Return zero on failure, non-zero on success.
  */
 int
-flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
+flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *sz)
 {
 	struct flist	*fl = NULL;
 	struct flist	*ff;
@@ -746,11 +828,33 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 	int32_t		 ival;
 	uint32_t	 uival;
 	struct ident	*gids = NULL, *uids = NULL;
+	uint64_t         i, length;
+
+	if (sess->opts->filesfrom) {
+		read_filesfrom(sess, ".");
+		for (i = 0; i < sess->filesfrom_n; i++) {
+			length = strlen(sess->filesfrom[i]);
+			if (sess->filesfrom[i][length - 1] == '\n') {
+				sess->filesfrom[i][length - 1] = '\0';
+				length--;
+			}
+			/* Send the terminating zero, too */
+			if (write(fdout, sess->filesfrom[i], length + 1) < 0) {
+				ERR("write files-from remote file");
+				return 0;
+			}
+		}
+		i = 0;
+		if (write(fdout, &i, 1) < 0) {
+			ERR("write files-from remote file terminator");
+			return 0;
+		}
+	}
 
 	last[0] = '\0';
 
 	for (;;) {
-		if (!io_read_byte(sess, fd, &flag)) {
+		if (!io_read_byte(sess, fdin, &flag)) {
 			ERRX1("io_read_byte");
 			goto out;
 		} else if (flag == 0)
@@ -766,14 +870,14 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 
 		/* Filename first. */
 
-		if (!flist_recv_name(sess, fd, ff, flag, last)) {
+		if (!flist_recv_name(sess, fdin, ff, flag, last)) {
 			ERRX1("flist_recv_name");
 			goto out;
 		}
 
 		/* Read the file size. */
 
-		if (!io_read_long(sess, fd, &lval)) {
+		if (!io_read_long(sess, fdin, &lval)) {
 			ERRX1("io_read_long");
 			goto out;
 		}
@@ -782,7 +886,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 		/* Read the modification time. */
 
 		if (!(FLIST_TIME_SAME & flag)) {
-			if (!io_read_uint(sess, fd, &uival)) {
+			if (!io_read_uint(sess, fdin, &uival)) {
 				ERRX1("io_read_uint");
 				goto out;
 			}
@@ -796,7 +900,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 		/* Read the file mode. */
 
 		if (!(FLIST_MODE_SAME & flag)) {
-			if (!io_read_uint(sess, fd, &uival)) {
+			if (!io_read_uint(sess, fdin, &uival)) {
 				ERRX1("io_read_uint");
 				goto out;
 			}
@@ -811,7 +915,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 
 		if (sess->opts->preserve_uids) {
 			if (!(FLIST_UID_SAME & flag)) {
-				if (!io_read_uint(sess, fd, &uival)) {
+				if (!io_read_uint(sess, fdin, &uival)) {
 					ERRX1("io_read_int");
 					goto out;
 				}
@@ -834,7 +938,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 
 		if (sess->opts->preserve_gids) {
 			if (!(FLIST_GID_SAME & flag)) {
-				if (!io_read_uint(sess, fd, &uival)) {
+				if (!io_read_uint(sess, fdin, &uival)) {
 					ERRX1("io_read_uint");
 					goto out;
 				}
@@ -860,7 +964,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 		    (sess->opts->specials && (S_ISFIFO(ff->st.mode) ||
 		    S_ISSOCK(ff->st.mode)))) {
 			if (!(FLIST_RDEV_SAME & flag)) {
-				if (!io_read_int(sess, fd, &ival)) {
+				if (!io_read_int(sess, fdin, &ival)) {
 					ERRX1("io_read_int");
 					goto out;
 				}
@@ -876,7 +980,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 
 		if (S_ISLNK(ff->st.mode) &&
 		    sess->opts->preserve_links) {
-			if (!io_read_size(sess, fd, &lsz)) {
+			if (!io_read_size(sess, fdin, &lsz)) {
 				ERRX1("io_read_size");
 				goto out;
 			} else if (lsz == 0) {
@@ -888,7 +992,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 				ERR("calloc");
 				goto out;
 			}
-			if (!io_read_buf(sess, fd, ff->link, lsz)) {
+			if (!io_read_buf(sess, fdin, ff->link, lsz)) {
 				ERRX1("io_read_buf");
 				goto out;
 			}
@@ -904,11 +1008,11 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 			 * We do not talk to older versions of the protocol,
 			 * so we can always read 64 bits here.
 			 */
-			if (!io_read_long(sess, fd, &ff->st.device)) {
+			if (!io_read_long(sess, fdin, &ff->st.device)) {
 				ERRX1("io_read_long");
 				goto out;
 			}
-			if (!io_read_long(sess, fd, &ff->st.inode)) {
+			if (!io_read_long(sess, fdin, &ff->st.inode)) {
 				ERRX1("io_read_long");
 				goto out;
 			}
@@ -924,7 +1028,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 			sess->total_size += ff->st.size;
 
 		if (sess->opts->checksum) {
-			if (!io_read_buf(sess, fd, ff->md, sizeof(ff->md))) {
+			if (!io_read_buf(sess, fdin, ff->md, sizeof(ff->md))) {
 				ERRX1("io_read_buf");
 				goto out;
 			}
@@ -934,7 +1038,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 	/* Conditionally read the user/group list. */
 
 	if (sess->opts->preserve_uids && !sess->opts->numeric_ids) {
-		if (!idents_recv(sess, fd, &uids, &uidsz)) {
+		if (!idents_recv(sess, fdin, &uids, &uidsz)) {
 			ERRX1("idents_recv");
 			goto out;
 		}
@@ -942,7 +1046,7 @@ flist_recv(struct sess *sess, int fd, struct flist **flp, size_t *sz)
 	}
 
 	if (sess->opts->preserve_gids && !sess->opts->numeric_ids) {
-		if (!idents_recv(sess, fd, &gids, &gidsz)) {
+		if (!idents_recv(sess, fdin, &gids, &gidsz)) {
 			ERRX1("idents_recv");
 			goto out;
 		}
@@ -982,36 +1086,16 @@ out:
 
 static int
 flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
-    struct flist **fl, size_t *sz, size_t *max, const struct stat *st)
+    struct fl *fl, const struct stat *st)
 {
-	struct flist	*f;
-
 	/* filter files */
 	if (rules_match(root, 0, FARGS_SENDER, 0) == -1) {
 		WARNX("%s: skipping excluded %s", root, type);
 		return 1;
 	}
-	if (!flist_realloc(fl, sz, max)) {
-		ERRX1("flist_realloc");
-		return 0;
-	}
-	f = &(*fl)[(*sz) - 1];
-	assert(f != NULL);
-
-	if (!flist_append(sess, f, st, root, fl, sz, max)) {
+	if (!flist_append(sess, st, root, fl)) {
 		ERRX1("flist_append");
 		return 0;
-	}
-
-	if (sess->opts->checksum &&
-	    S_ISREG(f->st.mode) && f->st.size > 0) {
-		int rc;
-
-		rc = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
-		if (rc) {
-			ERRX1("hash_file_by_path");
-			return 0;
-		}
 	}
 
 	return 1;
@@ -1053,15 +1137,14 @@ flist_dirent_strip(const char *root)
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
-    size_t *max, ssize_t stripdir)
+flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 {
 	char		*cargv[2];
 	int		 rc = 0, flag;
 	FTS		*fts;
 	FTSENT		*ent;
 	struct flist	*f;
-	size_t		 i, flsz = 0, nxdev = 0;
+	size_t		 i, nxdev = 0;
 	ssize_t		 pstripdir = stripdir;
 	dev_t		*newxdev, *xdev = NULL;
 	struct stat	 st, st2;
@@ -1085,7 +1168,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		ERR("%s: (l)stat", root);
 		return 0;
 	} else if (S_ISREG(st.st_mode)) {
-		return flist_gen_dirent_file(sess, "file", root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "file", root, fl, &st);
 	} else if (S_ISLNK(st.st_mode)) {
 		/*
 		 * How does this work?
@@ -1108,15 +1191,14 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 				}
 				snprintf(buf2, sizeof(buf2), "%s/", root);
 				LOG4("symlinks: recursing '%s' -> '%s' '%s'\n", root, buf, buf2);
-				flist_gen_dirent(sess, buf2, fl, sz, max,
-				    stripdir);
+				flist_gen_dirent(sess, buf2, fl, stripdir);
 				return 1;
 			}
 		}
 
-		return flist_gen_dirent_file(sess, "symlink", root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "symlink", root, fl, &st);
 	} else if (!S_ISDIR(st.st_mode)) {
-		return flist_gen_dirent_file(sess, "special", root, fl, sz, max, &st);
+		return flist_gen_dirent_file(sess, "special", root, fl, &st);
 	}
 
 	if (stripdir == -1)
@@ -1166,8 +1248,8 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 						    ent->fts_accpath);
 						continue;
 					}
-					flist_gen_dirent(sess, ent->fts_path, fl, sz,
-					        max, stripdir);
+					flist_gen_dirent(sess, ent->fts_path,
+						fl, stripdir);
 					continue;
 				}
 			}
@@ -1202,7 +1284,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 
 			if ((newxdev = reallocarray(xdev, nxdev + 1,
 			    sizeof(dev_t))) == NULL) {
-				ERRX1("reallocarray");
+				ERRX1("reallocarray flist_gen_dirent()");
 				goto out;
 			}
 			xdev = newxdev;
@@ -1225,12 +1307,10 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 
 		/* Allocate a new file entry. */
 
-		if (!flist_realloc(fl, sz, max)) {
+		if ((f = fl_new(fl)) == NULL) {
 			ERRX1("flist_realloc");
 			goto out;
 		}
-		flsz++;
-		f = &(*fl)[*sz - 1];
 
 		/* Our path defaults to "." for the root. */
 
@@ -1307,7 +1387,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		goto out;
 	}
 
-	LOG3("generated %zu filenames: %s", flsz, root);
+	LOG3("generated %zu filenames: %s", fl->sz, root);
 	rc = 1;
 out:
 	fts_close(fts);
@@ -1323,26 +1403,25 @@ out:
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct flist **flp,
-    size_t *sz)
+flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
 	size_t		 i, max = 0;
 
 	for (i = 0; i < argc; i++) {
 		rules_base(argv[i]);
-		if (!flist_gen_dirent(sess, argv[i], flp, sz, &max, -1))
+		if (!flist_gen_dirent(sess, argv[i], fl, -1))
 			break;
 	}
 
 	if (i == argc) {
-		LOG2("recursively generated %zu filenames", *sz);
+		LOG2("recursively generated %zu filenames", fl->sz);
 		return 1;
 	}
 
 	ERRX1("flist_gen_dirent");
-	flist_free(*flp, max);
-	*flp = NULL;
-	*sz = 0;
+	flist_free(fl->flp, max);
+	free(fl->flp);
+	fl->flp = NULL;
 	return 0;
 }
 
@@ -1353,22 +1432,21 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct flist **flp,
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_gen_files(struct sess *sess, size_t argc, char **argv,
-    struct flist **flp, size_t *sz)
+flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
-	struct flist	*f;
 	size_t		 i;
 	struct stat	 st;
 	int              ret;
-	size_t		 max = argc;
 
 	assert(argc);
 
 	rules_base(".");
-	if ((*flp = calloc(argc, sizeof(struct flist))) == NULL) {
+	if ((fl->flp = calloc(argc, sizeof(struct flist))) == NULL) {
 		ERR("calloc");
 		return 0;
 	}
+	fl->max = argc;
+	fl->sz = 0;
 
 	for (i = 0; i < argc; i++) {
 		if (argv[i][0] == '\0')
@@ -1379,7 +1457,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 			ret = lstat(argv[i], &st);
 
 		if (ret == -1) {
-			ERR("%s: (l)stat", argv[i]);
+			ERR("'%s': (l)stat", argv[i]);
 			goto out;
 		}
 
@@ -1405,32 +1483,19 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv,
 			continue;
 		}
 
-		f = &(*flp)[*sz];
-		(*sz)++;
-		assert(f != NULL);
-
 		/* Add this file to our file-system worldview. */
-		if (!flist_append(sess, f, &st, argv[i], flp, sz, &max)) {
+		if (!flist_append(sess, &st, argv[i], fl)) {
 			ERRX1("flist_append");
 			goto out;
 		}
-
-		if (sess->opts->checksum &&
-		    S_ISREG(f->st.mode) && f->st.size > 0) {
-			ret = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
-			if (ret) {
-				ERRX1("hash_file_by_path");
-				goto out;
-			}
-		}
 	}
 
-	LOG2("non-recursively generated %zu filenames", *sz);
+	LOG2("non-recursively generated %zu filenames", fl->sz);
 	return 1;
 out:
-	flist_free(*flp, argc);
-	*sz = 0;
-	*flp = NULL;
+	flist_free(fl->flp, argc);
+	free(fl->flp);
+	fl->flp = NULL;
 	return 0;
 }
 
@@ -1573,7 +1638,7 @@ flist_gen_syncfile(struct sess *sess, size_t argc, char **argv,
 
 		*flp = reallocarray(*flp, *sz + 1, sizeof(struct flist));
 		if (*flp == NULL) {
-			ERR("reallocarray");
+			ERR("reallocarray flist_gen_syncfile()");
 			goto out;
 		}
 		fl = &(*flp)[*sz];
@@ -1603,8 +1668,7 @@ out:
  * On success, "fl" will need to be freed with flist_free().
  */
 int
-flist_gen(struct sess *sess, size_t argc, char **argv, struct flist **flp,
-    size_t *sz)
+flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
 	int	 rc;
 
@@ -1613,11 +1677,11 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct flist **flp,
 #endif
 	assert(argc > 0);
 	rc = sess->opts->recursive ?
-		flist_gen_dirs(sess, argc, argv, flp, sz) :
-		flist_gen_files(sess, argc, argv, flp, sz);
+		flist_gen_dirs(sess, argc, argv, fl) :
+		flist_gen_files(sess, argc, argv, fl);
 #if 0
 	} else
-		rc = flist_gen_syncfile(sess, argc, argv, flp, sz);
+		rc = flist_gen_syncfile(sess, argc, argv, fl);
 #endif
 
 	/* After scanning, lock our file-system view. */
@@ -1625,17 +1689,17 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct flist **flp,
 	if (!rc)
 		return 0;
 
-	qsort(*flp, *sz, sizeof(struct flist), flist_cmp);
+	qsort(fl->flp, fl->sz, sizeof(struct flist), flist_cmp);
 
-	if (flist_dedupe(flp, sz)) {
-		flist_topdirs(sess, *flp, *sz);
+	if (flist_dedupe(sess->opts, &(fl->flp), &fl->sz)) {
+		flist_topdirs(sess, fl->flp, fl->sz);
 		return 1;
 	}
 
 	ERRX1("flist_dedupe");
-	flist_free(*flp, *sz);
-	*flp = NULL;
-	*sz = 0;
+	flist_free(fl->flp, fl->sz);
+	free(fl->flp);
+	fl->flp = NULL;
 	return 0;
 }
 
@@ -1983,18 +2047,103 @@ cleanup_filesfrom(struct sess *sess)
 	sess->filesfrom = NULL;
 }
 
+static int
+append_filesfrom(struct sess *sess, const char *basedir, char *file)
+{
+	size_t file_length = strlen(file);
+
+	if (file[file_length-1] == '\n') {
+		file[file_length-1] = '\0';
+		file_length--;
+	}
+
+	/* Skip comment lines */
+	if (file[0] == '#' || file[0] == ';')
+		return 1;
+	/* Reject paths leading with .. */
+	if (!strncmp(file, "..", 2)) {
+		ERRX("Can't have files-from with '..'");
+		return 0;
+	}
+	/* Reject paths with .. in the middle */
+	if (strstr(file, "/..") != NULL) {
+		ERRX("Can't have files-from with '..'");
+		return 0;
+	}
+
+	if ((sess->filesfrom = realloc(sess->filesfrom,
+	    sizeof(char *) * (sess->filesfrom_n + 1))) == NULL) {
+		ERR("realloc");
+		return 0;
+	}
+
+	asprintf(&(sess->filesfrom[sess->filesfrom_n]),"%s/%s", basedir, file);
+	if (sess->filesfrom[sess->filesfrom_n] == NULL) {
+		ERR("asprintf");
+		cleanup_filesfrom(sess);
+		return 0;
+	}
+	LOG4("Added '%s' ('%s'/'%s') to flist", sess->filesfrom[sess->filesfrom_n], basedir, file);
+	sess->filesfrom_n++;
+
+	return 1;
+}
+
+static int
+fdgets(int fd, char *buf, int bufsz)
+{
+	int length = 0;
+	int n = 1;
+
+	while (n == 1 && length < bufsz) {
+		n = read(fd, buf + length, 1);
+		if (n == -1) {
+			if (errno == EWOULDBLOCK || errno == EINTR ||
+				errno == EAGAIN) {
+				n = 1;
+				continue;
+			} else {
+				ERR("read(2) for files-from remote file");
+				return -1;
+			}
+		} else
+			length++;
+		if (*(buf + length - 1) == '\0')
+			break;
+	}
+	return length;
+}
+
+static int
+strp_cmp(const void *p1, const void *p2)
+{
+	return strcmp(*(const char **)p1, *(const char **)p2);
+}
+
+void
+print_filesfrom(char *const *filesfrom, int filesfrom_n, const char *marker)
+{
+	int i;
+
+	for (i = 0; i < filesfrom_n; i++) {
+		LOG0("filesfrom %s %d: '%s'", marker, i, filesfrom[i]);
+	}
+}
+
 int
 read_filesfrom(struct sess *sess, const char *basedir)
 {
 	FILE *f;
-	char buf[PATH_MAX];
-	size_t basedir_length = strlen(basedir);
-	size_t alloc;
+	char buf[PATH_MAX] = { 0 };
+	char *s;
+	int retval;
 
-	if (strcmp(sess->opts->filesfrom, "-") == 0)
+	if (strcmp(sess->opts->filesfrom, "-") == 0) {
 		f = stdin;
-	else {
-		if ((f = fopen(sess->opts->filesfrom, "r")) == NULL) {
+	} else if (sess->opts->filesfrom_host) {
+		f = NULL;
+	} else {
+		if ((f = fopen(sess->opts->filesfrom_path, "r")) == NULL) {
 			ERR("fopen ro: '%s'", sess->opts->filesfrom);
 			return 0;
 		}
@@ -2002,33 +2151,49 @@ read_filesfrom(struct sess *sess, const char *basedir)
 
 	sess->filesfrom_n = 0;
 	sess->filesfrom = NULL;
-	while (fgets(buf, PATH_MAX, f) != NULL) {
-		if (ferror(f)) {
-			ERR("fgets: '%s'", sess->opts->filesfrom);
-			return 0;
+
+	retval = 0;
+	while (1) {
+		if (sess->opts->filesfrom_host) {
+			/*
+			 * This is doing single byte read system calls.
+			 * Before you change that consider:
+			 * If you over-read even by a single bytes you
+			 * are out-of-protocol with no way to recover.
+			 * There is no guarantee that there is a system
+			 * call boundary after the terminating empty
+			 * string.
+			 * The other side might be malicious, e.g. when
+			 * using a public rsync server.
+			 */
+			if (fdgets(sess->filesfrom_fd, buf, sizeof(buf)) == -1)
+				goto out;
+			if (append_filesfrom(sess, basedir, buf) == 0)
+				goto out;
+		} else {
+			s = fgets(buf, PATH_MAX, f);
+			if (s == NULL)
+				break;
+			if (ferror(f)) {
+				ERR("fgets: '%s'", sess->opts->filesfrom);
+				goto out;
+			}
+			if (append_filesfrom(sess, basedir, buf) == 0)
+				goto out;
 		}
-		if ((sess->filesfrom = realloc(sess->filesfrom,
-				sizeof(char *) * sess->filesfrom_n + 1)) == 
-		    NULL) {
-			ERR("realloc");
-			return 0;
-		}
-		alloc = strlen(buf) + basedir_length + 1;
-		sess->filesfrom[sess->filesfrom_n] = 
-			malloc(alloc);
-		if (sess->filesfrom[sess->filesfrom_n] == NULL) {
-			ERR("alloc %zu bytes", alloc);
-			cleanup_filesfrom(sess);
-			return 0;
-		}
-		snprintf(sess->filesfrom[sess->filesfrom_n], alloc, "%s/%s",
-		    basedir, buf);
-		sess->filesfrom_n++;
+		if (buf[0] == '\0')
+			break;
 	}
-	if (f != stdin && fclose(f) == EOF) {
+
+	qsort(sess->filesfrom, sess->filesfrom_n, sizeof(char *), strp_cmp);
+
+	retval = 1;
+out:
+	if (f != NULL && f != stdin && fclose(f) == EOF) {
 		ERR("fclose: '%s'", sess->opts->filesfrom);
-		cleanup_filesfrom(sess);
-		return 0;
+		retval = 0;
 	}
-	return 1;	
+	if (!retval)
+		cleanup_filesfrom(sess);
+	return retval;
 }

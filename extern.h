@@ -212,6 +212,21 @@ struct	flist {
 #define	FLIST_DONE_MASK		(FLIST_SUCCESS | FLIST_REDO | FLIST_FAILED)
 
 /*
+ * Holds many struct flist and takes care of memory management.
+ */
+struct fl {
+	struct flist *flp;
+	size_t sz;   /* Actual entries */
+	size_t max;  /* Allocated size */
+};
+void fl_init(struct fl *);
+long fl_new_index(struct fl *); /* Returns index of new element */
+struct flist *fl_new(struct fl *); /* Returns pointer to new element */
+struct flist *fl_atindex(struct fl *, size_t idx);
+long fl_curridx(struct fl *); /* Current size */
+void fl_print(const char *id, struct fl *fl);
+
+/*
  * Options passed into the command line.
  * See struct fargs.
  */
@@ -267,6 +282,9 @@ struct	opts {
 	off_t		 bwlimit;		/* --bwlimit */
 	int		 size_only;		/* --size-only */
 	long		 block_size;		/* --block-size */
+	char            *filesfrom_host;        /* --files-from */
+	char            *filesfrom_port;        /* --files-from */
+	char            *filesfrom_path;        /* --files-from */
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif
@@ -383,6 +401,7 @@ struct	sess {
 	double             last_time; /* last time printed --progress */  
 	char             **filesfrom; /* Contents of files-from */
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
+	int		   filesfrom_fd; /* --files-from */
 	struct dlrename    *dlrename; /* Deferred renames for --delay-update */
 	struct role	  *role; /* Role context */
 	mode_t		   chmod_dir_AND;
@@ -476,10 +495,10 @@ void	rsync_errx1(const char *, ...)
 int	flist_dir_cmp(const void *, const void *);
 int	flist_fts_check(struct sess *, FTSENT *, enum fmode);
 int	flist_del(struct sess *, int, const struct flist *, size_t);
-int	flist_gen(struct sess *, size_t, char **, struct flist **, size_t *);
+int	flist_gen(struct sess *, size_t, char **, struct fl *);
 int	flist_gen_local(struct sess *, const char *, struct flist **, size_t *);
 void	flist_free(struct flist *, size_t);
-int	flist_recv(struct sess *, int, struct flist **, size_t *);
+int	flist_recv(struct sess *, int, int, struct flist **, size_t *);
 int	flist_send(struct sess *, int, int, const struct flist *, size_t);
 int	flist_gen_dels(struct sess *, const char *, struct flist **, size_t *,
 	    const struct flist *, size_t);
@@ -627,6 +646,7 @@ int		 iszerobuf(const void *b, size_t len);
 
 int              read_filesfrom(struct sess *sess, const char *basedir);
 void		 cleanup_filesfrom(struct sess *sess);
+void             print_filesfrom(char *const *, int, const char *);
 void		 delayed_renames(struct sess *sess);
 
 int		chmod_parse(const char *arg, struct sess *sess);

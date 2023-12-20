@@ -298,6 +298,13 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		}
 	}
 
+	/* Send this only if we are actually using a remote file for filesfrom */
+	if (sess->opts->filesfrom != NULL && sess->opts->filesfrom_host != NULL) {
+		/* Must not transmit hostname and port as part of this */
+		addargs(&args, "--files-from");
+		addargs(&args, "%s", sess->opts->filesfrom_path);
+	}
+
 	/* only add --compare-dest, etc if this is the sender */
 	if (sess->opts->alt_base_mode != 0 &&
 	    f->mode == FARGS_SENDER) {
