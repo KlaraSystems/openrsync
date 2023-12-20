@@ -191,7 +191,7 @@ int
 io_write_buf(struct sess *sess, int fd, const void *buf, size_t sz)
 {
 
-	return (io_write_buf_tagged(sess, fd, buf, sz, IT_DATA));
+	return io_write_buf_tagged(sess, fd, buf, sz, IT_DATA);
 }
 
 /*
@@ -331,7 +331,7 @@ io_call_handler(enum iotag tag, const void *buffer, size_t bufsz, int *ret)
 		}
 	}
 
-	return (0);
+	return 0;
 }
 
 /*
@@ -520,7 +520,7 @@ io_write_uint_tagged(struct sess *sess, int fd, uint32_t val, enum iotag tag)
 
 	nv = htole32(val);
 
-	if (!io_write_buf_tagged(sess, fd, &nv, sizeof(uint32_t), tag)) {
+	if (!io_write_buf_tagged(sess, fd, &nv, sizeof(nv), tag)) {
 		ERRX1("io_write_buf");
 		return 0;
 	}

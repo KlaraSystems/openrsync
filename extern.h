@@ -185,7 +185,7 @@ struct	flist {
 	struct flstat	 st; /* file information */
 	char		*link; /* symlink target or NULL */
 	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
-	int		 curst; /* flagged for redo, or complete? */
+	int		 flstate; /* flagged for redo, or complete? */
 };
 
 #define	FLIST_COMPLETE		0x01	/* Finished */
@@ -194,7 +194,7 @@ struct	flist {
 #define	FLIST_FAILED		0x08	/* Failed */
 #define	FLIST_SUCCESS_ACKED	0x10	/* Sent success message */
 
-#define	FLIST_FINAL_BITS	(FLIST_SUCCESS | FLIST_REDO | FLIST_FAILED)
+#define	FLIST_DONE_MASK		(FLIST_SUCCESS | FLIST_REDO | FLIST_FAILED)
 
 /*
  * Options passed into the command line.

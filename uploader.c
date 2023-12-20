@@ -1289,20 +1289,20 @@ upload_ack_complete(struct upload *p, struct sess *sess, int fdout)
 			continue;
 
 		/* Entry not yet processed by the downloader. */
-		if ((fl->curst & FLIST_FINAL_BITS) == 0)
+		if ((fl->flstate & FLIST_DONE_MASK) == 0)
 			break;
 
 		/*
 		 * Failed is only set if there's no hope of recovering, so we
 		 * can just skip this one entirely.
 		 */
-		if ((fl->curst & FLIST_FAILED) != 0)
+		if ((fl->flstate & FLIST_FAILED) != 0)
 			continue;
 
 		/*
 		 * Redo entries in the redo phase have also not been processed,
 		 */
-		if (p->phase > 0 && (fl->curst & FLIST_REDO) != 0)
+		if (p->phase > 0 && (fl->flstate & FLIST_REDO) != 0)
 			break;
 
 		/*
@@ -1311,12 +1311,12 @@ upload_ack_complete(struct upload *p, struct sess *sess, int fdout)
 		 * cleared the redo flag if it succeeded, or it would have
 		 * additionally marked it as having FAILED.
 		 */
-		if ((fl->curst & FLIST_REDO) != 0)
+		if ((fl->flstate & FLIST_REDO) != 0)
 			continue;
 
-		if ((fl->curst & (FLIST_SUCCESS | FLIST_SUCCESS_ACKED)) ==
+		if ((fl->flstate & (FLIST_SUCCESS | FLIST_SUCCESS_ACKED)) ==
 		    FLIST_SUCCESS) {
-			fl->curst |= FLIST_SUCCESS_ACKED;
+			fl->flstate |= FLIST_SUCCESS_ACKED;
 			io_write_int_tagged(sess, fdout, idx, IT_SUCCESS);
 		}
 	}
@@ -1416,7 +1416,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 
 		for ( ; u->idx < u->flsz; u->idx++) {
 			if (u->phase > 0 &&
-			    (u->fl[u->idx].curst & FLIST_REDO) == 0)
+			    (u->fl[u->idx].flstate & FLIST_REDO) == 0)
 				continue;
 			if (S_ISDIR(u->fl[u->idx].st.mode))
 				c = pre_dir(u, sess);

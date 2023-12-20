@@ -663,7 +663,7 @@ delayed_renames(struct sess *sess)
 				ERR("rmdir '%s'", dlr->entries[i].rmdir);
 			}
 		}
-		dlr->entries[i].file->curst |= status;
+		dlr->entries[i].file->flstate |= status;
 		free(dlr->entries[i].from);
 		free(dlr->entries[i].rmdir);
 		dlr->entries[i].from = NULL;
@@ -1109,13 +1109,13 @@ again:
 		 * match, we'll just give up.
 		 */
 		WARNX("%s: hash does not match, %s redo", p->fname,
-		    (f->curst & FLIST_REDO) != 0 ? "will not" : "will");
-		if ((f->curst & FLIST_REDO) != 0) {
-			f->curst |= FLIST_FAILED;
+		    (f->flstate & FLIST_REDO) != 0 ? "will not" : "will");
+		if ((f->flstate & FLIST_REDO) != 0) {
+			f->flstate |= FLIST_FAILED;
 			goto out;
 		}
 
-		f->curst |= FLIST_REDO;
+		f->flstate |= FLIST_REDO;
 		p->needredo++;
 		goto done;
 	}
@@ -1124,7 +1124,7 @@ again:
 	 * Once we successfully transfer it, unmark it for redo so that we don't
 	 * erroneously clean it up later.
 	 */
-	f->curst = (f->curst & ~FLIST_REDO) | FLIST_COMPLETE;
+	f->flstate = (f->flstate & ~FLIST_REDO) | FLIST_COMPLETE;
 
 	if (sess->opts->backup) {
 		if (fstatat(p->rootfd, f->path, &st2, 0) == -1) {
@@ -1227,7 +1227,7 @@ again:
 		entry->to = f->path;
 		/* Status update is deferred until the update is done. */
 	} else {
-		f->curst |= FLIST_SUCCESS;
+		f->flstate |= FLIST_SUCCESS;
 		if (hl_p != NULL) {
 			if (unlinkat(p->rootfd, f->path, 0) == -1)
 				if (errno != ENOENT)
@@ -1251,11 +1251,11 @@ done:
 	 * If we're redoing it, then we need to go ahead and clean up the file
 	 * or move it into a --partial-dir.
 	 */
-	download_cleanup(sess, p, (f->curst & FLIST_REDO) != 0);
+	download_cleanup(sess, p, (f->flstate & FLIST_REDO) != 0);
 	return 1;
 out:
 	if (f != NULL)
-		f->curst |= FLIST_FAILED;
+		f->flstate |= FLIST_FAILED;
 	download_cleanup(sess, p, 1);
 	return -1;
 }
