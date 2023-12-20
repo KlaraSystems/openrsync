@@ -99,7 +99,7 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		/*
 		 * The client traditionally doesn't multiplex writes, but it
 		 * does need to do so after the version exchange in the case of
-		 * --remove-source-files in the reciever role -- it may need to
+		 * --remove-source-files in the receiver role -- it may need to
 		 * send SUCCESS messages to confirm that a transfer has
 		 * completed.
 		 */
