@@ -54,7 +54,7 @@ struct merge_rule {
 	TAILQ_ENTRY(merge_rule)		 entries;
 	struct rule			*parent_rule;
 	struct ruleset			*ruleset;
-	const char			*path;
+	char				*path;
 	size_t				 depth;
 	bool				 inherited;
 };
@@ -88,7 +88,7 @@ enum rule_iter_action {
 	RULE_ITER_HALT,		/* Halt iteration entirely. */
 	RULE_ITER_HALT_CHAIN,	/* Halt this merge chain. */
 	RULE_ITER_SKIP,		/* Skip further processing of this rule. */
-	RULE_ITER_CONTINUE,	/* Contine as normal. */
+	RULE_ITER_CONTINUE,	/* Continue as normal. */
 };
 typedef enum rule_iter_action (rule_iter_fn)(struct ruleset *, struct rule *,
     const char *, void *);
@@ -731,7 +731,7 @@ parse_file_impl(struct ruleset *ruleset, const char *file, enum rule_type def,
 	ssize_t linelen;
 
 	if ((fp = fopen(file, "r")) == NULL) {
-		if (!must_exist)
+		if (errno == ENOENT && !must_exist)
 			return;
 		err(ERR_SYNTAX, "open: %s", file);
 	}
@@ -1113,7 +1113,7 @@ rules_base(const char *root)
 
 	/* Guarantee / termination */
 	if (root[slen - 1] != '/' &&
-	    strlcat(rule_base, root, sizeof(rule_base)) >= sizeof(rule_base)) {
+	    strlcat(rule_base, "/", sizeof(rule_base)) >= sizeof(rule_base)) {
 		errno = ENAMETOOLONG;
 		err(ERR_FILEGEN, "strlcat");
 	}
@@ -1425,7 +1425,7 @@ rule_dir_free(struct rule *r, struct merge_rule *mrule)
 
 	TAILQ_REMOVE(&r->merge_rule_chain, mrule, entries);
 	ruleset_free(mrule->ruleset);
-	free((char *)mrule->path);
+	free(mrule->path);
 	free(mrule);
 }
 
