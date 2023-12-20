@@ -38,6 +38,7 @@
 .Op Fl -delete-excluded
 .Op Fl -exclude Ar pattern
 .Op Fl -exclude-from Ns = Ns Ar file
+.Op Fl -files-from Ns = Ns Ar filespec
 .Op Fl -ignore-existing
 .Op Fl -ignore-non-existing
 .Op Fl -include Ar pattern
@@ -266,6 +267,13 @@ and
 .Em rules
 from
 .Em file .
+.It Fl -files-from Ns = Ns Ar filespec
+Load list of files to transfer (as opposed to the
+command line)
+from
+.Em filespec .
+.Ar Filespec
+can be of the form hostname:port:path.
 .It Fl -ignore-existing
 Ignore files that already exist.
 .It Fl -ignore-non-existing , Fl -existing

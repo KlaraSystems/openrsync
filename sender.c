@@ -39,8 +39,7 @@
 
 struct	success_ctx {
 	struct sess	*sess;
-	struct flist	*fl;
-	size_t		 flsz;
+	const struct fl	*fl;
 };
 
 /*
@@ -360,7 +359,7 @@ file_success(void *cookie, const void *data, size_t datasz)
 		return 0;
 	}
 
-	if (idx < 0 || (size_t)idx >= sctx->flsz) {
+	if (idx < 0 || (size_t)idx >= sctx->fl->sz) {
 		ERRX("success idx %d out of range", idx);
 		return 0;
 	}
@@ -369,7 +368,7 @@ file_success(void *cookie, const void *data, size_t datasz)
 		struct flist *fl;
 		struct stat sb;
 
-		fl = &sctx->fl[idx];
+		fl = &sctx->fl->flp[idx];
 		if (lstat(fl->path, &sb) == -1) {
 			/* Nothing left to do here. */
 			return 1;
@@ -388,6 +387,8 @@ file_success(void *cookie, const void *data, size_t datasz)
 	return 1;
 }
 
+struct fl *flg = NULL;
+
 /*
  * A client sender manages the read-only source files and sends data to
  * the receiver as requested.
@@ -404,9 +405,9 @@ rsync_sender(struct sess *sess, int fdin,
 {
 	struct role	    sender;
 	struct success_ctx  sctx;
-	struct flist	   *fl = NULL;
+	struct fl	    fl;
 	const struct flist *f;
-	size_t		    i, flsz = 0, phase = 0;
+	size_t		    i, phase = 0;
 	int		    rc = 0, c, metadata_phase = 0;
 	int32_t		    idx;
 	struct pollfd	    pfd[3];
@@ -421,6 +422,8 @@ rsync_sender(struct sess *sess, int fdin,
 	struct timeval	    tv;
 	double		    now, rate, sleeptime;
 
+	fl_init(&fl);
+	flg = &fl;
 	if (pledge("stdio getpw rpath", NULL) == -1) {
 		ERR("pledge");
 		return 0;
@@ -455,6 +458,10 @@ rsync_sender(struct sess *sess, int fdin,
 			argc = sess->filesfrom_n;
 			argv = sess->filesfrom;
 		}
+		if (sess->opts->filesfrom_host != NULL) {
+			assert(!sess->opts->server);
+			sess->mplex_reads = 1;
+		}
 	}
 
 	/*
@@ -478,7 +485,7 @@ rsync_sender(struct sess *sess, int fdin,
 	 * This will also remove all invalid files.
 	 */
 
-	if (!flist_gen(sess, argc, argv, &fl, &flsz)) {
+	if (!flist_gen(sess, argc, argv, &fl)) {
 		ERRX1("flist_gen");
 		goto out;
 	}
@@ -488,7 +495,7 @@ rsync_sender(struct sess *sess, int fdin,
 	 * Finally, the IO error (always zero for us).
 	 */
 
-	if (!flist_send(sess, fdin, fdout, fl, flsz)) {
+	if (!flist_send(sess, fdin, fdout, fl.flp, fl.sz)) {
 		ERRX1("flist_send");
 		goto out;
 	} else if (!io_write_int(sess, fdout, 0)) {
@@ -498,17 +505,16 @@ rsync_sender(struct sess *sess, int fdin,
 
 	/* Exit if we're the server with zero files. */
 
-	if (flsz == 0 && sess->opts->server) {
+	if (fl.sz == 0 && sess->opts->server) {
 		WARNX("sender has empty file list: exiting");
 		rc = 1;
 		goto out;
 	} else if (!sess->opts->server)
-		LOG1("Transfer starting: %zu files", flsz);
+		LOG1("Transfer starting: %zu files", fl.sz);
 
 	if (sess->opts->remove_source) {
 		sctx.sess = sess;
-		sctx.fl = fl;
-		sctx.flsz = flsz;
+		sctx.fl = &fl;
 
 		if (!io_register_handler(IT_SUCCESS, &file_success, &sctx)) {
 			ERRX("Failed to install remove-source-files handler; exiting");
@@ -609,7 +615,7 @@ rsync_sender(struct sess *sess, int fdin,
 				metadata_phase++;
 			}
 			if (!send_dl_enqueue(sess,
-			    &sdlq, idx, fl, flsz, fdin)) {
+			    &sdlq, idx, fl.flp, fl.sz, fdin)) {
 				ERRX1("send_dl_enqueue");
 				goto out;
 			}
@@ -634,7 +640,7 @@ rsync_sender(struct sess *sess, int fdin,
 			assert(up.stat.fd != -1);
 			assert(up.stat.map == MAP_FAILED);
 			assert(up.stat.mapsz == 0);
-			f = &fl[up.cur->idx];
+			f = &fl.flp[up.cur->idx];
 
 			if (fstat(up.stat.fd, &st) == -1) {
 				ERR("%s: fstat", f->path);
@@ -718,7 +724,7 @@ rsync_sender(struct sess *sess, int fdin,
 			assert(pfd[2].fd == -1);
 			assert(wbufpos == 0 && wbufsz == 0);
 			if (!send_up_fsm(sess, &phase,
-			    &up, &wbuf, &wbufsz, &wbufmax, fl)) {
+			    &up, &wbuf, &wbufsz, &wbufmax, fl.flp)) {
 				ERRX1("send_up_fsm");
 				goto out;
 			} else if (phase > 1)
@@ -770,13 +776,13 @@ rsync_sender(struct sess *sess, int fdin,
 			 * This will be picked up in the state machine
 			 * block of not being primed.
 			 */
-			up.stat.fd = open(fl[up.cur->idx].path,
+			up.stat.fd = open(fl.flp[up.cur->idx].path,
 				O_RDONLY|O_NONBLOCK, 0);
 			if (up.stat.fd == -1) {
 				char buf[PATH_MAX];
 
 				ERR("%s: open (2) in %s",
-				    fl[up.cur->idx].path,
+				    fl.flp[up.cur->idx].path,
 				    getcwd(buf, sizeof(buf)));
 				goto out;
 			}
@@ -813,7 +819,7 @@ out:
 		free(dl->blks);
 		free(dl);
 	}
-	flist_free(fl, flsz);
+	flist_free(fl.flp, fl.sz);
 	free(wbuf);
 	blkhash_free(up.stat.blktab);
 	cleanup_filesfrom(sess);

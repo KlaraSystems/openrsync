@@ -349,13 +349,13 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * These we're going to be touching on our local system.
 	 */
 
-	if (!flist_recv(sess, fdin, &fl, &flsz)) {
+	if (!flist_recv(sess, fdin, fdout, &fl, &flsz)) {
 		ERRX1("flist_recv");
 		goto out;
 	}
 	hl = reallocarray(NULL, flsz, sizeof(*hl));
 	if (hl == NULL) {
-		ERRX1("reallocarray");
+		ERRX1("reallocarray receiver");
 		goto out;
 	}
 	build_for_hardlinks(hl, fl, flsz); /* Size is same */
