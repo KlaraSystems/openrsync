@@ -1316,8 +1316,9 @@ upload_ack_complete(struct upload *p, struct sess *sess, int fdout)
 
 		if ((fl->flstate & (FLIST_SUCCESS | FLIST_SUCCESS_ACKED)) ==
 		    FLIST_SUCCESS) {
+			if (!io_write_int_tagged(sess, fdout, idx, IT_SUCCESS))
+				break;
 			fl->flstate |= FLIST_SUCCESS_ACKED;
-			io_write_int_tagged(sess, fdout, idx, IT_SUCCESS);
 		}
 	}
 
