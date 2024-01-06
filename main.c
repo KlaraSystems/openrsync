@@ -776,7 +776,8 @@ basedir:
 			err(ERR_IPC, "dup2");
 		if (dup2(fds[1], STDOUT_FILENO) == -1)
 			err(ERR_IPC, "dup2");
-		execvp(args[0], args);
+		if (execvp(args[0], args) == -1)
+			ERR("exec on '%s'", args[0]);
 		_exit(ERR_IPC);
 		/* NOTREACHED */
 	default:
