@@ -125,6 +125,7 @@ blkhash_free(struct blktab *p)
 {
 
 	free(p->blks);
+	free(p->q);
 	free(p);
 }
 
