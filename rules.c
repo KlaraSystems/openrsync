@@ -431,7 +431,7 @@ recv_rules(struct sess *sess, int fd)
 		line[len] = '\0';
 
 		rule = &line[0];
-		type = rule_xfer_type(&rule);
+		type = rule_xfer_type((const char **)&rule);
 		if (parse_rule(rule, type) == -1)
 			errx(ERR_PROTOCOL, "syntax error in received rules");
 	} while (1);
