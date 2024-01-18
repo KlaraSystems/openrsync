@@ -247,8 +247,10 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--remove-source-files");
 	if (f->mode == FARGS_SENDER && sess->opts->ignore_times > 0)
 		addargs(&args, "--ignore-times");
-	if (sess->opts->bwlimit >= 0)
-		addargs(&args, "--bwlimit=%lldb", (long long)sess->opts->bwlimit);
+	if (sess->opts->bwlimit >= 1024) {
+		addargs(&args, "--bwlimit=%lld",
+		    (long long)(sess->opts->bwlimit / 1024));
+	}
 
 	if (sess->opts->supermode != SMODE_UNSET) {
 		switch (sess->opts->supermode) {
