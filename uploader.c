@@ -684,6 +684,14 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 		if (ent->fts_info == FTS_D && perish_ent != NULL)
 			continue;
 
+		/*
+		 * If we visit a directory in post-order and perish_ent isn't
+		 * set, then we must have skipped it in pre-order (e.g., due to
+		 * a rule match) and we must not schedule it for deletion now.
+		 */
+		if (ent->fts_info == FTS_DP && perish_ent == NULL)
+			continue;
+
 		/* Look up in the hashtable. */
 		memset(&hent, 0, sizeof(hent));
 		hent.key = ent->fts_path + stripdir;
