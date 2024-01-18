@@ -448,6 +448,21 @@ const struct option	 lopts[] = {
     { NULL,		0,		NULL,			0 }
 };
 
+static void
+usage(int exitcode)
+{
+	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
+	    " [-CDLacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
+	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
+	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
+	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
+	    "\t[--partial] [--port=portnumber] [--relative] [--remove-source-files]\n"
+	    "\t[--rsync-path=program] [--timeout=seconds] [--version] source ... directory\n",
+	    getprogname());
+	exit(exitcode);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -725,8 +740,9 @@ basedir:
 			    RSYNC_PROTOCOL);
 			exit(0);
 		case 'h':
+			usage(0);
 		default:
-			goto usage;
+			usage(ERR_SYNTAX);
 		}
 	}
 
@@ -736,7 +752,7 @@ basedir:
 	/* FIXME: reference implementation rsync accepts this. */
 
 	if (argc < 2)
-		goto usage;
+		usage(ERR_SYNTAX);
 
 	if (opts.inplace) {
 		if (opts.partial_dir != NULL)
@@ -974,15 +990,4 @@ basedir:
 	}
 
 	exit(rc);
-usage:
-	fprintf(stderr, "usage: %s"
-	    " [-CDLacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
-	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
-	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
-	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
-	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
-	    "\t[--partial] [--port=portnumber] [--relative] [--remove-source-files]\n"
-	    "\t[--rsync-path=program] [--timeout=seconds] [--version] source ... directory\n",
-	    getprogname());
-	exit(ERR_SYNTAX);
 }
