@@ -1275,12 +1275,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 
 		if (sess->opts->checksum &&
 		    S_ISREG(f->st.mode) && f->st.size > 0) {
-			const char *relpath;
-
-			relpath = strrchr(f->path, '/');
-			relpath = (relpath != NULL) ? (relpath + 1) : f->path;
-
-			rc = hash_file_by_path(AT_FDCWD, relpath, f->st.size, f->md);
+			rc = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
 			if (rc) {
 				ERRX1("hash_file_by_path");
 				goto out;
