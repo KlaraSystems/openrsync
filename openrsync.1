@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl abCcDgklLnoprtuvx
+.Op Fl abcCDgklLnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -103,6 +103,10 @@ The
 may also contain any of the suffixes described in the
 .Fl -max-size
 definition of size.
+.It Fl c , -checksum
+Use full-file checksums to determine which files have changed and should
+be transferred, rather than the usual file size and modification time
+"quick check".
 .It Fl -compare-dest Ns = Ns Ar directory
 Use directory as an alternate base directory to compare files against on the
 destination machine.
