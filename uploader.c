@@ -959,17 +959,17 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		}
 	}
 
+	if (sess->opts->update && st->st_mtime > f->st.mtime) {
+		LOG1("Skip newer '%s'", f->path);
+		return 4;
+	}
+
 	/* non-regular file needs attention */
 	if (!S_ISREG(st->st_mode))
 		return 2;
 
 	if (sess->opts->ign_exist) {
 		LOG1("Skip existing '%s'", f->path);
-		return 4;
-	}
-
-	if (sess->opts->update && st->st_mtime > f->st.mtime) {
-		LOG1("Skip newer '%s'", f->path);
 		return 4;
 	}
 
