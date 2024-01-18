@@ -454,8 +454,11 @@ rsync_sender(struct sess *sess, int fdin,
 		}
 	}
 
-	/* Client sends zero-length exclusions if deleting. */
-	if (!sess->opts->server && sess->opts->del)
+	/*
+	 * Client sends zero-length exclusions if deleting, unless we're
+	 * deleting excluded files, too.
+	 */
+	if (!sess->opts->server && sess->opts->del && !sess->opts->del_excl)
 		send_rules(sess, fdout);
 
 	/*
