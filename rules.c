@@ -906,14 +906,12 @@ send_rules(struct sess *sess, int fd)
  * what looks like an unsalted exclude rule.
  */
 static enum rule_type
-rule_xfer_type(const char **linep)
+rule_xfer_type(const char **linep, unsigned int *modifiers)
 {
 	const char *line = *linep;
 	size_t len;
 	enum rule_type type;
-
-	if (line[1] != ' ' && line[1] != '_')
-		return RULE_EXCLUDE;
+	unsigned int cmods;
 
 	len = strcspn(line, " _");
 
@@ -921,11 +919,14 @@ rule_xfer_type(const char **linep)
 	 * Not completely sure... see if this matches one of our rule prefixes.
 	 * If it doesn't, we have to assume that it's an exclude rule.
 	 */
-	type = parse_command(line, len, NULL);
-	if (type != RULE_NONE)
+	type = parse_command(line, len, &cmods);
+	if (type != RULE_NONE) {
 		*linep = line + len + 1;
-	else
+		*modifiers = cmods;
+	} else {
 		type = RULE_EXCLUDE;
+	}
+
 	return type;
 }
 
@@ -936,6 +937,7 @@ recv_rules(struct sess *sess, int fd)
 	char *rule;
 	size_t len;
 	enum rule_type type;
+	unsigned int modifiers;
 
 	do {
 		if (!io_read_size(sess, fd, &len))
@@ -950,8 +952,10 @@ recv_rules(struct sess *sess, int fd)
 		line[len] = '\0';
 
 		rule = &line[0];
-		type = rule_xfer_type((const char **)&rule);
-		if (parse_rule(rule, type) == -1)
+		modifiers = 0;
+		type = rule_xfer_type((const char **)&rule, &modifiers);
+		if (parse_rule_impl(&global_ruleset, rule, type,
+		    modifiers) == -1)
 			errx(ERR_PROTOCOL, "syntax error in received rules");
 	} while (1);
 }
