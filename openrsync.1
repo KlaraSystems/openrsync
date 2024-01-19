@@ -52,6 +52,7 @@
 .Op Fl -numeric-ids
 .Op Fl -partial
 .Op Fl -port Ns = Ns Ar service
+.Op Fl -progress
 .Op Fl -remove-source-files
 .Op Fl -relative
 .Op Fl -rsync-path Ns = Ns Ar program
@@ -365,6 +366,8 @@ can be given as a decimal integer or as a name to be looked up in the
 database.
 The default is
 .Dq rsync .
+.It Fl -progress
+Periodically report file transfer progress.
 .It Fl r , -recursive
 If
 .Ar source
