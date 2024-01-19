@@ -420,12 +420,12 @@ const struct option	 lopts[] = {
     { "sender",		no_argument,	&opts.sender,		1 },
     { "server",		no_argument,	&opts.server,		1 },
     { "specials",	no_argument,	&opts.specials,		1 },
+    { "no-specials",	no_argument,	&opts.specials,		0 },
     { "sparse",		no_argument,	NULL,			'S' },
     { "super",		no_argument,	&opts.supermode,	SMODE_ON },
 #if 0
     { "sync-file",	required_argument, NULL,		6 },
 #endif
-    { "no-specials",	no_argument,	&opts.specials,		0 },
     { "timeout",	required_argument, NULL,		OP_TIMEOUT },
     { "times",		no_argument,	NULL,			't' },
     { "no-times",	no_argument,	&opts.preserve_times,	0 },
@@ -462,8 +462,9 @@ usage(int exitcode)
 	    "\t[--include] [--include-from=file]\n"
 	    "\t[--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
-	    "\t[--relative] [--remove-source-files]\n"
-	    "\t[--rsync-path=program] [--timeout=seconds] [--version] source ... directory\n",
+	    "\t[--relative] [--remove-source-files] [--rsync-path=program]\n"
+	    "\t[--specials] [--timeout=seconds]\n"
+	    "\t[--version] source ... directory\n",
 	    getprogname());
 	exit(exitcode);
 }
