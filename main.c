@@ -453,7 +453,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-CDHILPRSabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-CDHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
@@ -464,7 +464,7 @@ usage(int exitcode)
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
 	    "\t[--remove-source-files] [--rsync-path=program]\n"
 	    "\t[--specials] [--timeout=seconds]\n"
-	    "\t[--version] source ... directory\n",
+	    "\tsource ... directory\n",
 	    getprogname());
 	exit(exitcode);
 }
