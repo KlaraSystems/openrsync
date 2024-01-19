@@ -453,7 +453,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-CDLacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-CDLPacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
@@ -490,7 +490,7 @@ main(int argc, char *argv[])
 	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "CDHILRSVabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "CDHILPRSVabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case 'C':
@@ -547,6 +547,10 @@ main(int argc, char *argv[])
 			break;
 		case 'o':
 			opts.preserve_uids = 1;
+			break;
+		case 'P':
+			opts.partial = 1;
+			opts.progress++;
 			break;
 		case 'p':
 			opts.preserve_perms = 1;
