@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl CDLPSacdgklnoprtuvx
+.Op Fl CDLPRSacdgklnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -54,7 +54,6 @@
 .Op Fl -port Ns = Ns Ar service
 .Op Fl -progress
 .Op Fl -remove-source-files
-.Op Fl -relative
 .Op Fl -rsync-path Ns = Ns Ar program
 .Op Fl -super
 .Op Fl -timeout Ns = Ns Ar seconds
@@ -396,7 +395,7 @@ its subsequent removal.
 When combined with
 .Fl -delay-updates ,
 files will be removed in a larger batch toward the end of the transfer.
-.It Fl -relative
+.It Fl R , -relative
 Normally, pathnames on the commandline omit the directory components.
 This option will include the dir components.
 .It Fl -rsync-path Ns = Ns Ar program
