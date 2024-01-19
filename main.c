@@ -399,7 +399,6 @@ const struct option	 lopts[] = {
     { "no-motd",	no_argument,	&opts.no_motd,		1 },
     { "no-links",	no_argument,	&opts.preserve_links,	0 },
     { "no-l",		no_argument,	&opts.preserve_links,	0 },
-    { "no-super",	no_argument,	&opts.supermode,	SMODE_OFF },
     { "numeric-ids",	no_argument,	&opts.numeric_ids,	1 },
     { "owner",		no_argument,	NULL,			'o' },
     { "no-owner",	no_argument,	&opts.preserve_uids,	0 },
@@ -423,6 +422,7 @@ const struct option	 lopts[] = {
     { "no-specials",	no_argument,	&opts.specials,		0 },
     { "sparse",		no_argument,	NULL,			'S' },
     { "super",		no_argument,	&opts.supermode,	SMODE_ON },
+    { "no-super",	no_argument,	&opts.supermode,	SMODE_OFF },
 #if 0
     { "sync-file",	required_argument, NULL,		6 },
 #endif
@@ -463,7 +463,7 @@ usage(int exitcode)
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
 	    "\t[--remove-source-files] [--rsync-path=program]\n"
-	    "\t[--specials] [--timeout=seconds]\n"
+	    "\t[--specials] [--super] [--timeout=seconds]\n"
 	    "\tsource ... directory\n",
 	    getprogname());
 	exit(exitcode);
