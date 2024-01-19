@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl CDHLPRSabcdgklnoprtuvx
+.Op Fl CDHILPRSabcdgklnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -230,7 +230,7 @@ from
 Ignore files that already exist.
 .It Fl -ignore-non-existing , Fl -existing
 Ignore files that do not already exist (do not create them).
-.It Fl I -ignore-times
+.It Fl I , -ignore-times
 Do not skip based on file size and modification time.
 .It Fl -include Ar pattern
 Include files matching
