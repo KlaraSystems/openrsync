@@ -29,8 +29,6 @@
 .Op Fl -backup
 .Op Fl -bwlimit Ns = Ns limit
 .Op Fl -compare-dest Ns = Ns Ar directory
-.Op Fl -copy-links
-.Op Fl -copy-dirlinks
 .Op Fl -del
 .Op Fl -delay-updates
 .Op Fl -delete-before
@@ -119,7 +117,7 @@ directories may be provided.
 If
 .Ar directory
 is a relative path, it is relative to the destination directory.
-.It Fl -copy-links
+.It Fl L , -copy-links
 Copy targets of symbolic links.
 .It Fl k , -copy-dirlinks
 Copy targets of symbolic links that point to directories only.
