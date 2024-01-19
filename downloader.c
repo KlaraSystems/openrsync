@@ -554,7 +554,7 @@ print_time(FILE *f, double time)
  * Maybe print progress in current file.
  */
 static void
-progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
+progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far, bool finished)
 {
 	struct timeval tv;
 	double now, remaining_time, rate;
@@ -573,7 +573,7 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
 		sess->last_time = now;
 		return;
 	}
-	if (now - sess->last_time < 0.1)
+	if (now - sess->last_time < 0.1 && !finished)
 		return;
 	fprintf(stderr, " %14lu", so_far);
 	fprintf(stderr, " %3.0f%%", (double)so_far / 
@@ -591,7 +591,7 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far)
 	}
 	remaining_time = (total_bytes - so_far) / rate;
 	print_time(stderr, remaining_time);
-	fprintf(stderr, "\r");
+	fprintf(stderr, finished ? "\n" : "\r");
 	sess->last_time = now;
 }
 
@@ -991,7 +991,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 	 */
 
 again:
-	progress(sess, p->fl[p->idx].st.size, p->total);
+	progress(sess, p->fl[p->idx].st.size, p->total, false);
 
 	assert(p->state == DOWNLOAD_READ_REMOTE);
 	assert(p->fname != NULL);
@@ -1242,9 +1242,7 @@ again:
 		}
 	}
 
-	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size);
-	if (sess->opts->progress)
-		fprintf(stderr, "\n");
+	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size, true);
 	log_file(sess, p, f);
 done:
 	/*

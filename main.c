@@ -334,7 +334,6 @@ static struct opts	 opts;
 #define OP_MAX_SIZE	1013
 #define OP_MIN_SIZE	1014
 #define OP_SPARSE	1015
-#define OP_PROGRESS	1016
 
 #define OP_IGNORE_EXISTING	1018
 #define OP_IGNORE_NON_EXISTING	1019
@@ -435,7 +434,8 @@ const struct option	 lopts[] = {
     { "verbose",	no_argument,	NULL,			'v' },
     { "no-verbose",	no_argument,	&verbose,		0 },
     { "no-v",		no_argument,	&verbose,		0 },
-    { "progress",	no_argument,	NULL,			OP_PROGRESS },
+    { "progress",	no_argument,	&opts.progress,		1 },
+    { "no-progress",	no_argument,	&opts.progress,		0 },
     { "backup",		no_argument,	NULL,			'b' },
     { "version",	no_argument,	NULL,			'V' },
     { "relative",	no_argument,	NULL,			'R' },
@@ -458,7 +458,8 @@ usage(int exitcode)
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
-	    "\t[--partial] [--port=portnumber] [--relative] [--remove-source-files]\n"
+	    "\t[--partial] [--port=portnumber] [--progress]\n"
+	    "\t[--relative] [--remove-source-files]\n"
 	    "\t[--rsync-path=program] [--timeout=seconds] [--version] source ... directory\n",
 	    getprogname());
 	exit(exitcode);
@@ -690,9 +691,6 @@ basedir:
 		case OP_NO_D:
 			opts.devices = 0;
 			opts.specials = 0;
-			break;
-		case OP_PROGRESS:
-		        opts.progress++;
 			break;
 		case OP_IGNORE_EXISTING:
 		        opts.ign_exist++;
