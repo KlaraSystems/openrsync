@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl CDLPRSabcdgklnoprtuvx
+.Op Fl CDHLPRSabcdgklnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -283,6 +283,9 @@ If
 .Fl -numeric-ids
 is also given or if the remote group name is unknown on the local machine,
 set the numeric group ID to match the source instead.
+.It Fl H , -hard-links
+Attempt to preserve hard links within the list of files transferred.
+Also transfer symbolic links.
 .It Fl l , -links
 Also transfer symbolic links.
 The link is transferred as a standalone file: if the destination does
