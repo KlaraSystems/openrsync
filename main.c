@@ -456,8 +456,11 @@ usage(int exitcode)
 	    " [-CDLacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
-	    "\t[--delay-updates] [--dirs] [--no-dirs] [--exclude] [--exclude-from=file] [--include]\n"
-	    "\t[--include-from=file] [--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
+	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
+	    "\t[--exclude] [--exclude-from=file]\n"
+	    "\t[--existing] [--ignore-existing] [--ignore-non-existing]\n"
+	    "\t[--include] [--include-from=file]\n"
+	    "\t[--inplace] [--link-dest=dir] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
 	    "\t[--relative] [--remove-source-files]\n"
 	    "\t[--rsync-path=program] [--timeout=seconds] [--version] source ... directory\n",
