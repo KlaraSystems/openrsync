@@ -453,7 +453,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-CDLPacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-CDLPSacdgklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"

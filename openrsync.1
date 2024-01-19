@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl abcCDgklLnoprtuvx
+.Op Fl CDLPSacdgklnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -406,6 +406,8 @@ on the remote host instead of the default
 .Pa rsync .
 .It Fl -specials
 Also transfer fifo and unix domain socket files.
+.It Fl S , -sparse
+Attempt to efficiently handle sparse files.
 .It Fl -super
 Always attempt traditionally super-user activities.
 This flag mostly interacts with the
