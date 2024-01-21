@@ -258,6 +258,7 @@ struct	opts {
 	char		*basedir[MAX_BASEDIR];
 	char            *filesfrom;             /* --files-from */
 	off_t		 bwlimit;		/* --bwlimit */
+	int		 size_only;		/* --size-only */
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif
