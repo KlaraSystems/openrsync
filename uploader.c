@@ -982,8 +982,10 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 	}
 
 	/* quick check if file is the same */
-	/* TODO: add support for --size-only */
 	if (st->st_size == f->st.size) {
+		if (sess->opts->size_only)
+			return 0;
+
 		if (sess->opts->checksum) {
 			unsigned char md[sizeof(f->md)];
 			int rc;
@@ -995,6 +997,7 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 
 			return 2;
 		}
+
 		if (!sess->opts->ignore_times) {
 			if (st->st_mtime == f->st.mtime)
 				return 0;

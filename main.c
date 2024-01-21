@@ -420,6 +420,7 @@ const struct option	 lopts[] = {
     { "server",		no_argument,	&opts.server,		1 },
     { "specials",	no_argument,	&opts.specials,		1 },
     { "no-specials",	no_argument,	&opts.specials,		0 },
+    { "size-only",	no_argument,	&opts.size_only,	1 },
     { "sparse",		no_argument,	NULL,			'S' },
     { "super",		no_argument,	&opts.supermode,	SMODE_ON },
     { "no-super",	no_argument,	&opts.supermode,	SMODE_OFF },
@@ -463,7 +464,7 @@ usage(int exitcode)
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
 	    "\t[--remove-source-files] [--rsync-path=program]\n"
-	    "\t[--specials] [--super] [--timeout=seconds]\n"
+	    "\t[--specials] [--size-only] [--super] [--timeout=seconds]\n"
 	    "\tsource ... directory\n",
 	    getprogname());
 	exit(exitcode);
