@@ -215,7 +215,8 @@ struct	opts {
 	int		 sender;		/* --sender */
 	int		 server;		/* --server */
 	int		 append;		/* --append */
-	int		 checksum;		/* -c */
+	int		 checksum;		/* -c --checksum */
+	int		 checksum_seed;		/* --checksum-seed */
 	int		 recursive;		/* -r */
 	int		 dry_run;		/* -n */
 	int		 inplace;		/* --inplace */
