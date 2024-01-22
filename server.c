@@ -81,11 +81,15 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	/* Standard rsync preamble, server side. */
 
 	sess.lver = RSYNC_PROTOCOL;
+	if (opts->checksum_seed == 0) {
 #if HAVE_ARC4RANDOM
-	sess.seed = arc4random();
+		sess.seed = arc4random();
 #else
-	sess.seed = random();
+		sess.seed = random();
 #endif
+	} else {
+		sess.seed = opts->checksum_seed;
+	}
 
 	if (!io_read_int(&sess, fdin, &sess.rver)) {
 		ERRX1("io_read_int");

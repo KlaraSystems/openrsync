@@ -27,6 +27,7 @@
 .Op Fl -address Ns = Ns Ar sourceaddr
 .Op Fl -append
 .Op Fl -bwlimit Ns = Ns limit
+.Op Fl -checksum-seed Ns = Ns NUM
 .Op Fl -compare-dest Ns = Ns Ar directory
 .Op Fl -del
 .Op Fl -delay-updates
@@ -105,6 +106,17 @@ definition of size.
 Use full-file checksums to determine which files have changed and should
 be transferred, rather than the usual file size and modification time
 "quick check".
+.It Fl -checksum-seed Ns = Ns Ar NUM
+Use
+.Ar NUM
+as the seed for both the 4-byte block and MD4 file checksums.
+By default,
+.Ar NUM
+is randomly generated, but if set to zero directs
+.Nm
+to use
+.Ar time(3)
+as the checksum seed.
 .It Fl -compare-dest Ns = Ns Ar directory
 Use directory as an alternate base directory to compare files against on the
 destination machine.

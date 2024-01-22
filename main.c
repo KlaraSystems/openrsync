@@ -23,10 +23,12 @@
 #if HAVE_ERR
 # include <err.h>
 #endif
+#include <errno.h>
 #if !HAVE_SOCK_NONBLOCK
 # include <fcntl.h>
 #endif
 #include <getopt.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -351,12 +353,15 @@ static struct opts	 opts;
 #define OP_APPEND	1030
 #define OP_PARTIAL_DIR	1031
 
+#define OP_CHECKSUM_SEED	1033
+
 const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
     { "archive",	no_argument,	NULL,			'a' },
     { "bwlimit",	required_argument, NULL,		OP_BWLIMIT },
     { "checksum",	no_argument,	NULL,			'c' },
+    { "checksum-seed",	required_argument, NULL,		OP_CHECKSUM_SEED },
     { "compare-dest",	required_argument, NULL,		OP_COMP_DEST },
 #if 0
     { "copy-dest",	required_argument, NULL,		OP_COPY_DEST },
@@ -727,6 +732,24 @@ basedir:
 				err(1, "bad bwlimit");
 			opts.bwlimit = tmpint;
 			break;
+		case OP_CHECKSUM_SEED:
+			if (*optarg != '\0') {
+				char *endptr;
+
+				errno = 0;
+				tmpint = strtoll(optarg, &endptr, 0);
+				if (*endptr != '\0')
+					errx(1, "--checksum-seed=%s: invalid numeric value",
+					     optarg);
+				if (tmpint < INT_MIN)
+					errx(1, "--checksum-seed=%s: must be no less than %d",
+					     optarg, INT_MIN);
+				if (tmpint > INT_MAX)
+					errx(1, "--checksum-seed=%s: must be no greater than %d",
+					     optarg, INT_MAX);
+				opts.checksum_seed = (tmpint == 0) ? time(NULL) : tmpint;
+			}
+			break;
 		case OP_PARTIAL_DIR:
 			opts.partial = 1;
 
@@ -925,6 +948,7 @@ basedir:
 
 		memset(&sess, 0, sizeof(struct sess));
 		sess.opts = &opts;
+		sess.seed = opts.checksum_seed;
 
 		/*
 		 * We're about to exec(), but we need to make sure the
