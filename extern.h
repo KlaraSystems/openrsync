@@ -260,6 +260,7 @@ struct	opts {
 	char            *filesfrom;             /* --files-from */
 	off_t		 bwlimit;		/* --bwlimit */
 	int		 size_only;		/* --size-only */
+	long		 block_size;		/* --block-size */
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif

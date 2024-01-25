@@ -126,11 +126,13 @@ log_file(struct sess *sess, const struct flist *f)
  * The minimum block length is 700.
  */
 static void
-init_blkset(struct blkset *p, off_t sz)
+init_blkset(struct blkset *p, off_t sz, long block_size)
 {
 	double	 v;
 
-	if (sz >= (BLOCK_SIZE_MIN * BLOCK_SIZE_MIN)) {
+	if (block_size > 0)
+		p->len = block_size;
+	else if (sz >= (BLOCK_SIZE_MIN * BLOCK_SIZE_MIN)) {
 		/* Simple rounded-up integer square root. */
 
 		v = sqrt(sz);
@@ -1527,7 +1529,10 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	blk.csum = u->csumlen;
 
 	if (*fileinfd != -1 && filesize > 0) {
-		init_blkset(&blk, filesize);
+		if (sess->opts->block_size > (512 << 20))
+			errx(1, "--block-size=%ld: must be no greater than %d",
+			     sess->opts->block_size, (512 << 20));
+		init_blkset(&blk, filesize, sess->opts->block_size);
 		assert(blk.blksz);
 
 		if (u->phase == 0 && sess->role->append)

@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl 46CDHILPRSVabcdghklnoprtuvx
+.Op Fl 46BCDHILPRSVabcdghklnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -116,6 +116,9 @@ This option implies
 .Fl -inplace .
 .It Fl b , -backup
 Make a backup of changed files with ~ suffix.
+.It Fl B , -block-size Ns = Ns Ar BLOCKSIZE
+Specify the block size to be used for file transfers.  The upper bound
+is 512M, but it is enforced only if a differential transfer is required.
 .It Fl -bwlimit Ar limit
 Limit transfer speed to
 .Ar limit

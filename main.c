@@ -358,6 +358,7 @@ static const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
     { "archive",	no_argument,	NULL,			'a' },
+    { "block-size",	required_argument, NULL,		'B' },
     { "bwlimit",	required_argument, NULL,		OP_BWLIMIT },
     { "checksum",	no_argument,	NULL,			'c' },
     { "checksum-seed",	required_argument, NULL,		OP_CHECKSUM_SEED },
@@ -460,7 +461,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-46CDHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-46BCDHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
@@ -498,7 +499,7 @@ main(int argc, char *argv[])
 	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "46CDHILPRSVabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "46B:CDHILPRSVabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case '4':
@@ -506,6 +507,13 @@ main(int argc, char *argv[])
 			break;
 		case '6':
 			opts.ipf = 6;
+		case 'B':
+			if (scan_scaled(optarg, &tmpint) == -1)
+				errx(1, "--block-size=%s: invalid numeric value", optarg);
+			if (tmpint < 0)
+				errx(1, "--block-size=%s: must be no less than 0", optarg);
+			/* Upper bound checked only if differential transfer is required */
+			opts.block_size = tmpint;
 			break;
 		case 'C':
 			cvs_excl = 1;
