@@ -53,8 +53,8 @@
 .Op Fl -progress
 .Op Fl -remove-source-files
 .Op Fl -rsync-path Ns = Ns Ar program
-.Op Fl -specials
 .Op Fl -size-only
+.Op Fl -specials
 .Op Fl -super
 .Op Fl -timeout Ns = Ns Ar seconds
 .Ar source ...
@@ -447,12 +447,12 @@ Run
 .Ar program
 on the remote host instead of the default
 .Pa rsync .
-.It Fl -specials
-Also transfer fifo and unix domain socket files.
 .It Fl -size-only
 Skip files whose sizes match (regardless of timestamp).
 .It Fl S , -sparse
 Attempt to efficiently handle sparse files.
+.It Fl -specials
+Also transfer fifo and unix domain socket files.
 .It Fl -super
 Always attempt traditionally super-user activities.
 This flag mostly interacts with the
