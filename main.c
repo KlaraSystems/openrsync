@@ -352,10 +352,9 @@ static struct opts	 opts;
 #define OP_FILESFROM	1029
 #define OP_APPEND	1030
 #define OP_PARTIAL_DIR	1031
+#define OP_CHECKSUM_SEED	1032
 
-#define OP_CHECKSUM_SEED	1033
-
-const struct option	 lopts[] = {
+static const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
     { "archive",	no_argument,	NULL,			'a' },
