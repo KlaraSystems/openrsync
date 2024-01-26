@@ -471,7 +471,7 @@ usage(int exitcode)
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
 	    "\t[--remove-source-files] [--rsync-path=program]\n"
-	    "\t[--specials] [--size-only] [--super] [--timeout=seconds]\n"
+	    "\t[--size-only] [--specials] [--super] [--timeout=seconds]\n"
 	    "\tsource ... directory\n",
 	    getprogname());
 	exit(exitcode);
