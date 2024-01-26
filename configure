@@ -182,6 +182,7 @@ HAVE_B64_NTOP=
 HAVE_CAPSICUM=
 HAVE_CRYPT=
 HAVE_CRYPT_NEWHASH=
+HAVE_DAEMON=
 HAVE_ENDIAN_H=
 HAVE_ERR=
 HAVE_EXPLICIT_BZERO=
@@ -351,6 +352,7 @@ runtest b64_ntop	B64_NTOP "" "" "-lresolv"	  || true
 runtest capsicum	CAPSICUM			  || true
 runtest crypt		CRYPT "" "" "-lcrypt"	  	  || true
 runtest crypt_newhash	CRYPT_NEWHASH		  	  || true
+runtest daemon		DAEMON				  || true
 runtest endian_h	ENDIAN_H			  || true
 runtest err		ERR				  || true
 runtest explicit_bzero	EXPLICIT_BZERO			  || true
@@ -514,6 +516,7 @@ cat << __HEREDOC__
 #define HAVE_CAPSICUM ${HAVE_CAPSICUM}
 #define HAVE_CRYPT ${HAVE_CRYPT}
 #define HAVE_CRYPT_NEWHASH ${HAVE_CRYPT_NEWHASH}
+#define HAVE_DAEMON ${HAVE_DAEMON}
 #define HAVE_ENDIAN_H ${HAVE_ENDIAN_H}
 #define HAVE_ERR ${HAVE_ERR}
 #define HAVE_EXPLICIT_BZERO ${HAVE_EXPLICIT_BZERO}
@@ -782,6 +785,15 @@ fi
  */
 extern int b64_ntop(unsigned char const *, size_t, char *, size_t);
 extern int b64_pton(char const *, unsigned char *, size_t);
+
+__HEREDOC__
+
+[ ${HAVE_DAEMON} -eq 0 ] && \
+	cat << __HEREDOC__
+/*
+ * Compatibility for daemon(3).
+ */
+extern int daemon(int, int);
 
 __HEREDOC__
 

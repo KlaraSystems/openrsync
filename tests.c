@@ -81,6 +81,18 @@ main(void)
 	return 0;
 }
 #endif /* TEST_CRYPT_NEWHASH */
+#if TEST_DAEMON
+#include <stdlib.h>	/* BSDs */
+#include <unistd.h>	/* Linux, maybe others */
+
+int
+main(void)
+{
+
+	daemon(1, 1);
+	return 0;
+}
+#endif /* TEST_DAEMON */
 #if TEST_ENDIAN_H
 #ifdef __linux__
 # define _DEFAULT_SOURCE
