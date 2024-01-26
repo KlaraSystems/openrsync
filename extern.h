@@ -575,9 +575,11 @@ int	rsync_receiver(struct sess *, struct cleanup_ctx *, int, int,
 int	rsync_sender(struct sess *, int, int, size_t, char **);
 int	rsync_client(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
+int	rsync_daemon(int, char *[], struct opts *);
 int	rsync_connect(const struct opts *, int *, const struct fargs *);
 int	rsync_socket(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
+int	rsync_is_socket(int);
 int	rsync_server(struct cleanup_ctx *, const struct opts *, size_t,
 	    char *[]);
 int	rsync_downloader(struct download *, struct sess *, int *, int,
