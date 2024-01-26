@@ -93,6 +93,26 @@ fargs_cmdline_prog(arglist *argsp, const char *prog)
 	}
 }
 
+static int
+fargs_is_ssh(const char *prog)
+{
+	const char *base;
+
+	/*
+	 * In theory we should have a program to inspect, but the reference
+	 * rsync seems to accept an empty --rsh and uses the machine name as the
+	 * first argument, for better or worse.
+	 */
+	if (prog == NULL)
+		return 0;
+
+	base = strrchr(prog, '/');
+	if (base == NULL)
+		base = prog;
+
+	return strcmp(base, "ssh") == 0;
+}
+
 char **
 fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 {
@@ -126,6 +146,9 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 			fargs_cmdline_prog(&args, rsh_prog);
 		else
 			addargs(&args, "ssh");
+
+		if (sess->opts->ipf > 0 && fargs_is_ssh(getarg(&args, 0)))
+			addargs(&args, "-%d", sess->opts->ipf);
 
 		addargs(&args, "%s", f->host);
 		addargs(&args, "%s", rsync_path);

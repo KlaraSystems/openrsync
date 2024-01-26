@@ -396,6 +396,8 @@ static const struct option	 lopts[] = {
     { "include",	required_argument, NULL,		OP_INCLUDE },
     { "include-from",	required_argument, NULL,		OP_INCLUDE_FROM },
     { "inplace",	no_argument,	&opts.inplace,		1 },
+    { "ipv4",		no_argument,	NULL,			'4' },
+    { "ipv6",		no_argument,	NULL,			'6' },
     { "links",		no_argument,	NULL,			'l' },
     { "max-size",	required_argument, NULL,		OP_MAX_SIZE },
     { "min-size",	required_argument, NULL,		OP_MIN_SIZE },
@@ -458,7 +460,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-CDHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-46CDHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
@@ -496,9 +498,15 @@ main(int argc, char *argv[])
 	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "CDHILPRSVabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "46CDHILPRSVabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
+		case '4':
+			opts.ipf = 4;
+			break;
+		case '6':
+			opts.ipf = 6;
+			break;
 		case 'C':
 			cvs_excl = 1;
 			break;
@@ -775,6 +783,9 @@ basedir:
 			usage(ERR_SYNTAX);
 		}
 	}
+
+	/* Shouldn't be possible. */
+	assert(opts.ipf == 0 || opts.ipf == 4 || opts.ipf == 6);
 
 	argc -= optind;
 	argv += optind;
