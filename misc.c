@@ -68,6 +68,18 @@ addargs(arglist *args, const char *fmt, ...)
 	args->list[args->num] = NULL;
 }
 
+/*
+ * Only valid until the next call to addargs!
+ */
+const char *
+getarg(arglist *args, size_t idx)
+{
+
+	if (args->list == NULL || args->num < idx)
+		return NULL;
+	return args->list[idx];
+}
+
 void
 freeargs(arglist *args)
 {

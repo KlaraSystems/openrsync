@@ -263,6 +263,7 @@ struct	opts {
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif
+	int		 ipf;			/* -4 / -6 */
 };
 
 enum rule_type {
@@ -397,6 +398,7 @@ struct arglist {
 };
 void	addargs(arglist *, const char *, ...)
 	    __attribute__((format(printf, 2, 3)));
+const char	*getarg(arglist *, size_t);
 void	freeargs(arglist *);
 
 struct cleanup_ctx;
