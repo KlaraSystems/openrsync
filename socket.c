@@ -684,3 +684,13 @@ out:
 	free(args);
 	return rc;
 }
+
+int
+rsync_is_socket(int fd)
+{
+	struct stat sb;
+
+	if (fstat(fd, &sb) == -1)
+		return 0;
+	return !!S_ISSOCK(sb.st_mode);
+}

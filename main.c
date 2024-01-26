@@ -592,6 +592,8 @@ enum {
 	OP_TIMEOUT,
 	OP_CONTIMEOUT,
 
+	OP_DAEMON,
+
 	OP_EXCLUDE,
 	OP_NO_D,
 	OP_INCLUDE,
@@ -653,6 +655,7 @@ static const struct option	 lopts[] = {
     { "copy-unsafe-links",	no_argument,	&opts.copy_unsafe_links,	OP_COPY_UNSAFE_LINKS },
     { "cvs-exclude",	no_argument,	NULL,			'C' },
     { "no-D",		no_argument,	NULL,			OP_NO_D },
+    { "daemon",		no_argument,	NULL,			OP_DAEMON },
     { "del",		no_argument,	NULL,			OP_DEL },
     { "delete",		no_argument,	NULL,			OP_DEL },
     { "delete-before",	no_argument,	NULL,		OP_DEL_BEFORE },
@@ -1010,6 +1013,9 @@ rsync_getopt(int argc, char *argv[])
 			}
 			opts.alt_base_mode = BASE_MODE_COPY;
 			goto basedir;
+		case OP_DAEMON:
+			exit(rsync_daemon((size_t)argc, argv, &opts));
+			break;
 		case OP_DEL:
 			/* nop if a --delete-* option has already been specified. */
 			if (opts.del == DMODE_NONE)

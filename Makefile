@@ -5,6 +5,7 @@ OBJS	   = blocks.o \
 	     client.o \
 	     compats.o \
 	     copy.o \
+	     daemon.o \
 	     downloader.o \
 	     fargs.o \
 	     flist.o \
