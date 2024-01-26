@@ -21,6 +21,10 @@
 
 #include "md4.h"
 
+#ifndef nitems
+#define nitems(_a)	(sizeof((_a)) / sizeof((_a)[0]))
+#endif
+
 #if !HAVE_PLEDGE
 # define pledge(x, y) (1)
 #endif
@@ -258,6 +262,7 @@ struct	opts {
 	char		*address;		/* --address */
 	char		*basedir[MAX_BASEDIR];
 	char            *filesfrom;             /* --files-from */
+	const char	*sockopts;		/* --sockopts */
 	off_t		 bwlimit;		/* --bwlimit */
 	int		 size_only;		/* --size-only */
 	long		 block_size;		/* --block-size */

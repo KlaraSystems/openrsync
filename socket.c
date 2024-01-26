@@ -28,6 +28,7 @@
 #include <netdb.h>
 #include <poll.h>
 #include <resolv.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -36,6 +37,40 @@
 #endif
 
 #include "extern.h"
+
+/*
+ * Negative values don't make sense for any of the options we support, so we use
+ * so_default_value < 0 with so_has_arg == true to indicate an option that
+ * requires a value be specified.  so_has_arg == true with so_default_value >= 0
+ * indicates an optional arg, and we'll use the so_default_value if no argument
+ * was provided.  so_has_arg == false means we'll error out if a value is
+ * provided, and the so_default_value will be used if the option is present.
+ */
+#define	SOCKOPT(name, level, has_arg, dflt)	\
+	{ #name, name, level, dflt, has_arg }
+static const struct sockopt {
+	const char	*so_name;
+	int		 so_nameval;
+	int		 so_level;
+	int		 so_default_value;
+	bool		 so_has_arg;
+} sockopts[] = {
+	/*
+	 * POSIX specified options first, other useful options that may be more
+	 * system-dependent come after.
+	 */
+	SOCKOPT(SO_KEEPALIVE, SOL_SOCKET, true, 1),
+	SOCKOPT(SO_REUSEADDR, SOL_SOCKET, true, 1),
+	SOCKOPT(SO_SNDBUF, SOL_SOCKET, true, -1),
+	SOCKOPT(SO_RCVBUF, SOL_SOCKET, true, -1),
+	SOCKOPT(SO_SNDLOWAT, SOL_SOCKET, true, -1),
+	SOCKOPT(SO_RCVLOWAT, SOL_SOCKET, true, -1),
+	SOCKOPT(SO_SNDTIMEO, SOL_SOCKET, true, -1),
+	SOCKOPT(SO_RCVTIMEO, SOL_SOCKET, true, -1),
+#ifdef SO_REUSEPORT
+	SOCKOPT(SO_REUSEPORT, SOL_SOCKET, true, 1),
+#endif
+};
 
 /*
  * Defines a resolved IP address for the host
@@ -70,13 +105,113 @@ inet_bind(int s, sa_family_t af, const struct source *bsrc, size_t bsrcsz)
 	return -1;
 }
 
+static const struct sockopt *
+inet_resolve_sockopt(const char *name)
+{
+	const struct sockopt *soptdef;
+
+	for (size_t i = 0; i < nitems(sockopts); i++) {
+		soptdef = &sockopts[i];
+		if (strcmp(name, soptdef->so_name) == 0)
+			return soptdef;
+	}
+
+	return NULL;
+}
+
+static int
+inet_setsockopt(const struct sockopt *soptdef, int sock, int value)
+{
+	socklen_t valsz = sizeof(value);
+
+	LOG3("sockopts: setting '%s' to '%d'", soptdef->so_name, value);
+	if (setsockopt(sock, soptdef->so_level, soptdef->so_nameval,
+	    &value, valsz) == -1) {
+		ERR("setsockopt %s", soptdef->so_name);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int
+inet_setsockopts(const struct opts *opts, int sock)
+{
+	const struct sockopt *soptdef;
+	char *name, *part, *sockopts, *value;
+	int error, sockval;
+
+	sockopts = strdup(opts->sockopts);
+	if (sockopts == NULL) {
+		ERR("strdup");
+		return -1;
+	}
+
+	error = -1;
+	part = sockopts;
+	while ((name = strsep(&part, ",")) != NULL) {
+		/* Empty fields are OK. */
+		if (*name == '\0')
+			continue;
+
+		value = strchr(name, '=');
+		if (value != NULL) {
+			*value = '\0';
+			value++;
+		}
+
+		soptdef = inet_resolve_sockopt(name);
+		if (soptdef == NULL) {
+			ERRX("Unresolvable socket option '%s'", name);
+			goto out;
+		}
+
+		if (value != NULL) {
+			const char *converr;
+
+			if (!soptdef->so_has_arg) {
+				ERRX(
+				    "Socket option '%s' does not accept an argument",
+				    soptdef->so_name);
+				goto out;
+			}
+
+			sockval = strtonum(value, 0, INT_MAX, &converr);
+			if (converr != NULL) {
+				ERRX("Error parsing value for socket option '%s': %s",
+				    soptdef->so_name, converr);
+				goto out;
+			}
+		} else {
+			sockval = soptdef->so_default_value;
+		}
+
+		if (soptdef->so_has_arg && sockval < 0) {
+			ERRX(
+			    "Value required for socket option '%s'",
+			    soptdef->so_name);
+			goto out;
+		}
+
+		/* Process this socket option now. */
+		if (inet_setsockopt(soptdef, sock, sockval) == -1)
+			goto out;
+	}
+
+	error = 0;
+
+out:
+	free(sockopts);
+	return error;
+}
+
 /*
  * Connect to an IP address representing a host.
  * Return <0 on failure, 0 on try another address, >0 on success.
  */
 static int
-inet_connect(int *sd, const struct source *src, const char *host,
-    const struct source *bsrc, size_t bsrcsz)
+inet_connect(const struct opts *opts, int *sd, const struct source *src,
+    const char *host, const struct source *bsrc, size_t bsrcsz)
 {
 	int	 c, flags;
 
@@ -89,6 +224,10 @@ inet_connect(int *sd, const struct source *src, const char *host,
 		ERR("socket");
 		return -1;
 	}
+
+	/* inet_setsockopts will produce a more specific error. */
+	if (inet_setsockopts(opts, *sd) == -1)
+		return -1;
 
 	if (inet_bind(*sd, src->family, bsrc, bsrcsz) == -1) {
 		ERR("bind");
@@ -324,7 +463,7 @@ rsync_connect(const struct opts *opts, int *sd, const struct fargs *f)
 
 	assert(srcsz);
 	for (i = 0; i < srcsz; i++) {
-		c = inet_connect(sd, &src[i], f->host, bsrc, bsrcsz);
+		c = inet_connect(opts, sd, &src[i], f->host, bsrc, bsrcsz);
 		if (c < 0) {
 			ERRX1("inet_connect");
 			goto out;

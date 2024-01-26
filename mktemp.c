@@ -73,10 +73,6 @@ enum	tmpmode {
 # define O_FSYNC 0
 #endif
 
-#ifndef nitems
-#define nitems(_a)	(sizeof((_a)) / sizeof((_a)[0]))
-#endif
-
 /*
  * Adapted from libc/stdio/mktemp.c.
  */

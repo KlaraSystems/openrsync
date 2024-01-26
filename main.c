@@ -337,6 +337,8 @@ static struct opts	 opts;
 #define OP_MIN_SIZE	1014
 #define OP_SPARSE	1015
 
+#define	OP_SOCKOPTS	1017
+
 #define OP_IGNORE_EXISTING	1018
 #define OP_IGNORE_NON_EXISTING	1019
 #define OP_DEL			1020
@@ -425,6 +427,7 @@ static const struct option	 lopts[] = {
     { "rsync-path",	required_argument, NULL,		OP_RSYNCPATH },
     { "sender",		no_argument,	&opts.sender,		1 },
     { "server",		no_argument,	&opts.server,		1 },
+    { "sockopts",	required_argument,	NULL,		OP_SOCKOPTS },
     { "specials",	no_argument,	&opts.specials,		1 },
     { "no-specials",	no_argument,	&opts.specials,		0 },
     { "size-only",	no_argument,	&opts.size_only,	1 },
@@ -470,8 +473,8 @@ usage(int exitcode)
 	    "\t[--include] [--include-from=file] [--inplace] [--link-dest=dir]\n"
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
-	    "\t[--remove-source-files] [--rsync-path=program]\n"
-	    "\t[--size-only] [--specials] [--super] [--timeout=seconds]\n"
+	    "\t[--remove-source-files] [--rsync-path=program] [--size-only]\n"
+	    "\t[--sockopts=sockopts] [--specials] [--super] [--timeout=seconds]\n"
 	    "\tsource ... directory\n",
 	    getprogname());
 	exit(exitcode);
@@ -780,6 +783,9 @@ basedir:
 			opts.partial_dir = strdup(optarg);
 			if (opts.partial_dir == NULL)
 				errx(ERR_NOMEM, NULL);
+			break;
+		case OP_SOCKOPTS:
+			opts.sockopts = optarg;
 			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",

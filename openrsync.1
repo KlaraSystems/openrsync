@@ -54,6 +54,7 @@
 .Op Fl -remove-source-files
 .Op Fl -rsync-path Ns = Ns Ar program
 .Op Fl -size-only
+.Op Fl -sockopts Ns = Ns Ar sockopts
 .Op Fl -specials
 .Op Fl -super
 .Op Fl -timeout Ns = Ns Ar seconds
@@ -449,6 +450,32 @@ on the remote host instead of the default
 .Pa rsync .
 .It Fl -size-only
 Skip files whose sizes match (regardless of timestamp).
+.It Fl -sockopts Ns = Ns Ar sockopts
+Set custom
+.Ar sockopts
+on the socket created to communicate with an rsync daemon.
+.Ar sockopts
+should be of the form
+.Dq name Ns Oo = Ns value Oc Ns Oo , Ns ... Oc ,
+where
+.Ar name
+matches an
+.Dv SO_*
+option described in
+.Xr setsockopt 2 .
+Note that only the following options are currently supported:
+.Bl -column SO_REUSEADDR -offset indent
+.It Dv SO_KEEPALIVE
+.It Dv SO_REUSEADDR
+.It Dv SO_SNDBUF
+.It Dv SO_RCVBUF
+.It Dv SO_SNDLOWAT
+.It Dv SO_RCVLOWAT
+.It Dv SO_SNDTIMEO
+.It Dv SO_RCVTIMEO
+.It Dv SO_REUSEPORT
+May not be available on all systems.
+.El
 .It Fl S , -sparse
 Attempt to efficiently handle sparse files.
 .It Fl -specials
