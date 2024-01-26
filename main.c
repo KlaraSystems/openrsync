@@ -464,7 +464,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-46BCDHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-46BCDFHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
@@ -491,7 +491,7 @@ main(int argc, char *argv[])
 	char		**args;
 	const char	*errstr;
 	long long 	 tmpint;
-	int		 opts_no_relative = 0, opts_no_dirs = 0;
+	int		 opts_F = 0, opts_no_relative = 0, opts_no_dirs = 0;
 
 	/* Global pledge. */
 
@@ -502,7 +502,7 @@ main(int argc, char *argv[])
 	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "46B:CDHILPRSVabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "46B:CDFHILPRSVabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case '4':
@@ -525,6 +525,29 @@ main(int argc, char *argv[])
 			opts.devices = 1;
 			opts.specials = 1;
 			break;
+		case 'F': {
+			const char *new_rule = NULL;
+
+			switch (++opts_F) {
+			case 1:
+				new_rule = ": /.rsync-filter";
+				break;
+			case 2:
+				new_rule = "- .rsync-filter";
+				break;
+			default:
+				/* Nop */
+				break;
+			}
+
+			if (new_rule != NULL) {
+				int ret;
+
+				ret = parse_rule(new_rule, RULE_NONE);
+				assert(ret == 0);
+			}
+			break;
+		}
 		case 'H':
 			opts.hard_links = 1;
 			break;

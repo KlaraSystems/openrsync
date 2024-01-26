@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl 46BCDHILPRSVabcdghklnoprtuvx
+.Op Fl 46BCDFHILPRSVabcdghklnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -297,6 +297,18 @@ Note that
 will generally handle quotes, but it makes no attempt to deal with escape
 sequences.
 In particular, escaped quotation marks will not be escaped.
+.It Fl F
+Adds a standard
+.Pa .rsync-filter
+dir-merge filter rule.
+Specifically,
+.Fl F
+will add
+.Dq : /.rsync-filter
+the first time it is seen, and
+.Dq - .rsync-filter
+the second time it is seen.
+Subsequent uses have no effect.
 .It Fl f Ar filter , Fl -filter Ns = Ns Ar filter
 Process
 .Ar filter
