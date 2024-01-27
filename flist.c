@@ -1249,7 +1249,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 						continue;
 					}
 					flist_gen_dirent(sess, ent->fts_path,
-						fl, stripdir);
+					    fl, stripdir);
 					continue;
 				}
 			}
@@ -2027,21 +2027,43 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 			if (sess->opts->backup_dir != NULL) {
 				LOG3("%s: doing backup-dir to %s", fl[i].wpath,
 				    sess->opts->backup_dir);
-				snprintf(buf, sizeof(buf), "%s/%s",
-                                    sess->opts->backup_dir, fl[i].wpath);
-                                if (backup_to_dir(sess, root, &fl[i], buf,
-                                    fl[i].st.mode) == -1) {
-                                        ERR("%s: backup_to_dir: %s", fl[i].wpath, buf);
-                                        return 0;
-                                }
+				if (snprintf(buf, sizeof(buf), "%s/%s%s",
+				    sess->opts->backup_dir, fl[i].wpath,
+				    sess->opts->backup_suffix) >
+				    (int)sizeof(buf)) {
+					ERR("%s: backup-dir: compound backup "
+					    "path too long: %s/%s%s > %d",
+					    fl[i].wpath,
+					    sess->opts->backup_dir,
+					    fl[i].wpath,
+					    sess->opts->backup_suffix,
+					    (int)sizeof(buf));
+					return 0;
+				}
+				if (backup_to_dir(sess, root, &fl[i], buf,
+				    fl[i].st.mode) == -1) {
+					ERR("%s: backup_to_dir: %s",
+					    fl[i].wpath, buf);
+					return 0;
+				}
 			} else if (!S_ISDIR(fl[i].st.mode)) {
-                                LOG3("%s: doing backup", fl[i].wpath);
-                                snprintf(buf, sizeof(buf), "%s~", fl[i].wpath);
-                                if (move_file(root, fl[i].wpath,
-                                        root, buf) == -1) {
-                                        ERR("%s: move_file: %s", fl[i].wpath, buf);
-                                        return 0;
-                                }
+				LOG3("%s: doing backup", fl[i].wpath);
+				if (snprintf(buf, sizeof(buf), "%s%s",
+				    fl[i].wpath, sess->opts->backup_suffix) >
+				    (int)sizeof(buf)) {
+					ERR("%s: backup: compound backup path "
+					    "too long: %s%s > %d", fl[i].wpath,
+					    fl[i].wpath,
+					    sess->opts->backup_suffix,
+					    (int)sizeof(buf));
+					return 0;
+				}
+				if (move_file(root, fl[i].wpath,
+				    root, buf) == -1) {
+					ERR("%s: move_file: %s", fl[i].wpath,
+					    buf);
+					return 0;
+				}
 			}
 		}
 		if (unlinkat(root, fl[i].wpath, flag) == -1 &&

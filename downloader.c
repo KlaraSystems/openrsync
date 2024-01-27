@@ -188,8 +188,12 @@ download_partial_path(struct sess *sess, const struct flist *f,
 
 	assert(dirlen > 0);
 
-	(void)snprintf(path, pathsz, "%.*s/%s", dirlen, dir,
-	    sess->opts->partial_dir);
+	if (snprintf(path, pathsz, "%.*s/%s", dirlen, dir,
+	    sess->opts->partial_dir) > pathsz) {
+		ERR("%s: partial-dir: path too long: %.*s/%s > %d",
+		    dir, dirlen, dir, pathsz);
+		/* XXX: How do we error out here? */
+	}
 	return path;
 }
 
@@ -508,7 +512,7 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 			if (lseek(p->fd, p->obufsz, SEEK_CUR) == -1) {
 				ERR("%s: lseek", p->fname);
 				return 0;
-		        }
+			}
 		} else {
 			if ((ssz = write(p->fd, p->obuf, p->obufsz)) < 0) {
 				ERR("%s: write", p->fname);
@@ -1136,29 +1140,42 @@ again:
 				ERR("%s: stat during --backup", f->path);
 				goto out;
 			}
-		} else {
-			if (sess->opts->backup_dir != NULL) {
-				LOG3("%s: doing backup-dir to %s", f->path,
-				    sess->opts->backup_dir);
-				usethis = f->path;
-				while (strncmp(usethis, "./", 2) == 0) {
-					usethis += 2;
-				}
-				snprintf(buf2, sizeof(buf2), "%s/%s",
-				    sess->opts->backup_dir, usethis);
-				if (backup_to_dir(sess, p->rootfd, f, buf2,
-				    st2.st_mode) == -1) {
-					ERR("%s: backup_to_dir: %s", f->path, buf2);
-					goto out;
-				}
-			} else if (!S_ISDIR(st2.st_mode)) {
-				LOG3("%s: doing backup", f->path);
-				snprintf(buf2, sizeof(buf2), "%s~", f->path);
-				if (renameat(p->rootfd, f->path,
-					p->rootfd, buf2) == -1) {
-					ERR("%s: renameat: %s", f->path, buf2);
-					goto out;
-				}
+		} else if (sess->opts->backup_dir != NULL) {
+			LOG3("%s: doing backup-dir to %s", f->path,
+			    sess->opts->backup_dir);
+			usethis = f->path;
+			while (strncmp(usethis, "./", 2) == 0) {
+				usethis += 2;
+			}
+			if (snprintf(buf2, sizeof(buf2), "%s/%s%s",
+			    sess->opts->backup_dir, usethis,
+			    sess->opts->backup_suffix) > (int)sizeof(buf2)) {
+				ERR("%s: backup-dir: compound backup path "
+				    "too long: %s/%s%s > %d", f->path,
+				    sess->opts->backup_dir, usethis,
+				    sess->opts->backup_suffix,
+				    (int)sizeof(buf2));
+				goto out;
+			}
+			if (backup_to_dir(sess, p->rootfd, f, buf2,
+			    st2.st_mode) == -1) {
+				ERR("%s: backup_to_dir: %s", f->path, buf2);
+				goto out;
+			}
+		} else if (!S_ISDIR(st2.st_mode)) {
+			LOG3("%s: doing backup", f->path);
+			if (snprintf(buf2, sizeof(buf2), "%s%s", f->path,
+			    sess->opts->backup_suffix) > (int)sizeof(buf2)) {
+				ERR("%s: backup: compound backup path too "
+				    "long: %s%s > %d", f->path, f->path,
+				    sess->opts->backup_suffix,
+				    (int)sizeof(buf2));
+				goto out;
+			}
+			if (move_file(p->rootfd, f->path,
+				p->rootfd, buf2) == -1) {
+				ERR("%s: move_file: %s", f->path, buf2);
+				goto out;
 			}
 		}
 	}
@@ -1189,8 +1206,13 @@ again:
 		renamer->n++;
 		if ((usethis = strrchr(f->path, '/')) != NULL) {
 			dirlen = usethis - f->path;
-			snprintf(buf2, sizeof(buf2), "%.*s/.~tmp~",
-			    dirlen, f->path);
+			if (snprintf(buf2, sizeof(buf2), "%.*s/.~tmp~",
+			    dirlen, f->path) > (int)sizeof(buf2)) {
+				ERR("%s: delayed-update: compound path too "
+				    "long: %.*s/.~tmp~ > %d", f->path,
+				    dirlen, f->path, (int)sizeof(buf2));
+				goto out;
+			}
 			if (mkdirat(p->rootfd, buf2, 0700) == -1)
 				if (errno != EEXIST) {
 					ERR("mkdir '%s'", buf2);
@@ -1201,10 +1223,23 @@ again:
 				ERR("strdup");
 				goto out;
 			}
-			snprintf(buf2, sizeof(buf2), "%.*s/.~tmp~/%s",
-			    dirlen, f->path, f->path + dirlen + 1);
+			if (snprintf(buf2, sizeof(buf2), "%.*s/.~tmp~/%s",
+			    dirlen, f->path, f->path + dirlen + 1) >
+			    (int)sizeof(buf2)) {
+				ERR("%s: delayed-update: compound path too "
+				    "long: %.*s/.~tmp~/%s > %d", f->path,
+				    dirlen, f->path, f->path + dirlen + 1,
+				    (int)sizeof(buf2));
+				goto out;
+			}
 		} else {
-			snprintf(buf2, sizeof(buf2), ".~tmp~/%s", f->path);
+			if (snprintf(buf2, sizeof(buf2), ".~tmp~/%s", f->path) >
+			    (int)sizeof(buf2)) {
+				ERR("%s: delayed-update: compound path too "
+				    "long: .~tmp~/%s > %d", f->path,
+				    f->path, (int)sizeof(buf2));
+				goto out;
+			}
 			if (mkdirat(p->rootfd, ".~tmp~", 0700) == -1)
 				if (errno != EEXIST) {
 					ERR("mkdir '%s'", buf2);

@@ -582,6 +582,7 @@ static struct opts	 opts;
 #define OP_CHECKSUM_SEED	1032
 #define OP_CHMOD	1033
 #define OP_BACKUP_DIR	1034
+#define OP_BACKUP_SUFFIX	1035
 
 static const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -661,6 +662,7 @@ static const struct option	 lopts[] = {
     { "no-specials",	no_argument,	&opts.specials,		0 },
     { "size-only",	no_argument,	&opts.size_only,	1 },
     { "sparse",		no_argument,	NULL,			'S' },
+    { "suffix",		required_argument,	NULL,		OP_BACKUP_SUFFIX },
     { "super",		no_argument,	&opts.supermode,	SMODE_ON },
     { "no-super",	no_argument,	&opts.supermode,	SMODE_OFF },
 #if 0
@@ -694,7 +696,7 @@ usage(int exitcode)
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
 	    " [-46BCDFHIKLPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--compare-dest=dir] [--copy-dest=dir]\n"
-	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
+	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
 	    "\t[--existing] [--ignore-existing] [--ignore-non-existing] [--include]\n"
@@ -702,7 +704,7 @@ usage(int exitcode)
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
 	    "\t[--remove-source-files] [--rsync-path=program] [--size-only]\n"
-	    "\t[--sockopts=sockopts] [--specials] [--super] [--timeout=seconds]\n"
+	    "\t[--sockopts=sockopts] [--specials] [--suffix] [--super] [--timeout=seconds]\n"
 	    "\tsource ... directory\n",
 	    getprogname());
 	exit(exitcode);
@@ -790,7 +792,7 @@ main(int argc, char *argv[])
 			opts.specials = 1;
 			break;
 		case 'b':
-		        opts.backup++;
+			opts.backup++;
 			break;
 		case 'c':
 			opts.checksum = 1;
@@ -977,22 +979,22 @@ basedir:
 			opts.specials = 0;
 			break;
 		case OP_IGNORE_EXISTING:
-		        opts.ign_exist++;
+			opts.ign_exist++;
 			break;
 		case OP_IGNORE_NON_EXISTING:
-		        opts.ign_non_exist++;
+			opts.ign_non_exist++;
 			break;
 		case 'R':
-		        opts.relative++;
+			opts.relative++;
 			break;
 		case OP_NO_RELATIVE:
-		        opts_no_relative++;
+			opts_no_relative++;
 			break;
 		case OP_NO_DIRS:
-		        opts_no_dirs++;
+			opts_no_dirs++;
 			break;
 		case OP_FILESFROM:
-		        opts.filesfrom = optarg;
+			opts.filesfrom = optarg;
 			break;
 		case OP_APPEND:
 			opts.append++;
@@ -1030,6 +1032,16 @@ basedir:
 			free(opts.backup_dir);
 			opts.backup_dir = strdup(optarg);
 			if (opts.backup_dir == NULL)
+				errx(ERR_NOMEM, NULL);
+			break;
+		case OP_BACKUP_SUFFIX:
+			if (strchr(optarg, '/') != NULL) {
+				errx(1, "--suffix cannot contain slashes: "
+				    "%s\n", optarg);
+			}
+			free(opts.backup_suffix);
+			opts.backup_suffix = strdup(optarg);
+			if (opts.backup_suffix == NULL)
 				errx(ERR_NOMEM, NULL);
 			break;
 		case OP_PARTIAL_DIR:
@@ -1116,12 +1128,16 @@ basedir:
 		}
 	}
 
+	if (opts.backup_suffix == NULL) {
+		opts.backup_suffix = opts.backup_dir ? strdup("") : strdup("~");
+	}
 	if (opts.backup && opts.del > DMODE_UNSPECIFIED && !opts.del_excl) {
-		if (opts.backup_dir) {
-			if (parse_rule(opts.backup_dir, RULE_EXCLUDE) == -1) {
-				errx(ERR_SYNTAX, "syntax error in exclude: %s",
-				    opts.backup_dir);
-			}
+		char rbuf[PATH_MAX];
+
+		snprintf(rbuf, sizeof(rbuf), "P *%s", opts.backup_suffix);
+		if (parse_rule(rbuf, RULE_NONE) == -1) {
+			errx(ERR_SYNTAX, "error adding protect rule: %s",
+			    rbuf);
 		}
 	}
 
