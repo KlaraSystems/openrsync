@@ -29,6 +29,7 @@
 .Op Fl -bwlimit Ns = Ns limit
 .Op Fl -checksum-seed Ns = Ns NUM
 .Op Fl -compare-dest Ns = Ns Ar directory
+.Op Fl -copy-dest Ns = Ns Ar directory
 .Op Fl -del
 .Op Fl -delay-updates
 .Op Fl -delete-before
@@ -153,6 +154,18 @@ If file in
 is found and identical to the sender's file, the file will not be transferred.
 Multiple
 .Fl -compare-dest
+directories may be provided.
+If
+.Ar directory
+is a relative path, it is relative to the destination directory.
+.It Fl -copy-dest Ns = Ns Ar directory
+Use directory as an alternate base directory to compare files against on the
+destination machine.
+If file in
+.Ar directory
+is found and identical to the sender's file, the file will be locally copied.
+Multiple
+.Fl -copy-dest
 directories may be provided.
 If
 .Ar directory

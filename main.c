@@ -594,9 +594,7 @@ static const struct option	 lopts[] = {
     { "checksum-seed",	required_argument, NULL,		OP_CHECKSUM_SEED },
     { "chmod",		required_argument, NULL,		OP_CHMOD },
     { "compare-dest",	required_argument, NULL,		OP_COMP_DEST },
-#if 0
     { "copy-dest",	required_argument, NULL,		OP_COPY_DEST },
-#endif
     { "link-dest",	required_argument, NULL,		OP_LINK_DEST },
     { "compress",	no_argument,	NULL,			'z' },
     { "copy-dirlinks",	no_argument,	NULL,			'k' },
@@ -694,7 +692,7 @@ usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
 	    " [-46BCDFHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
-	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir]\n"
+	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir] [--copy-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
@@ -904,7 +902,6 @@ main(int argc, char *argv[])
 			}
 			opts.alt_base_mode = BASE_MODE_COMPARE;
 			goto basedir;
-#if 0
 		case OP_COPY_DEST:
 			if (opts.alt_base_mode != 0 &&
 			    opts.alt_base_mode != BASE_MODE_COPY) {
@@ -914,7 +911,6 @@ main(int argc, char *argv[])
 			}
 			opts.alt_base_mode = BASE_MODE_COPY;
 			goto basedir;
-#endif
 		case OP_DEL:
 			/* nop if a --delete-* option has already been specified. */
 			if (opts.del == DMODE_NONE)
