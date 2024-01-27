@@ -896,7 +896,7 @@ main(int argc, char *argv[])
 			parse_file(optarg, RULE_INCLUDE);
 			break;
 		case OP_COMP_DEST:
-			if (opts.alt_base_mode !=0 &&
+			if (opts.alt_base_mode != 0 &&
 			    opts.alt_base_mode != BASE_MODE_COMPARE) {
 				errx(1, "option --%s conflicts with %s",
 				    lopts[lidx].name,
@@ -906,7 +906,7 @@ main(int argc, char *argv[])
 			goto basedir;
 #if 0
 		case OP_COPY_DEST:
-			if (opts.alt_base_mode !=0 &&
+			if (opts.alt_base_mode != 0 &&
 			    opts.alt_base_mode != BASE_MODE_COPY) {
 				errx(1, "option --%s conflicts with %s",
 				    lopts[lidx].name,
@@ -945,7 +945,7 @@ main(int argc, char *argv[])
 			opts.del = DMODE_AFTER;
 			break;
 		case OP_LINK_DEST:
-			if (opts.alt_base_mode !=0 &&
+			if (opts.alt_base_mode != 0 &&
 			    opts.alt_base_mode != BASE_MODE_LINK) {
 				errx(1, "option --%s conflicts with %s",
 				    lopts[lidx].name,

@@ -38,12 +38,6 @@
 
 #include "extern.h"
 
-enum	altmode {
-	ALTMODE_COMPARE,	/* Just compare */
-	ALTMODE_COPY,		/* Copy into rootfd */
-	ALTMODE_LINK,		/* Link into rootfd */
-};
-
 enum	uploadst {
 	UPLOAD_FIND_NEXT = 0, /* find next to upload to sender */
 	UPLOAD_WRITE, /* wait to write to sender */
