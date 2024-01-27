@@ -45,6 +45,7 @@
 .Op Fl -include Ar pattern
 .Op Fl -include-from Ns = Ns Ar file
 .Op Fl -inplace
+.Op Fl -keep-dirlinks
 .Op Fl -link-dest Ns = Ns Ar directory
 .Op Fl -max-size Ns = Ns size
 .Op Fl -min-size Ns = Ns size
@@ -371,6 +372,10 @@ This option has some notable trade-offs that must be considered prior to using
 it.
 For example, hardlinks will not be broken even if a file is no longer hardlinked
 in the source directory.
+.It Fl -keep-dirlinks
+When a directory is sent, and the receiving side has a symlink to a
+directory in that place, follow that symlink and place the directory's
+contents in that symlinked dir.
 .It Fl -link-dest Ns = Ns Ar directory
 Use directory as an alternate base directory to compare files against on the
 destination machine.

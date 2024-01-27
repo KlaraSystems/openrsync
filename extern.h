@@ -248,6 +248,7 @@ struct	opts {
 	int		 preserve_perms;	/* -p */
 	int		 copy_links;		/* -L */
 	int		 copy_dirlinks;		/* -k */
+	int		 keep_dirlinks;		/* -K */
 	int		 preserve_links;	/* -l */
 	int		 preserve_gids;		/* -g */
 	int		 preserve_uids;		/* -u */

@@ -628,6 +628,7 @@ static const struct option	 lopts[] = {
     { "inplace",	no_argument,	&opts.inplace,		1 },
     { "ipv4",		no_argument,	NULL,			'4' },
     { "ipv6",		no_argument,	NULL,			'6' },
+    { "keep-dirlinks",	no_argument,	NULL,			'K' },
     { "links",		no_argument,	NULL,			'l' },
     { "max-size",	required_argument, NULL,		OP_MAX_SIZE },
     { "min-size",	required_argument, NULL,		OP_MIN_SIZE },
@@ -691,13 +692,13 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-46BCDFHILPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-46BCDFHIKLPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir] [--copy-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
-	    "\t[--existing] [--ignore-existing] [--ignore-non-existing]\n"
-	    "\t[--include] [--include-from=file] [--inplace] [--link-dest=dir]\n"
+	    "\t[--existing] [--ignore-existing] [--ignore-non-existing] [--include]\n"
+	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
 	    "\t[--remove-source-files] [--rsync-path=program] [--size-only]\n"
@@ -729,7 +730,7 @@ main(int argc, char *argv[])
 	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
 
-	while ((c = getopt_long(argc, argv, "46B:CDFHILPRSVabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "46B:CDFHIKLPRSVabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case '4':
@@ -810,6 +811,9 @@ main(int argc, char *argv[])
 			break;
 		case 'k':
 			opts.copy_dirlinks = 1;
+			break;
+		case 'K':
+			opts.keep_dirlinks = 1;
 			break;
 		case 'l':
 			opts.preserve_links = 1;
