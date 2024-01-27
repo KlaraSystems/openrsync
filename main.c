@@ -24,9 +24,7 @@
 # include <err.h>
 #endif
 #include <errno.h>
-#if !HAVE_SOCK_NONBLOCK
-# include <fcntl.h>
-#endif
+#include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
 #include <signal.h>
@@ -583,11 +581,14 @@ static struct opts	 opts;
 #define OP_PARTIAL_DIR	1031
 #define OP_CHECKSUM_SEED	1032
 #define OP_CHMOD	1033
+#define OP_BACKUP_DIR	1034
 
 static const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
     { "archive",	no_argument,	NULL,			'a' },
+    { "backup",		no_argument,	NULL,			'b' },
+    { "backup-dir",	required_argument,	NULL,		OP_BACKUP_DIR },
     { "block-size",	required_argument, NULL,		'B' },
     { "bwlimit",	required_argument, NULL,		OP_BWLIMIT },
     { "checksum",	no_argument,	NULL,			'c' },
@@ -675,7 +676,6 @@ static const struct option	 lopts[] = {
     { "no-v",		no_argument,	&verbose,		0 },
     { "progress",	no_argument,	&opts.progress,		1 },
     { "no-progress",	no_argument,	&opts.progress,		0 },
-    { "backup",		no_argument,	NULL,			'b' },
     { "version",	no_argument,	NULL,			'V' },
     { "relative",	no_argument,	NULL,			'R' },
     { "no-R",		no_argument,	NULL,			OP_NO_RELATIVE },
@@ -693,7 +693,7 @@ usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
 	    " [-46BCDFHIKLPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
-	    "\t[--append] [--bwlimit=limit] [--compare-dest=dir] [--copy-dest=dir]\n"
+	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--compare-dest=dir] [--copy-dest=dir]\n"
 	    "\t[--del | --delete-before | --delete-during | --delete-after | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
@@ -1026,6 +1026,12 @@ basedir:
 				     optarg);
 			opts.chmod = optarg;
 			break;
+		case OP_BACKUP_DIR:
+			free(opts.backup_dir);
+			opts.backup_dir = strdup(optarg);
+			if (opts.backup_dir == NULL)
+				errx(ERR_NOMEM, NULL);
+			break;
 		case OP_PARTIAL_DIR:
 			opts.partial = 1;
 
@@ -1106,6 +1112,15 @@ basedir:
 			if (parse_rule(partial_dir, RULE_EXCLUDE) == -1) {
 				errx(ERR_SYNTAX, "syntax error in exclude: %s",
 				    partial_dir);
+			}
+		}
+	}
+
+	if (opts.backup && opts.del > DMODE_UNSPECIFIED && !opts.del_excl) {
+		if (opts.backup_dir) {
+			if (parse_rule(opts.backup_dir, RULE_EXCLUDE) == -1) {
+				errx(ERR_SYNTAX, "syntax error in exclude: %s",
+				    opts.backup_dir);
 			}
 		}
 	}

@@ -1137,8 +1137,22 @@ again:
 				goto out;
 			}
 		} else {
-			if (!S_ISDIR(st2.st_mode)) {
-				LOG2("%s: doing backup", f->path);
+			if (sess->opts->backup_dir != NULL) {
+				LOG3("%s: doing backup-dir to %s", f->path,
+				    sess->opts->backup_dir);
+				usethis = f->path;
+				while (strncmp(usethis, "./", 2) == 0) {
+					usethis += 2;
+				}
+				snprintf(buf2, sizeof(buf2), "%s/%s",
+				    sess->opts->backup_dir, usethis);
+				if (backup_to_dir(sess, p->rootfd, f, buf2,
+				    st2.st_mode) == -1) {
+					ERR("%s: backup_to_dir: %s", f->path, buf2);
+					goto out;
+				}
+			} else if (!S_ISDIR(st2.st_mode)) {
+				LOG3("%s: doing backup", f->path);
 				snprintf(buf2, sizeof(buf2), "%s~", f->path);
 				if (renameat(p->rootfd, f->path,
 					p->rootfd, buf2) == -1) {

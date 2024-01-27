@@ -2009,6 +2009,7 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 {
 	ssize_t	 i;
 	int	 flag;
+	char buf[PATH_MAX];
 
 	if (flsz == 0)
 		return 1;
@@ -2022,6 +2023,27 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 			continue;
 		assert(root != -1);
 		flag = S_ISDIR(fl[i].st.mode) ? AT_REMOVEDIR : 0;
+		if (sess->opts->backup) {
+			if (sess->opts->backup_dir != NULL) {
+				LOG3("%s: doing backup-dir to %s", fl[i].wpath,
+				    sess->opts->backup_dir);
+				snprintf(buf, sizeof(buf), "%s/%s",
+                                    sess->opts->backup_dir, fl[i].wpath);
+                                if (backup_to_dir(sess, root, &fl[i], buf,
+                                    fl[i].st.mode) == -1) {
+                                        ERR("%s: backup_to_dir: %s", fl[i].wpath, buf);
+                                        return 0;
+                                }
+			} else if (!S_ISDIR(fl[i].st.mode)) {
+                                LOG3("%s: doing backup", fl[i].wpath);
+                                snprintf(buf, sizeof(buf), "%s~", fl[i].wpath);
+                                if (move_file(root, fl[i].wpath,
+                                        root, buf) == -1) {
+                                        ERR("%s: move_file: %s", fl[i].wpath, buf);
+                                        return 0;
+                                }
+			}
+		}
 		if (unlinkat(root, fl[i].wpath, flag) == -1 &&
 		    errno != ENOENT) {
 			ERR("%s: unlinkat", fl[i].wpath);
