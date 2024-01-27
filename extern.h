@@ -265,6 +265,7 @@ struct	opts {
 	int		 sparse;		/* -S --sparse */
 	int		 update;		/* -u --update */
 	int		 backup;		/* --backup */
+	char		*backup_dir;		/* --backup-dir= */
 	int		 ign_exist;		/* --ignore-existing */
 	int		 ign_non_exist;		/* --ignore-nonexisting */
 	int		 relative;		/* --relative */
@@ -607,6 +608,9 @@ int		 hash_file_by_path(int, const char *, size_t, unsigned char *);
 
 int		 move_file(int, const char *, int, const char *);
 void		 copy_file(int, const char *, const struct flist *);
+int		 backup_to_dir(struct sess *, int, const struct flist *,
+		    const char *, mode_t);
+
 
 int		 mkpath(char *);
 int		 mksock(const char *, char *);
