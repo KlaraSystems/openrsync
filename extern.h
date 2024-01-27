@@ -53,9 +53,11 @@
  */
 #define MAX_BASEDIR	20
 
-#define BASE_MODE_COMPARE	1
-#define BASE_MODE_COPY		2
-#define BASE_MODE_LINK		3
+enum basemode {
+	BASE_MODE_COMPARE = 1,	/* Just compare */
+	BASE_MODE_COPY,		/* Copy into rootfd */
+	BASE_MODE_LINK,		/* Hardlink into rootfd */
+};
 
 /*
  * The sender and receiver use a two-phase synchronisation process.
