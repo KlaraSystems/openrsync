@@ -760,6 +760,31 @@ upload_del(struct upload *p, struct sess *sess)
 }
 
 /*
+ * Check whether the conditions for keep_dirlink are present.
+ * Returns 1 if so, 0 otherwise.
+ */
+static int
+keep_dirlinks_applies(const struct stat *st, const struct flist *f, 
+	int rootfd)
+{
+	struct stat st2;
+	/*
+	 * The thing that is a dir on the sender side must be a
+	 * symlink to a dir.
+	 */
+	if (!S_ISLNK(st->st_mode))
+		return 0;
+	if (fstatat(rootfd, f->path, &st2, 0) == -1) {
+		ERR("%s: fstatat", f->path);
+		return 0;
+	}
+	if (!S_ISDIR(st2.st_mode)) {
+		return 0;
+	}
+	return 1;
+}
+
+/*
  * If not found, create the destination directory in prefix order.
  * Create directories using the existing umask.
  * Return <0 on failure 0 on success.
@@ -792,6 +817,10 @@ pre_dir(struct upload *p, struct sess *sess)
 		return -1;
 	}
 	if (rc != -1 && !S_ISDIR(st.st_mode)) {
+		if (sess->opts->keep_dirlinks &&
+			keep_dirlinks_applies(&st, f, p->rootfd)) {
+			return 0;
+		}
 		ERRX("%s: not a directory", f->path);
 		return -1;
 	} else if (rc != -1) {
@@ -854,6 +883,10 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
 		return 0;
 	}
 	if (!S_ISDIR(st.st_mode)) {
+		if (sess->opts->keep_dirlinks &&
+			keep_dirlinks_applies(&st, f, u->rootfd)) {
+			return 1;
+		}
 		WARNX("%s: not a directory", f->path);
 		return 0;
 	}

@@ -432,7 +432,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 
 	/*
 	 * Disable umask() so we can set permissions fully.
-	 * Then open the directory iff we're not in dry_run.
+	 * Then open the directory if we're not in dry_run.
 	 */
 
 	oumask = umask(0);
