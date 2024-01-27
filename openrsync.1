@@ -60,6 +60,7 @@
 .Op Fl -size-only
 .Op Fl -sockopts Ns = Ns Ar sockopts
 .Op Fl -specials
+.Op Fl -suffix Ns = Ns Ar suffix
 .Op Fl -super
 .Op Fl -timeout Ns = Ns Ar seconds
 .Ar source ...
@@ -537,6 +538,12 @@ May not be available on all systems.
 Attempt to efficiently handle sparse files.
 .It Fl -specials
 Also transfer fifo and unix domain socket files.
+.It Fl -suffix Ar suffix
+Sets the suffix to be appended to filenames when creating backups on the
+receiver before replacing files.
+Defaults to ~ except when combined with
+.Fl -backup-dir
+where the default is an empty string.
 .It Fl -super
 Always attempt traditionally super-user activities.
 This flag mostly interacts with the

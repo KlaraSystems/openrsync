@@ -265,7 +265,8 @@ struct	opts {
 	int		 sparse;		/* -S --sparse */
 	int		 update;		/* -u --update */
 	int		 backup;		/* --backup */
-	char		*backup_dir;		/* --backup-dir= */
+	char		*backup_dir;		/* --backup-dir */
+	char		*backup_suffix;		/* --suffix */
 	int		 ign_exist;		/* --ignore-existing */
 	int		 ign_non_exist;		/* --ignore-nonexisting */
 	int		 relative;		/* --relative */
