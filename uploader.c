@@ -262,6 +262,8 @@ pre_symlink(struct upload *p, struct sess *sess)
 	 */
 
 	if (rc == -1 || updatelink) {
+		/* XXX is_unsafe_link() check */
+		/* WARNX("%s: ignoring symlink", f->path); */
 		if (sess->opts->inplace) {
 			LOG3("%s: creating symlink in-place: %s", f->path, f->link);
 			if (symlinkat(f->link, p->rootfd, f->path) == -1) {
@@ -269,7 +271,7 @@ pre_symlink(struct upload *p, struct sess *sess)
 				return -1;
 			}
 		} else {
-				LOG3("%s: creating symlink: %s", f->path, f->link);
+			LOG3("%s: creating symlink: %s", f->path, f->link);
 			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
 				ERRX1("mktemplate");
 				return -1;
@@ -1071,7 +1073,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 	if (dfd == -1) {
 		if (errno == ENOENT || is_partialdir)
 			return 1;
-		err(ERR_FILE_IO, "%s: openat", root);
+		err(ERR_FILE_IO, "%s: pre_file_check_altdir: openat", root);
 	}
 	x = check_file(dfd, f, st, sess, hl, is_partialdir);
 	/* found a match */
@@ -1286,8 +1288,9 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 		*size = st.st_size;
 		*filefd = openat(p->rootfd, f->path, O_RDONLY | O_NOFOLLOW);
 	}
-	if (*filefd == -1 && errno != ENOENT) {
-		ERR("%s: openat", f->path);
+	/* If there is a symlink in our way, we will get EMLINK */
+	if (*filefd == -1 && errno != ENOENT && errno != EMLINK) {
+		ERR("%s: pre_file: openat", f->path);
 		if (pdfd != -1)
 			close(pdfd);
 		return -1;

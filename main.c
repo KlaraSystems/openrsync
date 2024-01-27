@@ -623,6 +623,7 @@ static struct opts	 opts;
 #define OP_CHMOD	1033
 #define OP_BACKUP_DIR	1034
 #define OP_BACKUP_SUFFIX	1035
+#define OP_COPY_UNSAFE_LINKS	1036
 
 static const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -642,6 +643,7 @@ static const struct option	 lopts[] = {
     { "contimeout",	required_argument, NULL,		OP_CONTIMEOUT },
     { "copy-dirlinks",	no_argument,	NULL,			'k' },
     { "copy-links",	no_argument,	&opts.copy_links,	'L' },
+    { "copy-unsafe-links",	no_argument,	&opts.copy_unsafe_links,	OP_COPY_UNSAFE_LINKS },
     { "cvs-exclude",	no_argument,	NULL,			'C' },
     { "no-D",		no_argument,	NULL,			OP_NO_D },
     { "del",		no_argument,	NULL,			OP_DEL },
@@ -743,7 +745,7 @@ usage(int exitcode)
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
 	    " [-46BCDFHIKLOPRSWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--compare-dest=dir]\n"
-	    "\t[--contimeout] [--copy-dest=dir]\n"
+	    "\t[--contimeout] [--copy-dest=dir] [--copy-unsafe-links]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
@@ -1076,6 +1078,9 @@ basedir:
 			if (scan_scaled_def(optarg, &tmpint, 'k') == -1)
 				err(1, "bad bwlimit");
 			opts.bwlimit = tmpint;
+			break;
+		case OP_COPY_UNSAFE_LINKS:
+			opts.copy_unsafe_links = 1;
 			break;
 		case OP_CHECKSUM_SEED:
 			if (*optarg != '\0') {
