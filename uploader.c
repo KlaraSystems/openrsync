@@ -1045,6 +1045,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 			LOG3("%s: copying: up to date in %s",
 			    f->path, root);
 			copy_file(p->rootfd, root, f);
+			rsync_set_metadata_at(sess, 1, p->rootfd, f, f->path);
 			break;
 		case BASE_MODE_LINK:
 			LOG3("%s: hardlinking: up to date in %s",
