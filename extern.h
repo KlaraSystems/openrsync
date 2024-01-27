@@ -252,6 +252,7 @@ struct	opts {
 	int		 preserve_times;	/* -t */
 	int		 preserve_perms;	/* -p */
 	int		 copy_links;		/* -L */
+	int		 copy_unsafe_links;	/* --copy-unsafe-links */
 	int		 copy_dirlinks;		/* -k */
 	int		 keep_dirlinks;		/* -K */
 	int		 preserve_links;	/* -l */
@@ -619,6 +620,7 @@ void		 copy_file(int, const char *, const struct flist *);
 int		 backup_to_dir(struct sess *, int, const struct flist *,
 		    const char *, mode_t);
 
+int		 is_unsafe_link(const char *, const char *, const char *);
 
 int		 mkpath(char *);
 int		 mksock(const char *, char *);

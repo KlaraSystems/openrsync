@@ -32,6 +32,7 @@
 .Op Fl -compare-dest Ns = Ns Ar directory
 .Op Fl -contimeout Ns = Ns Ar seconds
 .Op Fl -copy-dest Ns = Ns Ar directory
+.Op Fl -copy-unsafe-links
 .Op Fl -del
 .Op Fl -delay-updates
 .Op Fl -delete-before
@@ -197,7 +198,10 @@ If
 .Ar directory
 is a relative path, it is relative to the destination directory.
 .It Fl L , -copy-links
-Copy targets of symbolic links.
+Copy targets of symbolic links, rather than the link itself.
+.It Fl -copy-unsafe-links
+Copy targets of symbolic links that are unsafe (absolute symlinks or where the
+target reaches outside the copied tree).
 .It Fl k , -copy-dirlinks
 Copy targets of symbolic links that point to directories only.
 .It Fl C , Fl -cvs-exclude

@@ -49,6 +49,93 @@ iszerobuf(const void *b, size_t len)
 	return 1;
 }
 
+/*
+ * Calculate the depth of a path (in directories).
+ * Account for ../, and return -1 if the depth drops below zero.
+ */
+static int
+count_dir_depth(const char *path, int dirdepth, int strict)
+{
+	char *dp;
+
+	/* Blank or absolute symlinks are always unsafe */
+	if (path == NULL || *path == '\0')
+	{
+		return 0;
+	}
+
+	dp = path;
+	while (dp != NULL) {
+		/* Skip any excess slashes */
+		while (*dp == '/') {
+			dp++;
+		}
+		if (strncmp(dp, "../", 3) == 0) {
+			/* Traversing up directory depth */
+			dirdepth--;
+		} else if (strncmp(dp, "./", 2) == 0) {
+			/* No Change in directory depth */
+		} else if (strchr(dp, '/') != NULL) {
+			/* Traversing down directory depth */
+			dirdepth++;
+		}
+		/* If we ever go above the starting point, fail */
+		if (strict && dirdepth < 0) {
+			return -1;
+		}
+		dp = strchr(dp, '/');
+		if (dp != NULL) {
+			dp++;
+		}
+	}
+	if (dp != NULL && strcmp(dp, "..") == 0) {
+		dirdepth--;
+	}
+
+	return dirdepth;
+}
+
+/*
+ * Determine if the target of a symlink is "safe", relative to
+ * the src (the path of the symlink).  Absolute symlinks are unsafe.
+ * Any symlink target that reaches above the root, is unsafe.
+ */
+int
+is_unsafe_link(const char *link, const char *src, const char *root)
+{
+	size_t rootlen;
+	int srcdepth;
+	int linkdepth;
+
+	/* Blank or absolute symlinks are always unsafe */
+	if (link == NULL || *link == '\0' || *link == '/')
+	{
+		return 1;
+	}
+
+	rootlen = strlen(root);
+	if (strncmp(src, root, rootlen) == 0) {
+		/* Make src relative to root */
+		src += rootlen;
+		if (*src == '/') {
+			src++;
+		}
+	} else {
+		/* src is outside of the root, this is unsafe */
+		WARNX("%s: is_unsafe_link: src file is outside of the root: %s\n", src, root);
+		return 1;
+	}
+	srcdepth = count_dir_depth(src, 0, 0);
+	if (srcdepth < 0) {
+		/* src escapes the root, this in unsafe */
+		WARNX("%s: is_unsafe_link: src escaped the root: %s\n", src, root);
+		return 1;
+	}
+	linkdepth = count_dir_depth(link, srcdepth, 1);
+
+	return linkdepth < 0;
+}
+
 static int
 copy_internal(int fromfd, int tofd)
 {
@@ -251,18 +338,18 @@ copy_file(int rootfd, const char *basedir, const struct flist *f)
 
 	dfd = openat(rootfd, basedir, O_RDONLY | O_DIRECTORY);
 	if (dfd == -1)
-		err(ERR_FILE_IO, "%s: openat", basedir);
+		err(ERR_FILE_IO, "%s: copy_file dfd: openat", basedir);
 
 	fromfd = openat(dfd, f->path, O_RDONLY | O_NOFOLLOW);
 	if (fromfd == -1)
-		err(ERR_FILE_IO, "%s/%s: openat", basedir, f->path);
+		err(ERR_FILE_IO, "%s/%s: copy_file fromfd: openat", basedir, f->path);
 	close(dfd);
 
 	tofd = openat(rootfd, f->path,
 	    O_WRONLY | O_NOFOLLOW | O_TRUNC | O_CREAT | O_EXCL,
 	    0600);
 	if (tofd == -1)
-		err(ERR_FILE_IO, "%s: openat", f->path);
+		err(ERR_FILE_IO, "%s: copy_file tofd: openat", f->path);
 
 	if (copy_internal(fromfd, tofd) == -1)
 		err(ERR_FILE_IO, "%s: copy file", f->path);
