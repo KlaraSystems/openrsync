@@ -282,6 +282,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-L");
 	if (sess->opts->copy_unsafe_links)
 		addargs(&args, "--copy-unsafe-links");
+	if (sess->opts->safe_links)
+		addargs(&args, "--safe-links");
 	if (sess->opts->copy_dirlinks)
 		addargs(&args, "-k");
 	if (sess->opts->keep_dirlinks)

@@ -1155,7 +1155,9 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 		 *
 		 * We did an lstat, now we need a stat.
 		 */
-		if (sess->opts->copy_dirlinks || sess->opts->copy_unsafe_links) {
+		if (sess->opts->copy_dirlinks ||
+		    sess->opts->copy_unsafe_links ||
+		    sess->opts->safe_links) {
 			if (stat(root, &st2) == -1) {
 				ERR("%s: stat", root);
 				return 0;
@@ -1166,12 +1168,18 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 			}
 			buf[ret] = '\0';
 		}
+		if (sess->opts->safe_links &&
+		    is_unsafe_link(buf, root, root)) {
+			LOG1("ignoring unsafe symlink: %s -> %s", root, buf);
+			return 0;
+		}
 		if (sess->opts->copy_dirlinks) {
 			if (S_ISDIR(st2.st_mode)) {
 				if (stripdir == -1)
 					stripdir = flist_dirent_strip(root);
 				snprintf(buf2, sizeof(buf2), "%s/", root);
-				LOG4("symlinks: recursing '%s' -> '%s' '%s'\n", root, buf, buf2);
+				LOG4("symlinks: recursing '%s' -> '%s' '%s'\n",
+				    root, buf, buf2);
 				flist_gen_dirent(sess, buf2, fl, stripdir);
 				return 1;
 			}
@@ -1224,7 +1232,8 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 		assert(ent->fts_statp != NULL);
 		if (S_ISLNK(ent->fts_statp->st_mode)) {
 			if (sess->opts->copy_dirlinks ||
-			    sess->opts->copy_unsafe_links) {
+			    sess->opts->copy_unsafe_links ||
+			    sess->opts->safe_links) {
 				/* We did lstat, now we need stat */
 				if (stat(ent->fts_accpath, &st2) == -1) {
 					ERR("%s: stat", ent->fts_accpath);
@@ -1235,6 +1244,11 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 					continue;
 				}
 				buf[ret] = '\0';
+			}
+			if (sess->opts->safe_links &&
+			    is_unsafe_link(buf, ent->fts_accpath, root)) {
+				LOG1("ignoring unsafe symlink %s -> %s", ent->fts_accpath, buf);
+				continue;
 			}
 			if (sess->opts->copy_dirlinks) {
 				if (S_ISDIR(st2.st_mode)) {
