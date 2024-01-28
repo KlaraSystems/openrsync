@@ -426,6 +426,9 @@ rsync_sender(struct sess *sess, int fdin,
 		return 0;
 	}
 
+	if (sess->opts->chmod != NULL)
+		chmod_parse(sess->opts->chmod, sess);
+
 	memset(&sender, 0, sizeof(sender));
 	sender.append = sess->opts->append;
 	sender.phase = &metadata_phase;

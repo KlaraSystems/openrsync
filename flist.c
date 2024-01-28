@@ -1263,6 +1263,23 @@ flist_gen_dirent(struct sess *sess, char *root, struct flist **fl, size_t *sz,
 		f->wpath = f->path + stripdir;
 		flist_copy_stat(f, ent->fts_statp);
 
+		if (sess->opts->chmod != NULL) {
+			mode_t mode = f->st.mode;
+
+			if (S_ISDIR(mode)) {
+				mode &= ~sess->chmod_dir_AND;
+				mode |= sess->chmod_dir_OR;
+				mode |= sess->chmod_dir_X;
+			} else {
+				mode &= ~sess->chmod_file_AND;
+				mode |= sess->chmod_file_OR;
+				if (f->st.mode & (S_IXUSR | S_IXGRP | S_IXOTH))
+					mode |= sess->chmod_file_X;
+			}
+
+			f->st.mode = mode;
+		}
+
 		/* Optionally copy link information. */
 
 		if (S_ISLNK(ent->fts_statp->st_mode)) {
