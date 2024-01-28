@@ -1581,6 +1581,20 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			init_blkset(&blk, filesize, sess->opts->block_size);
 		}
 
+		if (sess->opts->no_cache) {
+#if defined(F_NOCACHE)
+			fcntl(*fileinfd, F_NOCACHE);
+#elif defined(O_DIRECT)
+			int getfl;
+
+			if ((getfl = fcntl(*fileinfd, F_GETFL)) < 0) {
+				warn("fcntl failed");
+			} else {
+				fcntl(*fileinfd, F_SETFL, getfl | O_DIRECT);
+			}
+#endif
+		}
+
 		if (u->phase == 0 && (sess->role->append ||
 		    sess->opts->whole_file)) {
 			goto skipmap;

@@ -263,6 +263,7 @@ struct	opts {
 	int		 del_excl;		/* --delete-excluded */
 	int		 devices;		/* --devices */
 	int		 specials;		/* --specials */
+	int		 no_cache;		/* --no-cache */
 	int		 no_motd;		/* --no-motd */
 	int		 numeric_ids;		/* --numeric-ids */
 	int		 one_file_system;	/* -x */

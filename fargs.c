@@ -301,6 +301,16 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 	if (f->mode == FARGS_SENDER && sess->opts->chmod != NULL)
 		addargs(&args, "--chmod=%s", sess->opts->chmod);
 
+#ifdef __APPLE__
+	if (sess->opts->no_cache == 0) {
+		addargs(&args, "--cache");
+	}
+#else
+	if (sess->opts->no_cache == 1) {
+		addargs(&args, "--no-cache");
+	}
+#endif
+
 	if (sess->opts->supermode != SMODE_UNSET) {
 		switch (sess->opts->supermode) {
 		case SMODE_ON:

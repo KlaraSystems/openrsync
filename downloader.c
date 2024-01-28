@@ -24,6 +24,9 @@
 #endif
 
 #include <assert.h>
+#if HAVE_ERR
+# include <err.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -857,6 +860,19 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			goto out;
 		} else if (p->ofd != -1) {
 			*ofd = p->ofd;
+			if (sess->opts->no_cache) {
+#if defined(F_NOCACHE)
+				fcntl(p->ofd, F_NOCACHE);
+#elif defined(O_DIRECT)
+				int getfl;
+
+				if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
+					warn("fcntl failed");
+				} else {
+					fcntl(p->ofd, F_SETFL, getfl | O_DIRECT);
+				}
+#endif
+			}
 			return 1;
 		}
 
@@ -981,6 +997,26 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			LOG3("%s: temporary: %s", f->path, p->fname);
 		}
 
+		if (sess->opts->no_cache) {
+#if defined(F_NOCACHE)
+			fcntl(p->ofd, F_NOCACHE);
+			fcntl(p->fd, F_NOCACHE);
+#elif defined(O_DIRECT)
+			int getfl;
+
+			if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
+				warn("fcntl failed");
+			} else {
+				fcntl(p->ofd, F_SETFL, getfl | O_DIRECT);
+			}
+			if ((getfl = fcntl(p->fd, F_GETFL)) < 0) {
+				warn("fcntl failed");
+			} else {
+				fcntl(p->fd, F_SETFL, getfl | O_DIRECT);
+			}
+#endif
+		}
+
 		p->state = DOWNLOAD_READ_REMOTE;
 		return 1;
 	}
@@ -994,6 +1030,25 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 	 * a token indicator.
 	 */
 
+	if (sess->opts->no_cache) {
+#if defined(F_NOCACHE)
+		fcntl(p->ofd, F_NOCACHE);
+		fcntl(p->fd, F_NOCACHE);
+#elif defined(O_DIRECT)
+		int getfl;
+
+		if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
+			warn("fcntl failed");
+		} else {
+			fcntl(p->ofd, F_SETFL, getfl | O_DIRECT);
+		}
+		if ((getfl = fcntl(p->fd, F_GETFL)) < 0) {
+			warn("fcntl failed");
+		} else {
+			fcntl(p->fd, F_SETFL, getfl | O_DIRECT);
+		}
+#endif
+	}
 again:
 	progress(sess, p->fl[p->idx].st.size, p->total, false);
 
