@@ -634,6 +634,8 @@ static const struct option	 lopts[] = {
     { "backup-dir",	required_argument,	NULL,		OP_BACKUP_DIR },
     { "block-size",	required_argument, NULL,		'B' },
     { "bwlimit",	required_argument, NULL,		OP_BWLIMIT },
+    { "cache",		no_argument,	&opts.no_cache,		0 },
+    { "no-cache",	no_argument,	&opts.no_cache,		1 },
     { "checksum",	no_argument,	NULL,			'c' },
     { "checksum-seed",	required_argument, NULL,		OP_CHECKSUM_SEED },
     { "chmod",		required_argument, NULL,		OP_CHMOD },
@@ -746,8 +748,8 @@ usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
 	    " [-46BCDFHIKLOPRSWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
-	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--compare-dest=dir]\n"
-	    "\t[--contimeout] [--copy-dest=dir] [--copy-unsafe-links]\n"
+	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--cache | --no-cache]\n"
+	    "\t[--compare-dest=dir] [--contimeout] [--copy-dest=dir] [--copy-unsafe-links]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
@@ -787,6 +789,9 @@ rsync_getopt(int argc, char *argv[])
 	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
 	opts.whole_file = -1;
+#ifdef __APPLE__
+	opts.no_cache = 1;
+#endif
 
 	while ((c = getopt_long(argc, argv, "046B:CDFHIKLOPRSVWabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {

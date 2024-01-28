@@ -28,6 +28,7 @@
 .Op Fl -append
 .Op Fl -backup-dir Ns = Ns directory
 .Op Fl -bwlimit Ns = Ns limit
+.Op Fl -cache | Fl -no-cache
 .Op Fl -checksum-seed Ns = Ns NUM
 .Op Fl -compare-dest Ns = Ns Ar directory
 .Op Fl -contimeout Ns = Ns Ar seconds
@@ -155,6 +156,24 @@ The
 may also contain any of the suffixes described in the
 .Fl -max-size
 definition of size.
+.It Fl -cache
+Use the operating system buffer cache when reading and writing files.
+This is the default on all operating systems except macOS, where
+.Nm
+sets
+.Dv F_NOCACHE
+by default to limit memory growth.
+Setting this option will enabling caching by not setting any flags.
+.It Fl -no-cache
+Sets
+.Dv O_DIRECT
+when reading and writing files to avoid using the buffer cache.
+Setting this option can avoid filling the cache with files that will not be
+read again, such as during a backup.
+This is the default on macOS, where
+.Dv F_NOCACHE
+is used instead of
+.Dv O_DIRECT .
 .It Fl c , -checksum
 Use full-file checksums to determine which files have changed and should
 be transferred, rather than the usual file size and modification time
