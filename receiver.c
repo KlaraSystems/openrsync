@@ -95,7 +95,8 @@ rsync_set_metadata(struct sess *sess, int newfile,
 				    "to user.group: %u.%u", f->path, uid, gid);
 		} else
 			LOG4("%s: updated uid and/or gid", f->path);
-		mode &= ~(S_ISTXT | S_ISUID | S_ISGID);
+		if (sess->opts->chmod == NULL)
+			mode &= ~(S_ISTXT | S_ISUID | S_ISGID);
 	}
 
 	/* Conditionally adjust file permissions. */
@@ -163,7 +164,8 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 				    "to user.group: %u.%u", f->path, uid, gid);
 		} else
 			LOG4("%s: updated uid and/or gid", f->path);
-		mode &= ~(S_ISTXT | S_ISUID | S_ISGID);
+		if (sess->opts->chmod == NULL)
+			mode &= ~(S_ISTXT | S_ISUID | S_ISGID);
 	}
 
 	/* Conditionally adjust file permissions. */

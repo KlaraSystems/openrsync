@@ -318,6 +318,175 @@ scan_scaled_def(char *maybe_scaled, long long *result, char def)
 	return ret;
 }
 
+/*
+ * This function implements the rsync chmod symbolic mode parser
+ * for the grammar described below (as taken from the chmod(1)
+ * man page), including the addition of the "which" rule as
+ * supported by rsync.
+ *
+ * Note that the 'u', 'g', and 'o' terminals of the "perm" rule
+ * in chmod(1) are not supported by rsync.
+ *
+ *   mode    ::= clause [, clause ...]
+ *   clause  ::= [which] [who ...] [action ...] action
+ *   action  ::= op [perm ...]
+ *   which   ::= D | F
+ *   who     ::= a | u | g | o
+ *   op      ::= + | - | =
+ *   perm    ::= r | s | t | w | x | X
+ *
+ * If sess is NULL then arg's syntax will be verified,
+ * but no mode transforms will be computed.
+ */
+int
+chmod_parse(const char *arg, struct sess *sess)
+{
+	char *strbase, *str;
+	int rc = 0;
+
+	if (arg == NULL)
+		return 0;
+
+	str = strbase = strdup(arg);
+	if (str == NULL)
+		return errno;
+
+	while (str != NULL) {
+		const char *tok, *op;
+		mode_t xbits, bits;
+		mode_t mask, who;
+		int which = 0;
+
+		/* clause */
+		tok = strsep(&str, ",");
+		if (tok == NULL)
+			break;
+
+		/* [which] */
+		if (*tok == 'D' || *tok == 'F')
+			which = *tok++;
+
+		xbits = bits = mask = who = 0;
+		op = NULL;
+
+		/* [who ...] op */
+		while (op == NULL) {
+			switch (*tok) {
+			case 'a':
+				mask |= S_IRWXU | S_IRWXG | S_IRWXO;
+				who = mask;
+				break;
+			case 'u':
+				mask |= S_IRWXU | S_ISUID;
+				who = mask;
+				break;
+			case 'g':
+				mask |= S_IRWXG | S_ISGID;
+				who = mask;
+				break;
+			case 'o':
+				mask |= S_IRWXO;
+				who = mask;
+				break;
+			case '+':
+			case '-':
+			case '=':
+				if (who == 0) {
+					mask = umask(0);
+					umask(mask);
+					mask = ~mask;
+				}
+				op = tok;
+				break;
+			default:
+				rc = EINVAL;
+				goto errout;
+			}
+
+			tok++;
+		}
+
+		if (*tok == '\0')
+			continue;
+
+		/* [perm ...] */
+		while (*tok) {
+			switch (*tok++) {
+			case 'r':
+				bits |= mask & (S_IRUSR | S_IRGRP | S_IROTH);
+				break;
+			case 's':
+				bits |= (mask & (S_ISUID | S_ISGID));
+				break;
+			case 't':
+				bits |= S_ISTXT;
+				break;
+			case 'w':
+				bits |= mask & (S_IWUSR | S_IWGRP | S_IWOTH);
+				break;
+			case 'x':
+				bits |= mask & (S_IXUSR | S_IXGRP | S_IXOTH);
+				break;
+			case 'X':
+				xbits |= mask & (S_IXUSR | S_IXGRP | S_IXOTH);
+				break;
+			default:
+				rc = EINVAL;
+				goto errout;
+			}
+		}
+
+		if (sess == NULL)
+			continue; /* syntax check only */
+
+		/* Apply mode transformations to the session chmod fields.
+		 */
+		switch (*op) {
+		case '+':
+			if (which == 0 || which == 'D') {
+				sess->chmod_dir_AND &= ~bits;
+				sess->chmod_dir_OR |= bits;
+				sess->chmod_dir_X |= xbits;
+			}
+			if (which == 0 || which == 'F') {
+				sess->chmod_file_AND &= ~bits;
+				sess->chmod_file_OR |= bits;
+				sess->chmod_file_X |= xbits;
+			}
+			break;
+		case '-':
+			if (which == 0 || which == 'D') {
+				sess->chmod_dir_AND |= bits;
+				sess->chmod_dir_OR &= ~bits;
+			}
+			if (which == 0 || which == 'F') {
+				sess->chmod_file_AND |= bits;
+				sess->chmod_file_OR &= ~bits;
+			}
+			break;
+		case '=':
+			if (which == 0 || which == 'D') {
+				if (who == 0)
+					sess->chmod_dir_AND = 07777;
+				sess->chmod_dir_OR = bits;
+			}
+			if (which == 0 || which == 'F') {
+				if (who == 0)
+					sess->chmod_file_AND = 07777;
+				sess->chmod_file_OR = bits;
+			}
+			break;
+		default:
+			rc = EINVAL;
+			goto errout;
+		}
+	}
+
+  errout:
+	free(strbase);
+	return rc;
+}
+
 static struct opts	 opts;
 
 #define OP_ADDRESS	1000
@@ -355,6 +524,7 @@ static struct opts	 opts;
 #define OP_APPEND	1030
 #define OP_PARTIAL_DIR	1031
 #define OP_CHECKSUM_SEED	1032
+#define OP_CHMOD	1033
 
 static const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -364,6 +534,7 @@ static const struct option	 lopts[] = {
     { "bwlimit",	required_argument, NULL,		OP_BWLIMIT },
     { "checksum",	no_argument,	NULL,			'c' },
     { "checksum-seed",	required_argument, NULL,		OP_CHECKSUM_SEED },
+    { "chmod",		required_argument, NULL,		OP_CHMOD },
     { "compare-dest",	required_argument, NULL,		OP_COMP_DEST },
 #if 0
     { "copy-dest",	required_argument, NULL,		OP_COPY_DEST },
@@ -790,6 +961,12 @@ basedir:
 					     optarg, INT_MAX);
 				opts.checksum_seed = (tmpint == 0) ? time(NULL) : tmpint;
 			}
+			break;
+		case OP_CHMOD:
+			if (chmod_parse(optarg, NULL) != 0)
+				errx(ERR_SYNTAX, "--chmod=%s: invalid argument",
+				     optarg);
+			opts.chmod = optarg;
 			break;
 		case OP_PARTIAL_DIR:
 			opts.partial = 1;

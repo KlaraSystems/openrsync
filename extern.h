@@ -221,6 +221,7 @@ struct	opts {
 	int		 append;		/* --append */
 	int		 checksum;		/* -c --checksum */
 	int		 checksum_seed;		/* --checksum-seed */
+	char		*chmod;			/* --chmod */
 	int		 recursive;		/* -r */
 	int		 dry_run;		/* -n */
 	int		 inplace;		/* --inplace */
@@ -384,6 +385,12 @@ struct	sess {
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
 	struct dlrename    *dlrename; /* Deferred renames for --delay-update */
 	struct role	  *role; /* Role context */
+	mode_t		   chmod_dir_AND;
+	mode_t		   chmod_dir_OR;
+	mode_t		   chmod_dir_X;
+	mode_t		   chmod_file_AND;
+	mode_t		   chmod_file_OR;
+	mode_t		   chmod_file_X;
 	double             start_time; /* Time of first transfer */
 };
 
@@ -621,6 +628,8 @@ int		 iszerobuf(const void *b, size_t len);
 int              read_filesfrom(struct sess *sess, const char *basedir);
 void		 cleanup_filesfrom(struct sess *sess);
 void		 delayed_renames(struct sess *sess);
+
+int		chmod_parse(const char *arg, struct sess *sess);
 
 static inline int
 sess_is_inplace(struct sess *sess)
