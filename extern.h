@@ -253,6 +253,7 @@ struct	opts {
 	int		 preserve_perms;	/* -p */
 	int		 copy_links;		/* -L */
 	int		 copy_unsafe_links;	/* --copy-unsafe-links */
+	int		 safe_links;		/* --safe-links */
 	int		 copy_dirlinks;		/* -k */
 	int		 keep_dirlinks;		/* -K */
 	int		 preserve_links;	/* -l */

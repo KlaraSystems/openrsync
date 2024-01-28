@@ -624,6 +624,7 @@ static struct opts	 opts;
 #define OP_BACKUP_DIR	1034
 #define OP_BACKUP_SUFFIX	1035
 #define OP_COPY_UNSAFE_LINKS	1036
+#define OP_SAFE_LINKS	1037
 
 static const struct option	 lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
@@ -699,6 +700,7 @@ static const struct option	 lopts[] = {
     { "no-r",		no_argument,	&opts.recursive,	0 },
     { "rsh",		required_argument, NULL,		'e' },
     { "rsync-path",	required_argument, NULL,		OP_RSYNCPATH },
+    { "safe-links",	no_argument,	&opts.safe_links,	1 },
     { "sender",		no_argument,	&opts.sender,		1 },
     { "server",		no_argument,	&opts.server,		1 },
     { "size-only",	no_argument,	&opts.size_only,	1 },
@@ -753,7 +755,7 @@ usage(int exitcode)
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
-	    "\t[--remove-source-files] [--rsync-path=program] [--size-only]\n"
+	    "\t[--remove-source-files] [--rsync-path=program] [--safe-links] [--size-only]\n"
 	    "\t[--sockopts=sockopts] [--specials] [--suffix] [--super] [--timeout=seconds]\n"
 	    "\tsource ... directory\n",
 	    getprogname());
