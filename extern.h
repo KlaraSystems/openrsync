@@ -305,6 +305,12 @@ struct	flstat {
 	uint64_t	 nlink;  /* number of links, for hardlink detection */
 #define	FLSTAT_TOP_DIR	 0x01	 /* a top-level directory */
 
+/* Platform use */
+#define	FLSTAT_PLATFORM_BIT1	0x10000000
+#define	FLSTAT_PLATFORM_BIT2	0x20000000
+#define	FLSTAT_PLATFORM_BIT3	0x40000000
+#define	FLSTAT_PLATFORM_BIT4	0x80000000
+#define	FLSTAT_PLATFORM_MASK	0xf0000000
 };
 
 enum name_basis {
@@ -323,9 +329,8 @@ enum name_basis {
  * a variably-sized structure and handling its variability in both the
  * sender and receiver.
  */
-typedef int (platform_open)(const struct flist *, int);
-typedef int (platform_flist_sent)(const struct sess *, int,
-    const struct flist *);
+typedef int (platform_open)(const struct sess *, const struct flist *, int);
+typedef int (platform_flist_sent)(struct sess *, int, const struct flist *);
 
 struct	flist {
 	char		*path; /* path relative to root */
@@ -454,6 +459,9 @@ struct	opts {
 	int		 fuzzy_basis;		/* -y */
 	int		 quiet;			/* -q, --quiet */
 	long		 max_delete;		/* --max-delete */
+#ifdef __APPLE__
+	int		 extended_attributes;	/* --extended-attributes */
+#endif
 };
 
 enum rule_type {

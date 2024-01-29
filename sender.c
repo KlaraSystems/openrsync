@@ -1306,7 +1306,7 @@ rsync_sender(struct sess *sess, int fdin,
 			 */
 			nextfl = &fl.flp[up.cur->idx];
 			if (nextfl->open != NULL) {
-				up.stat.fd = (*nextfl->open)(nextfl,
+				up.stat.fd = (*nextfl->open)(sess, nextfl,
 				    O_RDONLY|O_NONBLOCK);
 			} else {
 				up.stat.fd = open(nextfl->path,
