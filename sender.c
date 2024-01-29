@@ -1261,6 +1261,8 @@ rsync_sender(struct sess *sess, int fdin,
 		 */
 
 		if (up.cur == NULL) {
+			struct flist *nextfl;
+
 			assert(pfd[2].fd == -1);
 			assert(up.stat.fd == -1);
 			assert(up.stat.map == MAP_FAILED);
@@ -1297,9 +1299,19 @@ rsync_sender(struct sess *sess, int fdin,
 			 * Non-blocking open of file.
 			 * This will be picked up in the state machine
 			 * block of not being primed.
+			 *
+			 * Some flist entries may be synthesized or redirected
+			 * by the platform implementation, so call into the
+			 * flist-specified open if provided.
 			 */
-			up.stat.fd = open(fl.flp[up.cur->idx].path,
-				O_RDONLY|O_NONBLOCK, 0);
+			nextfl = &fl.flp[up.cur->idx];
+			if (nextfl->open != NULL) {
+				up.stat.fd = (*nextfl->open)(nextfl,
+				    O_RDONLY|O_NONBLOCK);
+			} else {
+				up.stat.fd = open(nextfl->path,
+				    O_RDONLY|O_NONBLOCK, 0);
+			}
 			if (up.stat.fd == -1) {
 				char buf[PATH_MAX];
 
