@@ -737,6 +737,9 @@ static const struct option	 lopts[] = {
     { "exclude-from",	required_argument, NULL,		OP_EXCLUDE_FROM },
     { "executability",	no_argument,	NULL,			'E' },
     { "existing",	no_argument, NULL,			OP_IGNORE_NON_EXISTING },
+#ifdef __APPLE__
+    { "extended-attributes",	no_argument, NULL,		'E' },
+#endif
     { "filter",		required_argument, NULL,		'f' },
     { "force",		no_argument,	NULL,			OP_FORCE },
     { "fuzzy",		no_argument,	NULL,			'y' },
@@ -846,6 +849,9 @@ usage(int exitcode)
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
+#ifdef __APPLE__
+	    "\t[--extended-attributes]\n"
+#endif
 	    "\t[--existing] [--force] [--ignore-errors]\n"
 	    "\t[--ignore-existing] [--ignore-non-existing] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
@@ -934,7 +940,6 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			else if (rc == 0)
 				return NULL;
 		}
-
 		switch (c) {
 		case '0':
 			opts.from0 = 1;
@@ -963,9 +968,15 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.devices = 1;
 			opts.specials = 1;
 			break;
+#ifdef __APPLE__
+		case 'E':
+			opts.extended_attributes = 1;
+			break;
+#else
 		case 'E':
 			opts.preserve_executability = 1;
 			break;
+#endif
 		case 'F': {
 			const char *new_rule = NULL;
 

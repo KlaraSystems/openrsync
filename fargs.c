@@ -296,6 +296,10 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-K");
 	if (sess->opts->remove_source)
 		addargs(&args, "--remove-source-files");
+#ifdef __APPLE__
+	if (sess->opts->extended_attributes)
+		addargs(&args, "--extended-attributes");
+#endif
 	if (f->mode == FARGS_SENDER && sess->opts->ignore_times > 0)
 		addargs(&args, "--ignore-times");
 	if (f->mode == FARGS_SENDER && sess->opts->fuzzy_basis)
