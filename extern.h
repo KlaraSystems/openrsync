@@ -180,6 +180,7 @@ enum dryrun {
 
 /* Forward declarations */
 struct flist;
+struct sess;
 
 /*
  * Use this for --timeout.
@@ -323,6 +324,9 @@ enum name_basis {
  * sender and receiver.
  */
 typedef int (platform_open)(const struct flist *, int);
+typedef int (platform_flist_sent)(const struct sess *, int,
+    const struct flist *);
+
 struct	flist {
 	char		*path; /* path relative to root */
 	int		 pdfd; /* dirfd for partial */
@@ -334,6 +338,7 @@ struct	flist {
 	int32_t		 iflags; /* Itemize flags */
 	enum name_basis	 basis; /* name basis */
 	platform_open	*open; /* special open() for this entry */
+	platform_flist_sent	*sent; /* notify the platform an entry was sent */
 };
 
 #define	FLIST_COMPLETE		0x01	/* Finished */

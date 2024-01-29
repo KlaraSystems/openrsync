@@ -635,6 +635,13 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 				goto out;
 			}
 		}
+
+		/*
+		 * Keep this at the very end; platform should emit a suitable
+		 * looking error.
+		 */
+		if (f->sent != NULL && !(*f->sent)(sess, fdout, f))
+			goto out;
 	}
 
 	/* Signal end of file list. */
