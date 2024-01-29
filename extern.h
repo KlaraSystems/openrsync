@@ -871,6 +871,7 @@ int		 mktemplate(char **, const char *, int, int);
 int		 parse_rule_words(const char *line, enum rule_type, int);
 int		 parse_rule(const char *line, enum rule_type, int);
 void		 parse_file(const char *, enum rule_type, int);
+int		 platform_flist_modify(const struct sess *, struct fl *);
 void		 send_rules(struct sess *, int);
 void		 recv_rules(struct sess *, int);
 char		**rules_export(struct sess *);

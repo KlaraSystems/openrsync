@@ -1984,6 +1984,9 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	if (!rc)
 		return 0;
 
+	if (!platform_flist_modify(sess, fl))
+		return 0;
+
 	if (protocol_newsort) {
 		qsort(fl->flp, fl->sz, sizeof(struct flist), flist_cmp29);
 	} else {
