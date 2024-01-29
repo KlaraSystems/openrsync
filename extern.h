@@ -178,6 +178,9 @@ enum dryrun {
 #define TOKEN_MAX_DATA		MAX_COMP_CHUNK	/* reserve 2 bits for flags */
 #define TOKEN_MAX_BUF		(TOKEN_MAX_DATA + 2)
 
+/* Forward declarations */
+struct flist;
+
 /*
  * Use this for --timeout.
  * All poll events will use it and catch time-outs.
@@ -319,6 +322,7 @@ enum name_basis {
  * a variably-sized structure and handling its variability in both the
  * sender and receiver.
  */
+typedef int (platform_open)(const struct flist *, int);
 struct	flist {
 	char		*path; /* path relative to root */
 	int		 pdfd; /* dirfd for partial */
@@ -329,6 +333,7 @@ struct	flist {
 	int		 flstate; /* flagged for redo, or complete? */
 	int32_t		 iflags; /* Itemize flags */
 	enum name_basis	 basis; /* name basis */
+	platform_open	*open; /* special open() for this entry */
 };
 
 #define	FLIST_COMPLETE		0x01	/* Finished */
