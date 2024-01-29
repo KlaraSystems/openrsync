@@ -20,6 +20,7 @@ OBJS	   = batch.o \
 	     misc.o \
 	     mkpath.o \
 	     mktemp.o \
+	     platform.o \
 	     receiver.o \
 	     rmatch.o \
 	     rules.o \
