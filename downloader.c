@@ -1260,6 +1260,16 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			LOG3("downloader: phase complete");
 			return 0;
 		}
+		/*
+		 * `idx` is a sendidx, translate it back into our local file index since
+		 * we may have, e.g., trimmed duplicates.
+		 */
+		for (int flidx = 0; flidx < p->flsz; flidx++) {
+			if (p->fl[flidx].sendidx == idx) {
+				idx = flidx;
+				break;
+			}
+		}
 		if (!get_iflags(sess, p->fdin, p->fl, idx)) {
 			ERRX("get_iflags");
 			return 0;

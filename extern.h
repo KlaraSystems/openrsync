@@ -344,6 +344,7 @@ struct	flist {
 	enum name_basis	 basis; /* name basis */
 	platform_open	*open; /* special open() for this entry */
 	platform_flist_sent	*sent; /* notify the platform an entry was sent */
+	int		 sendidx; /* Sender index */
 };
 
 #define	FLIST_COMPLETE		0x01	/* Finished */
