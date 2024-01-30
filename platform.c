@@ -160,3 +160,45 @@ platform_flist_modify(const struct sess *sess, struct fl *fl)
 	return 1;
 }
 #endif
+
+#if !HAVE_PLATFORM_FLIST_RECEIVED
+void
+platform_flist_received(struct sess *sess, struct flist *fl, size_t flsz)
+{
+
+}
+#endif
+
+#if !HAVE_PLATFORM_FLIST_ENTRY_RECEIVED
+int
+platform_flist_entry_received(struct sess *sess, int fdin, struct flist *f)
+{
+
+	return 1;
+}
+#endif
+
+#if !HAVE_PLATFORM_MOVE_FILE
+int
+platform_move_file(const struct sess *sess, struct flist *fl,
+    int fromfd, const char *fname, int tofd, const char *toname, int final)
+{
+
+	if (move_file(fromfd, fname, tofd, toname) != 0) {
+		ERR("%s: move_file: %s", fname, toname);
+		return 0;
+	}
+
+	return 1;
+}
+#endif
+
+#if !HAVE_PLATFORM_FINISH_TRANSFER
+int
+platform_finish_transfer(const struct sess *sess, struct flist *fl,
+    int rootfd, const char *name)
+{
+
+	return 1;
+}
+#endif

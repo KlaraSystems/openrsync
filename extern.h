@@ -882,10 +882,18 @@ char		*mkstempnodat(int, char *, mode_t, dev_t);
 char		*mkstempsock(const char *, char *);
 int		 mktemplate(char **, const char *, int, int);
 
+int		 platform_flist_modify(const struct sess *, struct fl *);
+int		 platform_flist_entry_received(struct sess *, int,
+		    struct flist *);
+void		 platform_flist_received(struct sess *, struct flist *, size_t);
+int		 platform_move_file(const struct sess *, struct flist *,
+		    int, const char *, int, const char *, int);
+int		 platform_finish_transfer(const struct sess *, struct flist *,
+		    int, const char *);
+
 int		 parse_rule_words(const char *line, enum rule_type, int);
 int		 parse_rule(const char *line, enum rule_type, int);
 void		 parse_file(const char *, enum rule_type, int);
-int		 platform_flist_modify(const struct sess *, struct fl *);
 void		 send_rules(struct sess *, int);
 void		 recv_rules(struct sess *, int);
 char		**rules_export(struct sess *);
