@@ -315,7 +315,7 @@ download_cleanup_partial_dir(struct sess *sess, struct download *p,
 static int
 download_cleanup_partial(struct sess *sess, struct download *p)
 {
-	const struct flist *f;
+	struct flist *f;
 
 	if (p->fl == NULL)
 		return 1;
@@ -366,7 +366,8 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 		 * situation so that the user can manually recover the partial
 		 * file and make a decision on it.
 		 */
-		if (move_file(p->rootfd, p->fname, pdfd, fname, 0) == -1) {
+		if (platform_move_file(sess, f, p->rootfd, p->fname,
+		    pdfd, fname, 0) == -1) {
 			/*
 			 * Don't leave the partial file laying around if
 			 * --partial-dir was requested and we can't manage it.
@@ -675,11 +676,9 @@ delayed_renames(struct sess *sess)
 			dlr->entries[i].to);
 		if (sess->opts->hard_links)
 			hl_p = find_hl(dlr->entries[i].file, dlr->hl);
-		if (move_file(dlr->fromfd, dlr->entries[i].from, dlr->tofd,
-				dlr->entries[i].to, 1) == -1) {
+		if (!platform_move_file(sess, dlr->entries[i].file,
+		    dlr->fromfd, dlr->entries[i].from, dlr->tofd, dlr->entries[i].to, 1)) {
 			status = FLIST_FAILED;
-			ERR("dlr move_file '%s' -> '%s'", dlr->entries[i].from,
-				dlr->entries[i].to);
 		}
 		if (hl_p != NULL) {
 			const char *path = dlr->entries[i].to;
@@ -1733,12 +1732,23 @@ again:
 		if (sess->opts->hard_links)
 			hl_p = find_hl(f, hl);
 	}
-	if (!download_is_inplace(sess, p, false) &&
-	    move_file(f->pdfd >= 0 ? f->pdfd : TMPDIR_FD, p->fname, p->rootfd,
-	    usethis, 1) == -1) {
-		ERR("%s: downloader move_file: %s fd=%d", p->fname, f->path, (f->pdfd >= 0 ? f->pdfd : TMPDIR_FD));
-		goto out;
+	if (!download_is_inplace(sess, p, false)) {
+		int fromfd;
+
+		fromfd = TMPDIR_FD;
+		if (f->pdfd >= 0)
+			fromfd = f->pdfd;
+		if (!platform_move_file(sess, f, fromfd, p->fname,
+		    p->rootfd, usethis, usethis == f->path))
+			goto out;
 	}
+
+	/*
+	 * Let the platform finalize the transfer.
+	 */
+	if (!platform_finish_transfer(sess, f, p->rootfd, usethis))
+		goto out;
+
 	if (sess->opts->dlupdates) {
 		struct dlrename_entry *entry = &renamer->entries[renamer->n - 1];
 

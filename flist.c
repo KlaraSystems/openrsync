@@ -1296,6 +1296,13 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			}
 		}
 
+		/*
+		 * Keep this at the very end; platform should emit a suitable
+		 * looking error.
+		 */
+		if (!platform_flist_entry_received(sess, fdin, ff))
+			goto out;
+
 		LOG3("%s: received file metadata: "
 			"size %jd, mtime %jd, mode %o, rdev (%d, %d)",
 			ff->path, (intmax_t)ff->st.size,
@@ -1354,6 +1361,8 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		fl[i].sendidx = i;
 
 	flist_topdirs(sess, fl, flsz);
+
+	platform_flist_received(sess, fl, flsz);
 
 	*sz = flsz;
 	*flp = fl;
