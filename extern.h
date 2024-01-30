@@ -290,6 +290,7 @@ struct	opts {
 	char            *filesfrom_host;        /* --files-from */
 	char            *filesfrom_port;        /* --files-from */
 	char            *filesfrom_path;        /* --files-from */
+	int		 whole_file;		/* --whole-file */
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif

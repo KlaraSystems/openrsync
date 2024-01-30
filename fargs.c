@@ -237,6 +237,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-v");
 	if (verbose > 0)
 		addargs(&args, "-v");
+	if (sess->opts->whole_file > 0)
+		addargs(&args, "-W");
 	if (sess->opts->progress > 0)
 		addargs(&args, "--progress");
 	if (sess->opts->backup > 0)

@@ -120,6 +120,18 @@ log_file(struct sess *sess, const struct flist *f)
  * The minimum block length is 700.
  */
 static void
+init_null_blkset(struct blkset *p, off_t sz)
+{
+
+	p->size = sz;
+	p->blksz = 0;
+	p->len = 0;
+	p->csum = 0;
+	p->rem = 0;
+
+}
+
+static void
 init_blkset(struct blkset *p, off_t sz, long block_size)
 {
 	double	 v;
@@ -1560,11 +1572,18 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		if (sess->opts->block_size > (512 << 20))
 			errx(1, "--block-size=%ld: must be no greater than %d",
 			     sess->opts->block_size, (512 << 20));
-		init_blkset(&blk, filesize, sess->opts->block_size);
-		assert(blk.blksz);
+		if (sess->opts->whole_file) {
+			init_null_blkset(&blk, filesize);
+		} else {
+			init_blkset(&blk, filesize, sess->opts->block_size);
+		}
 
-		if (u->phase == 0 && sess->role->append)
+		if (u->phase == 0 && (sess->role->append ||
+		    sess->opts->whole_file)) {
 			goto skipmap;
+		}
+
+		assert(blk.blksz);
 
 		blk.blks = calloc(blk.blksz, sizeof(struct blk));
 		if (blk.blks == NULL) {
@@ -1654,7 +1673,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.csum);
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.rem);
 
-	if (!sess->role->append) {
+	if (!sess->role->append && !sess->opts->whole_file) {
 		for (i = 0; i < blk.blksz; i++) {
 			io_buffer_int(u->buf, &pos, u->bufsz,
 				      blk.blks[i].chksum_short);

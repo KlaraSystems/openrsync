@@ -676,6 +676,9 @@ static const struct option	 lopts[] = {
     { "verbose",	no_argument,	NULL,			'v' },
     { "no-verbose",	no_argument,	&verbose,		0 },
     { "no-v",		no_argument,	&verbose,		0 },
+    { "whole-file",	no_argument,	NULL,			'W' },
+    { "no-whole-file",	no_argument,	&opts.whole_file,	0 },
+    { "no-W",		no_argument,	&opts.whole_file,	0 },
     { "progress",	no_argument,	&opts.progress,		1 },
     { "no-progress",	no_argument,	&opts.progress,		0 },
     { "version",	no_argument,	NULL,			'V' },
@@ -694,7 +697,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-46BCDFHIKLPRSVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-46BCDFHIKLPRSWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--compare-dest=dir] [--copy-dest=dir]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
@@ -731,8 +734,9 @@ main(int argc, char *argv[])
 
 	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
+	opts.whole_file = -1;
 
-	while ((c = getopt_long(argc, argv, "46B:CDFHIKLPRSVabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "46B:CDFHIKLPRSVWabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case '4':
@@ -859,6 +863,9 @@ main(int argc, char *argv[])
 			break;
 		case 'S':
 			opts.sparse++;
+			break;
+		case 'W':
+			opts.whole_file = 1;
 			break;
 		case 0:
 			/* Non-NULL flag values (e.g., --sender). */
@@ -1127,6 +1134,10 @@ basedir:
 			}
 		}
 	}
+	if (opts.append && opts.whole_file > 0) {
+		errx(ERR_SYNTAX,
+		    "options --append and --whole-file cannot be combined");
+	}
 
 	if (opts.backup_suffix == NULL) {
 		opts.backup_suffix = opts.backup_dir ? strdup("") : strdup("~");
@@ -1308,6 +1319,17 @@ basedir:
 		cleanup_release(cleanup_ctx);
 
 		args = fargs_cmdline(&sess, fargs, NULL);
+
+		/*
+		 * For local transfers, enable whole_file by default
+		 * if the user did not specifically ask for --no-whole-file.
+		 */
+		if (fargs->host == NULL && opts.whole_file < 0) {
+			opts.whole_file = 1;
+		} else if (opts.whole_file < 0) {
+			/* Simplify all future checking of this value */
+			opts.whole_file = 0;
+		}
 
 		for (i = 0; args[i] != NULL; i++)
 			LOG2("exec[%d] = %s", i, args[i]);

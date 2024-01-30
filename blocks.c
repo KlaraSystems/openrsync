@@ -504,7 +504,7 @@ blk_send_ack(struct sess *sess, int fd, struct blkset *p)
 		ERRX1("io_unbuffer_size");
 	else if (p->len && p->rem >= p->len)
 		ERRX1("non-zero length is less than remainder");
-	else if (p->csum == 0 || p->csum > 16)
+	else if (p->csum < 0 || p->csum > 16)
 		ERRX1("inappropriate checksum length");
 	else
 		return 1;
