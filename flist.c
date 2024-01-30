@@ -800,7 +800,8 @@ flist_realloc(struct flist **fl, size_t *sz, size_t *max)
 	*fl = pp;
 	*max += FLIST_CHUNK_SIZE;
 	for (size_t i = *sz; i < *max; i++)
-		(*fl)[i].pdfd = -1;
+		(*fl)[i].pdfd = (*fl)[i].sendidx = -1;
+
 	(*sz)++;
 	return 1;
 }
@@ -1064,6 +1065,14 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 				goto out;
 			}
 			flag |= bval << 8;
+		}
+
+		/*
+		 * The protocol uses ints for indexing, so we can't go too crazy here.
+		 */
+		if (flsz == INT_MAX) {
+			ERR("remote sent too many files");
+			goto out;
 		}
 
 		if (!flist_realloc(&fl, &flsz, &flmax)) {
@@ -1335,8 +1344,17 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	} else {
 		qsort(fl, flsz, sizeof(struct flist), flist_cmp);
 	}
+	/*
+	 * It's important that we keep track of the send index now, because we
+	 * may want to trim or dedupe the flist before we proceed.  openrsync
+	 * may dedupe on the sender side, but the reference rsync will not in
+	 * order to give receivers flexibility in how they handle it.
+	 */
+	for (int i = 0; i < flsz; i++)
+		fl[i].sendidx = i;
 
 	flist_topdirs(sess, fl, flsz);
+
 	*sz = flsz;
 	*flp = fl;
 

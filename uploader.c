@@ -1678,6 +1678,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		assert(*fileoutfd != -1);
 
 		for ( ; u->idx < u->flsz; u->idx++) {
+			assert(u->fl[u->idx].sendidx != -1);
 			if (u->phase == PHASE_REDO &&
 			    (u->fl[u->idx].flstate & FLIST_REDO) == 0)
 				continue;
@@ -1908,7 +1909,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	}
 
 	u->bufpos = pos = 0;
-	io_buffer_int(u->buf, &pos, u->bufsz, u->idx);
+	io_buffer_int(u->buf, &pos, u->bufsz, u->fl[u->idx].sendidx);
 	if (protocol_itemize) {
 		io_buffer_short(u->buf, &pos, u->bufsz, u->fl[u->idx].iflags);
 		if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
