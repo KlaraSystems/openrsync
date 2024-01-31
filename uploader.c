@@ -58,6 +58,7 @@ struct	upload {
 	mode_t		    oumask; /* umask for creating files */
 	char		   *root; /* destination directory path */
 	int		    rootfd; /* destination directory */
+	int		    tempfd; /* temp directory */
 	size_t		    csumlen; /* checksum length */
 	int		    fdout; /* write descriptor to sender */
 	struct flist	   *fl; /* file list */
@@ -271,11 +272,12 @@ pre_symlink(struct upload *p, struct sess *sess)
 			}
 		} else {
 			LOG3("%s: creating symlink: %s", f->path, f->link);
-			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
+			if (mktemplate(&temp, f->path, sess->opts->recursive,
+			    IS_TMPDIR) == -1) {
 				ERRX1("mktemplate");
 				return -1;
 			}
-			if (mkstemplinkat(f->link, p->rootfd, temp) == NULL) {
+			if (mkstemplinkat(f->link, TMPDIR_FD, temp) == NULL) {
 				ERR("mkstemplinkat");
 				free(temp);
 				return -1;
@@ -286,12 +288,13 @@ pre_symlink(struct upload *p, struct sess *sess)
 	}
 
 	rsync_set_metadata_at(sess, newlink,
-		p->rootfd, f, newlink && temp != NULL ? temp : f->path);
+	    newlink && sess->opts->temp_dir ? p->tempfd : p->rootfd, f,
+	    newlink && temp != NULL ? temp : f->path);
 
 	if (newlink && temp != NULL) {
-		if (renameat(p->rootfd, temp, p->rootfd, f->path) == -1) {
-			ERR("%s: renameat %s", temp, f->path);
-			(void)unlinkat(p->rootfd, temp, 0);
+		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
+			ERR("%s: move_file %s", temp, f->path);
+			(void)unlinkat(TMPDIR_FD, temp, 0);
 			free(temp);
 			return -1;
 		}
@@ -369,12 +372,14 @@ pre_dev(struct upload *p, struct sess *sess)
 				return -1;
 			}
 		} else {
-			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
+			if (mktemplate(&temp, f->path, sess->opts->recursive,
+			    IS_TMPDIR) == -1) {
 				ERRX1("mktemplate");
 				return -1;
 			}
-			if (mkstempnodat(p->rootfd, temp,
-				f->st.mode & (S_IFCHR|S_IFBLK), f->st.rdev) == NULL) {
+			if (mkstempnodat(TMPDIR_FD, temp,
+			    f->st.mode & (S_IFCHR|S_IFBLK), f->st.rdev)
+			    == NULL) {
 				ERR("mkstempnodat");
 				free(temp);
 				return -1;
@@ -384,13 +389,13 @@ pre_dev(struct upload *p, struct sess *sess)
 		newdev = 1;
 	}
 
-	rsync_set_metadata_at(sess, newdev,
-	    p->rootfd, f, newdev && temp != NULL ? temp : f->path);
+	rsync_set_metadata_at(sess, newdev, TMPDIR_FD, f,
+	    newdev && temp != NULL ? temp : f->path);
 
 	if (newdev && temp != NULL) {
-		if (renameat(p->rootfd, temp, p->rootfd, f->path) == -1) {
-			ERR("%s: renameat %s", temp, f->path);
-			(void)unlinkat(p->rootfd, temp, 0);
+		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
+			ERR("%s: move_file %s", temp, f->path);
+			(void)unlinkat(TMPDIR_FD, temp, 0);
 			free(temp);
 			return -1;
 		}
@@ -455,11 +460,12 @@ pre_fifo(struct upload *p, struct sess *sess)
 				return -1;
 			}
 		} else {
-			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
+			if (mktemplate(&temp, f->path, sess->opts->recursive,
+			    IS_TMPDIR) == -1) {
 				ERRX1("mktemplate");
 				return -1;
 			}
-			if (mkstempfifoat(p->rootfd, temp) == NULL) {
+			if (mkstempfifoat(TMPDIR_FD, temp) == NULL) {
 				ERR("mkstempfifoat");
 				free(temp);
 				return -1;
@@ -469,13 +475,13 @@ pre_fifo(struct upload *p, struct sess *sess)
 		newfifo = 1;
 	}
 
-	rsync_set_metadata_at(sess, newfifo,
-		p->rootfd, f, newfifo && temp != NULL ? temp : f->path);
+	rsync_set_metadata_at(sess, newfifo, TMPDIR_FD, f,
+	    newfifo && temp != NULL ? temp : f->path);
 
 	if (newfifo && temp != NULL) {
-		if (renameat(p->rootfd, temp, p->rootfd, f->path) == -1) {
-			ERR("%s: renameat %s", temp, f->path);
-			(void)unlinkat(p->rootfd, temp, 0);
+		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
+			ERR("%s: move_file %s", temp, f->path);
+			(void)unlinkat(TMPDIR_FD, temp, 0);
 			free(temp);
 			return -1;
 		}
@@ -540,11 +546,13 @@ pre_sock(struct upload *p, struct sess *sess)
 				return -1;
 			}
 		} else {
-			if (mktemplate(&temp, f->path, sess->opts->recursive) == -1) {
+			if (mktemplate(&temp, f->path, sess->opts->recursive,
+			    IS_TMPDIR) == -1) {
 				ERRX1("mktemplate");
 				return -1;
 			}
-			if (mkstempsock(p->root, temp) == NULL) {
+			if (mkstempsock(sess->opts->temp_dir ?
+			    sess->opts->temp_dir : p->root, temp) == NULL) {
 				ERR("mkstempsock");
 				free(temp);
 				return -1;
@@ -554,13 +562,13 @@ pre_sock(struct upload *p, struct sess *sess)
 		newsock = 1;
 	}
 
-	rsync_set_metadata_at(sess, newsock,
-		p->rootfd, f, newsock && temp != NULL ? temp : f->path);
+	rsync_set_metadata_at(sess, newsock, TMPDIR_FD, f,
+		newsock && temp != NULL ? temp : f->path);
 
 	if (newsock && temp != NULL) {
-		if (renameat(p->rootfd, temp, p->rootfd, f->path) == -1) {
-			ERR("%s: renameat %s", temp, f->path);
-			(void)unlinkat(p->rootfd, temp, 0);
+		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
+			ERR("%s: move_file %s", temp, f->path);
+			(void)unlinkat(TMPDIR_FD, temp, 0);
 			free(temp);
 			return -1;
 		}
@@ -1285,7 +1293,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 	} else {
 		assert(pdfd == -1);
 		*size = st.st_size;
-		*filefd = openat(p->rootfd, f->path, O_RDONLY | O_NOFOLLOW);
+		*filefd = openat(TMPDIR_FD, f->path, O_RDONLY | O_NOFOLLOW);
 	}
 	/* If there is a symlink in our way, we will get EMLINK */
 	if (*filefd == -1 && errno != ENOENT && errno != EMLINK) {
@@ -1305,7 +1313,7 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
  * On success, upload_free() must be called with the allocated pointer.
  */
 struct upload *
-upload_alloc(const char *root, int rootfd, int fdout,
+upload_alloc(const char *root, int rootfd, int tempfd, int fdout,
 	size_t clen, struct flist *fl, size_t flsz, mode_t msk)
 {
 	struct upload	*p;
@@ -1324,6 +1332,7 @@ upload_alloc(const char *root, int rootfd, int fdout,
 		return NULL;
 	}
 	p->rootfd = rootfd;
+	p->tempfd = tempfd;
 	p->csumlen = clen;
 	p->fdout = fdout;
 	p->fl = fl;

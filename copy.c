@@ -282,7 +282,7 @@ backup_to_dir(struct sess *sess, int rootfd, const struct flist *f,
 		    "%s\n", f->path);
 		return 0;
 	} else {
-		if ((ret = move_file(rootfd, f->path, rootfd, dest)) < 0) {
+		if ((ret = move_file(rootfd, f->path, rootfd, dest, 1)) < 0) {
 			ERR("%s: move_file: %s", f->path, dest);
 			return ret;
 		}
@@ -292,10 +292,16 @@ backup_to_dir(struct sess *sess, int rootfd, const struct flist *f,
 }
 
 int
-move_file(int fromdfd, const char *fname, int todfd, const char *tname)
+move_file(int fromdfd, const char *fname, int todfd, const char *tname,
+    int replace)
 {
 	int fromfd, tofd;
 	int ret, serrno;
+	int toflags = O_WRONLY | O_NOFOLLOW | O_TRUNC | O_CREAT;
+
+	if (!replace) {
+		toflags |= O_EXCL;
+	}
 
 	/* We'll try a rename(2) first. */
 	ret = renameat(fromdfd, fname, todfd, tname);
@@ -308,9 +314,7 @@ move_file(int fromdfd, const char *fname, int todfd, const char *tname)
 	fromfd = openat(fromdfd, fname, O_RDONLY | O_NOFOLLOW);
 	if (fromfd == -1)
 		return (-1);
-	tofd = openat(todfd, tname,
-	    O_WRONLY | O_NOFOLLOW | O_TRUNC | O_CREAT | O_EXCL,
-	    0600);
+	tofd = openat(todfd, tname, toflags, 0600);
 	if (tofd == -1) {
 		serrno = errno;
 		close(fromfd);

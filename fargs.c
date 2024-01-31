@@ -296,6 +296,10 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--bwlimit=%lld",
 		    (long long)(sess->opts->bwlimit / 1024));
 	}
+	if (f->mode == FARGS_SENDER && sess->opts->temp_dir) {
+		addargs(&args, "--temp-dir");
+		addargs(&args, "%s", sess->opts->temp_dir);
+	}
 	if (f->mode == FARGS_SENDER && sess->opts->block_size > 0)
 		addargs(&args, "-B%ld", sess->opts->block_size);
 	if (f->mode == FARGS_SENDER && sess->opts->chmod != NULL)

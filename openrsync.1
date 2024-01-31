@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl 046BCDFHILOPRSWVabcdghklnoprtuvx
+.Op Fl 046BCDFHILOPRSTWVabcdghklnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -604,6 +604,11 @@ options, which may be permitted to unprivileged users on the receiving end in
 some configurations.
 .Fl -no-super
 is also supported to avoid them entirely.
+.It Fl T , -temp-dir Ns = Ns Ar directory
+Instead of creating temporarily files in the destination directory, create
+them in the specified temporary directory.
+If this directory is on a different filesystem, that will require moving
+the file rather than renaming it into place, and is therefore not atomic.
 .It Fl -timeout Ns = Ns Ar seconds
 Set the I/O timeout in seconds.
 Exit if no data was transferred for the specified time.
