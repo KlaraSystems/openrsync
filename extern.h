@@ -677,4 +677,8 @@ sess_is_inplace(struct sess *sess)
 	return sess->opts->inplace || sess->opts->append;
 }
 
+#ifndef S_ISTXT
+#define S_ISTXT S_ISVTX
+#endif
+
 #endif /*!EXTERN_H*/

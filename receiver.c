@@ -37,10 +37,6 @@
 
 #include "extern.h"
 
-#ifndef S_ISTXT
-#define S_ISTXT S_ISVTX
-#endif
-
 enum	pfdt {
 	PFD_SENDER_IN = 0, /* input from the sender */
 	PFD_UPLOADER_IN, /* uploader input from a local file */

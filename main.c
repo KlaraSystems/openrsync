@@ -37,6 +37,7 @@
 # include <util.h>
 #endif
 #include <ctype.h>
+#include <time.h>
 
 #include "extern.h"
 
@@ -804,6 +805,7 @@ rsync_getopt(int argc, char *argv[])
 			break;
 		case '6':
 			opts.ipf = 6;
+			break;
 		case 'B':
 			if (scan_scaled(optarg, &tmpint) == -1)
 				errx(1, "--block-size=%s: invalid numeric value", optarg);
@@ -1154,6 +1156,7 @@ basedir:
 			exit(0);
 		case 'h':
 			usage(0);
+			break;
 		default:
 			usage(ERR_SYNTAX);
 		}
