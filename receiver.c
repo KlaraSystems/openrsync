@@ -271,7 +271,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	struct flist	*fl = NULL, *dfl = NULL;
 	size_t		 i, flsz = 0, dflsz = 0, length;
 	char		*tofree;
-	int		 rc = 0, dfd = -1, phase = 0, c;
+	int		 rc = 0, dfd = -1, tfd = -1, phase = 0, c;
 	int32_t		 ioerror;
 	struct stat	 st;
 	struct pollfd	 pfd[PFD__MAX];
@@ -476,6 +476,17 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 			if (!sess->opts->dry_run)
 				WARN("%s: open", root);
 	}
+	if (sess->opts->temp_dir) {
+		tfd = open(sess->opts->temp_dir, O_RDONLY | O_DIRECTORY, 0);
+		if (dfd == -1) {
+			if (!sess->opts->dry_run) {
+				ERR("%s: open", sess->opts->temp_dir);
+				goto out;
+			} else
+				if (!sess->opts->dry_run)
+					WARN("%s: open", sess->opts->temp_dir);
+		}
+	}
 #else
 	if ((dfd = open(root, O_RDONLY, 0)) == -1) {
 		if (!sess->opts->dry_run) {
@@ -500,6 +511,34 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 			WARN("%s: fstat", root);
 			close(dfd);
 			dfd = -1;
+		}
+	}
+	if (sess->opts->temp_dir) {
+		if ((tfd = open(sess->opts->temp_dir, O_RDONLY, 0)) == -1) {
+			if (!sess->opts->dry_run) {
+				ERR("%s: open", sess->opts->temp_dir);
+				goto out;
+			} else
+				WARN("%s: open", sess->opts->temp_dir);
+		} else if (fstat(tfd, &st) == -1) {
+			if (!sess->opts->dry_run) {
+				ERR("%s: fstat", sess->opts->temp_dir);
+				goto out;
+			} else {
+				WARN("%s: fstat", sess->opts->temp_dir);
+				close(tfd);
+				tfd = -1;
+			}
+		} else if (!S_ISDIR(st.st_mode)) {
+			if (!sess->opts->dry_run) {
+				ERRX("%s: not a directory",
+				    sess->opts->temp_dir);
+				goto out;
+			} else {
+				WARN("%s: fstat", sess->opts->temp_dir);
+				close(tfd);
+				tfd = -1;
+			}
 		}
 	}
 #endif
@@ -534,7 +573,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	pfd[PFD_DOWNLOADER_IN].events = POLLIN;
 	pfd[PFD_SENDER_OUT].events = POLLOUT;
 
-	ul = upload_alloc(root, dfd, fdout, CSUM_LENGTH_PHASE1, fl, flsz,
+	ul = upload_alloc(root, dfd, tfd, fdout, CSUM_LENGTH_PHASE1, fl, flsz,
 	    oumask);
 
 	if (ul == NULL) {
@@ -542,7 +581,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		goto out;
 	}
 
-	dl = download_alloc(sess, fdin, fl, flsz, dfd);
+	dl = download_alloc(sess, fdin, fl, flsz, dfd, tfd);
 	if (dl == NULL) {
 		ERRX1("download_alloc");
 		goto out;
@@ -756,6 +795,8 @@ out:
 
 	if (dfd != -1)
 		close(dfd);
+	if (tfd != -1)
+		close(tfd);
 
 	flist_free(fl, flsz);
 	flist_free(dfl, dflsz);

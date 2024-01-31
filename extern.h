@@ -300,6 +300,7 @@ struct	opts {
 	char            *filesfrom_host;        /* --files-from */
 	char            *filesfrom_path;        /* --files-from */
 	int		 whole_file;		/* --whole-file */
+	char		*temp_dir;		/* --temp-dir */
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif
@@ -459,6 +460,9 @@ const struct flist *find_hl(const struct flist *this,
 
 extern int verbose;
 
+#define	TMPDIR_FD	(sess->opts->temp_dir ? p->tempfd : p->rootfd)
+#define	IS_TMPDIR	(sess->opts->temp_dir != NULL)
+
 #define MINIMUM(a, b) (((a) < (b)) ? (a) : (b))
 
 #define LOG0(_fmt, ...) \
@@ -584,14 +588,14 @@ int	rsync_uploader(struct upload *, int *, struct sess *, int *,
 int	rsync_uploader_tail(struct upload *, struct sess *);
 
 struct download	*download_alloc(struct sess *, int, struct flist *, size_t,
-		    int);
+		    int, int);
 size_t		 download_needs_redo(struct download *);
 const char	*download_partial_path(struct sess *, const struct flist *,
 		    char *, size_t);
 const char	*download_partial_filepath(const struct flist *);
 void		 download_interrupted(struct sess *, struct download *);
 void		 download_free(struct sess *, struct download *);
-struct upload	*upload_alloc(const char *, int, int, size_t,
+struct upload	*upload_alloc(const char *, int, int, int, size_t,
 		   struct flist *, size_t, mode_t);
 void		upload_next_phase(struct upload *, struct sess *, int);
 void		upload_ack_complete(struct upload *, struct sess *, int);
@@ -617,7 +621,7 @@ void		 hash_file(const void *, size_t, unsigned char *,
 		    const struct sess *);
 int		 hash_file_by_path(int, const char *, size_t, unsigned char *);
 
-int		 move_file(int, const char *, int, const char *);
+int		 move_file(int, const char *, int, const char *, int);
 void		 copy_file(int, const char *, const struct flist *);
 int		 backup_to_dir(struct sess *, int, const struct flist *,
 		    const char *, mode_t);
@@ -632,7 +636,7 @@ char		*mkstemplinkat(char*, int, char *);
 char		*mkstempfifoat(int, char *);
 char		*mkstempnodat(int, char *, mode_t, dev_t);
 char		*mkstempsock(const char *, char *);
-int		 mktemplate(char **, const char *, int);
+int		 mktemplate(char **, const char *, int, int);
 
 int		 parse_rule(const char *line, enum rule_type, int);
 void		 parse_file(const char *, enum rule_type, int);

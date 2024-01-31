@@ -263,12 +263,23 @@ mkstempsock(const char *root, char *path)
  * (excluding the final '\0').
  */
 int
-mktemplate(char **ret, const char *path, int hasdir)
+mktemplate(char **ret, const char *path, int hasdir, int tmp)
 {
 	int		 n, dirlen;
 	const char	*cp;
 
-	if (hasdir && (cp = strrchr(path, '/')) != NULL) {
+	if (tmp) {
+		char *basename = strrchr(path, '/');
+		if (basename == NULL) {
+			basename = (char *)path;
+		} else {
+			basename++;
+		}
+		if ((n = asprintf(ret, ".%s.XXXXXXXXXX", basename)) == -1) {
+			ERR("asprintf");
+			*ret = NULL;
+		}
+	} else if (hasdir && (cp = strrchr(path, '/')) != NULL) {
 		dirlen = cp - path;
 		n = asprintf(ret, "%.*s/.%s.XXXXXXXXXX",
 			dirlen, path, path + dirlen + 1);

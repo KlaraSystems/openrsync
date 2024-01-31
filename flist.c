@@ -2071,7 +2071,7 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 					return 0;
 				}
 				if (move_file(root, fl[i].wpath,
-				    root, buf) == -1) {
+				    root, buf, 1) == -1) {
 					ERR("%s: move_file: %s", fl[i].wpath,
 					    buf);
 					return 0;

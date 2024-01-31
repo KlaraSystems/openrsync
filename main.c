@@ -717,6 +717,7 @@ static const struct option	 lopts[] = {
 #if 0
     { "sync-file",	required_argument, NULL,		6 },
 #endif
+    { "temp-dir",	required_argument, NULL,		'T' },
     { "timeout",	required_argument, NULL,		OP_TIMEOUT },
     { "times",		no_argument,	NULL,			't' },
     { "no-times",	no_argument,	&opts.preserve_times,	0 },
@@ -748,7 +749,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-46BCDFHIKLOPRSWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-46BCDFHIKLOPRSTWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--cache | --no-cache]\n"
 	    "\t[--compare-dest=dir] [--contimeout] [--copy-dest=dir] [--copy-unsafe-links]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
@@ -932,6 +933,12 @@ rsync_getopt(int argc, char *argv[])
 			break;
 		case 'S':
 			opts.sparse++;
+			break;
+		case 'T':
+			free(opts.temp_dir);
+			opts.temp_dir = strdup(optarg);
+			if (opts.temp_dir == NULL)
+				errx(ERR_NOMEM, NULL);
 			break;
 		case 'W':
 			opts.whole_file = 1;

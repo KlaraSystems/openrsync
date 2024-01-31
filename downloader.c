@@ -79,6 +79,7 @@ struct	download {
 	struct flist	   *fl; /* file list */
 	size_t		    flsz; /* size of file list */
 	int		    rootfd; /* destination directory */
+	int		    tempfd; /* temp directory */
 	int		    fdin; /* read descriptor from sender */
 	char		   *obuf; /* pre-write buffer */
 	size_t		    obufsz; /* current size of obuf */
@@ -146,8 +147,25 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
 	/* Don't touch p->fl. */
 	/* Don't touch p->flsz. */
 	/* Don't touch p->rootfd. */
+	/* Don't touch p->tempfd. */
 	/* Don't touch p->fdin. */
 	MD4_Update(&p->ctx, &seed, sizeof(int32_t));
+}
+
+static inline bool
+download_is_inplace(struct sess *sess, struct download *p, bool resumed_only)
+{
+
+	if (!sess_is_inplace(sess))
+		return false;
+	if (!resumed_only)
+		return true;
+
+	/*
+	 * We're definitely inplace, but we're only a resumed transfer if we
+	 * actually have the previous file mapped.
+	 */
+	return p->ofd >= 0;
 }
 
 /*
@@ -342,7 +360,7 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 		 * situation so that the user can manually recover the partial
 		 * file and make a decision on it.
 		 */
-		if (move_file(p->rootfd, p->fname, pdfd, fname) == -1) {
+		if (move_file(p->rootfd, p->fname, pdfd, fname, 0) == -1) {
 			/*
 			 * Don't leave the partial file laying around if
 			 * --partial-dir was requested and we can't manage it.
@@ -355,6 +373,16 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 		}
 		if (pdfd != p->rootfd)
 			close(pdfd);
+	} else if (sess->opts->temp_dir &&
+	    !download_is_inplace(sess, p, false)) {
+		char *fname;
+
+		fname = strrchr(f->path, '/');
+		if (fname == NULL)
+			fname = f->path;
+		else
+			fname++;
+		(void)unlinkat(p->tempfd, fname, 0);
 	} else {
 		(void)unlinkat(p->rootfd, p->fname, 0);
 	}
@@ -404,7 +432,7 @@ download_cleanup(struct sess *sess, struct download *p, int cleanup)
  */
 struct download *
 download_alloc(struct sess *sess, int fdin, struct flist *fl, size_t flsz,
-	int rootfd)
+	int rootfd, int tempfd)
 {
 	struct download	*p;
 
@@ -417,6 +445,7 @@ download_alloc(struct sess *sess, int fdin, struct flist *fl, size_t flsz,
 	p->fl = fl;
 	p->flsz = flsz;
 	p->rootfd = rootfd;
+	p->tempfd = tempfd;
 	p->fdin = fdin;
 	p->needredo = 0;
 	download_reinit(sess, p, 0);
@@ -616,7 +645,8 @@ struct dlrename {
 	struct download *dl;
 	const struct hardlinks *hl;
 	int n;
-	int fd;
+	int fromfd;
+	int tofd;
 };
 
 void
@@ -639,10 +669,10 @@ delayed_renames(struct sess *sess)
 			dlr->entries[i].to);
 		if (sess->opts->hard_links)
 			hl_p = find_hl(dlr->entries[i].file, dlr->hl);
-		if (renameat(dlr->fd, dlr->entries[i].from, dlr->fd,
-				dlr->entries[i].to) == -1) {
+		if (move_file(dlr->fromfd, dlr->entries[i].from, dlr->tofd,
+				dlr->entries[i].to, 1) == -1) {
 			status = FLIST_FAILED;
-			ERR("rename '%s' -> '%s'", dlr->entries[i].from,
+			ERR("dlr move_file '%s' -> '%s'", dlr->entries[i].from,
 				dlr->entries[i].to);
 		}
 		if (hl_p != NULL) {
@@ -664,7 +694,7 @@ delayed_renames(struct sess *sess)
 
 			hl_p = NULL;
 		}
-		if (unlinkat(dlr->fd, dlr->entries[i].rmdir, AT_REMOVEDIR) == 
+		if (unlinkat(dlr->tofd, dlr->entries[i].rmdir, AT_REMOVEDIR) ==
 			-1) {
 			if (errno != ENOTEMPTY) {
 				ERR("rmdir '%s'", dlr->entries[i].rmdir);
@@ -734,22 +764,6 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 	return 1;
 }
 
-static inline bool
-download_is_inplace(struct sess *sess, struct download *p, bool resumed_only)
-{
-
-	if (!sess_is_inplace(sess))
-		return false;
-	if (!resumed_only)
-		return true;
-
-	/*
-	 * We're definitely inplace, but we're only a resumed transfer if we
-	 * actually have the previous file mapped.
-	 */
-	return p->ofd >= 0;
-}
-
 /*
  * The downloader waits on a file the sender is going to give us, opens
  * and mmaps the existing file, opens a temporary file, dumps the file
@@ -788,7 +802,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			renamer->hl = hl;
 			renamer->dl = p;
 			renamer->n = 0;
-			renamer->fd = p->rootfd;
+			renamer->fromfd = p->rootfd;
+			renamer->tofd = p->rootfd;
 		} else
 			renamer = sess->dlrename;
 	}
@@ -969,13 +984,13 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			}
 		} else {
 			if (mktemplate(&p->fname, f->path,
-			    sess->opts->recursive || sess->opts->relative) ==
-				-1) {
+			    sess->opts->recursive || sess->opts->relative,
+			    IS_TMPDIR) == -1) {
 				ERRX1("mktemplate");
 				goto out;
 			}
 
-			if ((p->fd = mkstempat(p->rootfd, p->fname)) == -1) {
+			if ((p->fd = mkstempat(TMPDIR_FD, p->fname)) == -1) {
 				ERR("mkstempat: '%s'", p->fname);
 				goto out;
 			}
@@ -1228,7 +1243,7 @@ again:
 				goto out;
 			}
 			if (move_file(p->rootfd, f->path,
-				p->rootfd, buf2) == -1) {
+				p->rootfd, buf2, 1) == -1) {
 				ERR("%s: move_file: %s", f->path, buf2);
 				goto out;
 			}
@@ -1313,9 +1328,9 @@ again:
 			hl_p = find_hl(f, hl);
 	}
 	if (!download_is_inplace(sess, p, false) &&
-	    move_file(f->pdfd >= 0 ? f->pdfd : p->rootfd, p->fname, p->rootfd,
-	    usethis) == -1) {
-		ERR("%s: move_file: %s", p->fname, f->path);
+	    move_file(f->pdfd >= 0 ? f->pdfd : TMPDIR_FD, p->fname, p->rootfd,
+	    usethis, 1) == -1) {
+		ERR("%s: downloader move_file: %s fd=%d", p->fname, f->path, (f->pdfd >= 0 ? f->pdfd : TMPDIR_FD));
 		goto out;
 	}
 	if (sess->opts->dlupdates) {
