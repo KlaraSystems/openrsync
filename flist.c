@@ -2019,7 +2019,7 @@ flist_add_del(struct sess *sess, const char *path, size_t stripdir,
 int
 flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 {
-	ssize_t	 i;
+	size_t	 i;
 	int	 flag;
 	char buf[PATH_MAX];
 
