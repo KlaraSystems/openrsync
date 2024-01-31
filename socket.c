@@ -141,6 +141,9 @@ inet_setsockopts(const struct opts *opts, int sock)
 	char *name, *part, *sockopts, *value;
 	int error, sockval;
 
+	if (opts->sockopts == NULL)
+		return 0;
+
 	sockopts = strdup(opts->sockopts);
 	if (sockopts == NULL) {
 		ERR("strdup");
