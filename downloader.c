@@ -661,6 +661,7 @@ delayed_renames(struct sess *sess)
 {
 	int i;
 	struct dlrename *dlr = sess->dlrename;
+	struct dlrename_entry *curr;
 	const struct flist *hl_p = NULL;
 	struct download *p;
 	int status;
@@ -672,8 +673,8 @@ delayed_renames(struct sess *sess)
 	for (i = 0; i < dlr->n; i++) {
 		status = FLIST_SUCCESS;
 
-		LOG3("mv '%s' -> '%s'", dlr->entries[i].from,
-			dlr->entries[i].to);
+		curr = &dlr->entries[i];
+		LOG3("mv '%s' -> '%s'", curr->from, curr->to);
 		if (sess->opts->hard_links)
 			hl_p = find_hl(dlr->entries[i].file, dlr->hl);
 		if (!platform_move_file(sess, dlr->entries[i].file,
@@ -681,7 +682,7 @@ delayed_renames(struct sess *sess)
 			status = FLIST_FAILED;
 		}
 		if (hl_p != NULL) {
-			const char *path = dlr->entries[i].to;
+			const char *path = curr->to;
 
 			if (unlinkat(p->rootfd, path, 0) == -1) {
 				if (errno != ENOENT) {
@@ -699,17 +700,18 @@ delayed_renames(struct sess *sess)
 
 			hl_p = NULL;
 		}
-		if (unlinkat(dlr->tofd, dlr->entries[i].rmdir, AT_REMOVEDIR) ==
-			-1) {
+		if (curr->rmdir != NULL &&
+		    unlinkat(dlr->tofd, curr->rmdir, AT_REMOVEDIR) == -1) {
 			if (errno != ENOTEMPTY) {
-				ERR("rmdir '%s'", dlr->entries[i].rmdir);
+				ERR("rmdir '%s'", curr->rmdir);
 			}
 		}
-		dlr->entries[i].file->flstate |= status;
-		free(dlr->entries[i].from);
-		free(dlr->entries[i].rmdir);
-		dlr->entries[i].from = NULL;
-		dlr->entries[i].rmdir = NULL;
+
+		curr->file->flstate |= status;
+		free(curr->from);
+		free(curr->rmdir);
+		curr->from = NULL;
+		curr->rmdir = NULL;
 	}
 	free(dlr->entries);
 	dlr->entries = NULL;
@@ -1663,12 +1665,15 @@ again:
 	if (sess->lateprint)
 		output(sess, f, 1);
 	/* 
-	 * Finally, rename the temporary to the real file, unless 
+	 * Finally, rename the temporary to the real file, unless
 	 * --delay-updates is in effect, in which case it is going to
 	 * the .~tmp~ subdirectory for now and is renamed later in
 	 * a batch with all the other new or changed files.
 	 */
 	if (sess->opts->dlupdates) {
+		struct dlrename_entry *prev, *curr;
+
+		prev = NULL;
 		if (renamer->entries == NULL) {
 			renamer->entries = calloc(flsz,
 				sizeof(struct dlrename_entry));
@@ -1678,53 +1683,61 @@ again:
 			}
 			renamer->n = 0;
 		}
+		if (renamer->n > 0)
+			prev = &renamer->entries[renamer->n - 1];
 		renamer->n++;
-		if ((usethis = strrchr(f->path, '/')) != NULL) {
-			dirlen = usethis - f->path;
-			if (snprintf(buf2, sizeof(buf2), "%.*s/.~tmp~",
-			    dirlen, f->path) > (int)sizeof(buf2)) {
-				ERR("%s: delayed-update: compound path too "
-				    "long: %.*s/.~tmp~ > %d", f->path,
-				    dirlen, f->path, (int)sizeof(buf2));
-				goto out;
-			}
-			if (mkdirat(p->rootfd, buf2, 0700) == -1)
-				if (errno != EEXIST) {
-					ERR("mkdir '%s'", buf2);
-					goto out;
-				}
-			renamer->entries[renamer->n - 1].rmdir = strdup(buf2);
-			if (renamer->entries[renamer->n - 1].rmdir == NULL) {
-				ERR("strdup");
-				goto out;
-			}
-			if (snprintf(buf2, sizeof(buf2), "%.*s/.~tmp~/%s",
-			    dirlen, f->path, f->path + dirlen + 1) >
-			    (int)sizeof(buf2)) {
-				ERR("%s: delayed-update: compound path too "
-				    "long: %.*s/.~tmp~/%s > %d", f->path,
-				    dirlen, f->path, f->path + dirlen + 1,
-				    (int)sizeof(buf2));
-				goto out;
-			}
+		curr = &renamer->entries[renamer->n - 1];
+
+		usethis = strrchr(f->path, '/');
+		if (usethis == NULL)
+			usethis = f->path;
+		else
+			usethis++;
+
+		/*
+		 * dirlen is either 0 and we're at the root, or dirlen is
+		 * non-zero and it includes the trailing slash.
+		 */
+		dirlen = usethis - f->path;
+		assert(usethis == f->path || *(usethis - 1) == '/');
+		if (snprintf(buf2, sizeof(buf2), "%.*s.~tmp~",
+		    dirlen, f->path) > (int)sizeof(buf2)) {
+			ERR("%s: delayed-update: compound path too "
+			    "long: %.*s.~tmp~ > %d", f->path,
+			    dirlen, f->path, (int)sizeof(buf2));
+			goto out;
+		}
+
+		if (prev != NULL && strcmp(buf2, prev->rmdir) == 0) {
+			/*
+			 * No need to try rmdir(2) every single time; if we have
+			 * another entry going to the same directory, then move
+			 * rmdir just a little later.
+			 */
+			curr->rmdir = prev->rmdir;
+			prev->rmdir = NULL;
 		} else {
-			if (snprintf(buf2, sizeof(buf2), ".~tmp~/%s", f->path) >
-			    (int)sizeof(buf2)) {
-				ERR("%s: delayed-update: compound path too "
-				    "long: .~tmp~/%s > %d", f->path,
-				    f->path, (int)sizeof(buf2));
-				goto out;
-			}
-			if (mkdirat(p->rootfd, ".~tmp~", 0700) == -1)
-				if (errno != EEXIST) {
-					ERR("mkdir '%s'", buf2);
-					goto out;
-				}
-			renamer->entries[renamer->n - 1].rmdir = strdup(".~tmp~");
-			if (renamer->entries[renamer->n - 1].rmdir == NULL) {
+			curr->rmdir = strdup(buf2);
+			if (curr->rmdir == NULL) {
 				ERR("strdup");
 				goto out;
 			}
+
+			if (mkdirat(p->rootfd, curr->rmdir, 0700) == -1 &&
+			    errno != EEXIST) {
+				ERR("mkdir '%s'", curr->rmdir);
+				free(curr->rmdir);
+				curr->rmdir = NULL;
+				goto out;
+			}
+		}
+
+		if (snprintf(buf2, sizeof(buf2), "%s/%s", curr->rmdir,
+		    f->path + dirlen) > (int)sizeof(buf2)) {
+			ERR("%s: delayed-update: compound path too "
+			    "long: .~tmp~/%s > %d", f->path,
+			    f->path, (int)sizeof(buf2));
+			goto out;
 		}
 		usethis = buf2;
 	} else {
