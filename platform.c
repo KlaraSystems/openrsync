@@ -21,7 +21,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#define	FLSTAT_PLATFORM_XATTR		FLSTAT_PLATFORM_BIT1
+#define	FLSTAT_PLATFORM_XATTR			FLSTAT_PLATFORM_BIT1
+#define	FLSTAT_PLATFORM_CLEAR_XATTR		FLSTAT_PLATFORM_BIT2
+#define	FLSTAT_PLATFORM_UNLINKED		FLSTAT_PLATFORM_BIT3
 
 static int
 apple_open_xattrs(const struct sess *sess, const struct flist *f, int oflags)
@@ -150,7 +152,219 @@ hooksent:
 
 	return 1;
 }
+
+#define	HAVE_PLATFORM_FLIST_RECEIVED	1
+void
+platform_flist_received(struct sess *sess, struct flist *fl, size_t flsz)
+{
+	struct flist temp;
+
+	if (!sess->opts->extended_attributes)
+		return;
+
+	for (size_t i = 0; i < flsz - 1; i++) {
+		struct flist *search;
+		const char *search_base;
+		size_t search_prefix;
+
+		search_base = NULL;
+		search = &fl[i];
+
+		if (!S_ISREG(search->st.mode))
+			continue;
+
+		search_base = strrchr(search->path, '/');
+		if (search_base == NULL)
+			search_base = search->path;
+		else
+			search_base++;
+
+		if (strncmp(search_base, "._", 2) != 0)
+			continue;
+
+		/*
+		 * Track the parts we need to match; the leading directory bits, and the
+		 * trailing filename.
+		 */
+		search_prefix = search_base - search->path;
+		search_base += 2;
+
+		for (size_t j = i + 1; j < flsz; j++) {
+			struct flist *next;
+
+			next = &fl[j];
+
+			/*
+			 * It's already sorted in such a way that we shouldn't have to worry
+			 * about missing anything if we stop searching as soon as we move
+			 * out of the search prefix.
+			 */
+			if (strncmp(next->path, search->path, search_prefix) != 0)
+				break;
+
+			if (strcmp(next->path + search_prefix, search_base) != 0)
+				continue;
+
+			/* Swap */
+			temp = *next;
+			*next = *search;
+			*search = temp;
+
+			break;
+		}
+	}
+}
+
+#define	HAVE_PLATFORM_FLIST_ENTRY_RECEIVED	1
+int
+platform_flist_entry_received(struct sess *sess, int fdin, struct flist *f)
+{
+	uint8_t xattr;
+
+	if (!sess->opts->extended_attributes)
+		return 1;
+
+	if (!io_read_byte(sess, fdin, &xattr)) {
+		ERRX1("io_read_byte");
+		return 0;
+	}
+
+	if (xattr)
+		f->st.flags |= FLSTAT_PLATFORM_XATTR;
+	else
+		f->st.flags |= FLSTAT_PLATFORM_CLEAR_XATTR;
+	return 1;
+}
+
+static int
+apple_merge_appledouble(const struct sess *sess, struct flist *f,
+    int fromfd, const char *fname, int tofd, const char *toname)
+{
+	char newname[PATH_MAX];
+	const char *base;
+	int ffd, tfd, retval, serr;
+
+	/*
+	 * We'll redo our base name calculation just to preserve the parts of
+	 * toname so that we can more easily reconstruct it into `newname`.
+	 */
+	base = strrchr(toname, '/');
+	if (base == NULL)
+		base = toname;
+	else
+		base++;
+
+	/* Chop off the leading ._ to get the unpacked name */
+	if (snprintf(newname, sizeof(newname), "%.*s%s", base - toname, toname,
+	    base + 2) == -1) {
+		ERR("snprintf");
+		return 0;
+	}
+
+	ffd = tfd = -1;
+	ffd = openat(fromfd, fname, O_RDONLY);
+	if (ffd == -1) {
+		ERR("%s: openat", fname);
+		return 0;
+	}
+
+	tfd = openat(tofd, newname,
+	    O_WRONLY | (sess->opts->preserve_links ? O_NOFOLLOW : 0));
+	if (tfd == -1) {
+		ERR("%s: openat", newname);
+		close(ffd);
+		return 0;
+	}
+
+	retval = fcopyfile(ffd, tfd, NULL,
+	    COPYFILE_UNPACK | COPYFILE_ACL | COPYFILE_XATTR) == 0;
+	serr = errno;
+
+	close(tfd);
+	close(ffd);
+
+	/*
+	 * We won't make failing to unlink the AppleDouble file fatal to the
+	 * operation if the unpack succeeded.
+	 */
+	if (retval) {
+		if (unlinkat(fromfd, fname, 0) != 0)
+			ERRX1("%s: unlink: %s", fname, strerror(errno));
+
+		f->st.flags |= FLSTAT_PLATFORM_UNLINKED;
+	} else {
+		ERRX1("%s: copyfile extended attributes from %s: %s",
+		    newname, fname, strerror(serr));
+	}
+
+	return retval;
+}
+
+#define	HAVE_PLATFORM_MOVE_FILE	1
+int
+platform_move_file(const struct sess *sess, struct flist *fl,
+    int fromfd, const char *fname, int tofd, const char *toname, int final)
+{
+
+	if (final && sess->opts->extended_attributes) {
+		const char *base;
+
+		base = basename(toname);
+		if (strncmp(base, "._", 2) == 0) {
+			/* We won't move this, we'll just unpack it. */
+			return apple_merge_appledouble(sess, fl, fromfd, fname,
+			    tofd, toname);
+		}
+	}
+
+	if (move_file(fromfd, fname, tofd, toname) != 0) {
+		ERR("%s: move_file: %s", fname, toname);
+		return 0;
+	}
+
+	return 1;
+}
+
+#define	HAVE_PLATFORM_FINISH_TRANSFER 1
+int
+platform_finish_transfer(const struct sess *sess, struct flist *fl,
+    int rootfd, const char *name)
+{
+	const char *base;
+
+	/*
+	 * Here we'll handle the case of an --inplace transfer being finished.
+	 */
+	if (!sess->opts->extended_attributes || sess->opts->dlupdates)
+		return 1;
+	if ((fl->st.flags & FLSTAT_PLATFORM_UNLINKED) != 0)
+		return 1;
+
+	base = basename(name);
+	if (strncmp(base, "._", 2) != 0) {
+#ifdef notyet
+		/*
+		 * Not yet clear: optimal approach to clearing extended
+		 * attributes on a file.  copyfile() from /dev/null -> path
+		 * works to clear them, but trying to plumb the root path
+		 * through adds some complexity.  There is no such thing as
+		 * copyfileat() that takes dirfd / path pairs, and we can't take
+		 * the approach we do to merge the AppleDouble file in because
+		 * fcopyfile() is implemented in userspace and won't accept
+		 * /dev/null at the moment.
+		 */
+		if ((fl->st.flags & FLSTAT_PLATFORM_CLEAR_XATTR) != 0) {
+			/* XXX Clear xattrs / acls */
+		}
 #endif
+
+		return 1;
+	}
+
+	/* Merge xattrs in. */
+	return apple_merge_appledouble(sess, fl, rootfd, name, rootfd, name);
+}
+#endif /* __APPLE__ */
 
 #if !HAVE_PLATFORM_FLIST_MODIFY
 int
