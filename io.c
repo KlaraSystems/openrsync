@@ -421,6 +421,37 @@ io_read_flush(struct sess *sess, int fd)
 }
 
 /*
+ * Read buffer from non-block descriptor, possibly in multiplex read
+ * mode, until a newline or the buffer size has been exhausted.
+ * Returns zero on failure, non-zero on success (all bytes read from
+ * the descriptor or a newline has been hit).  The newline is omitted from the
+ * final result, and *sz is updated with the size of the line.
+ */
+int
+io_read_line(struct sess *sess, int fd, char *buf, size_t *sz)
+{
+	size_t	i, insz = *sz;
+	unsigned char byte;
+
+	for (i = 0; i < insz; i++) {
+		if (!io_read_byte(sess, fd, &byte)) {
+			ERRX1("io_read_byte");
+			return 0;
+		}
+		if (byte == '\n') {
+			buf[i] = '\0';
+			*sz = i;
+			return 1;
+		}
+
+		buf[i] = byte;
+	}
+
+	/* Buffer is full before reaching EOL -- kick back what we have. */
+	return 1;
+}
+
+/*
  * Read buffer from non-blocking descriptor, possibly in multiplex read
  * mode.
  * Returns zero on failure, non-zero on success (all bytes read from

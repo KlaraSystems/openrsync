@@ -536,7 +536,6 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	size_t		  i, skip;
 	int		  c, rc = 1;
 	char		**args, buf[BUFSIZ];
-	uint8_t		  byte;
 
 	if (pledge("stdio unix rpath wpath cpath dpath fattr chown getpw unveil",
 	    NULL) == -1)
@@ -579,14 +578,13 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	 */
 
 	for (;;) {
-		for (i = 0; i < sizeof(buf); i++) {
-			if (!io_read_byte(&sess, sd, &byte)) {
-				ERRX1("io_read_byte");
-				goto out;
-			}
-			if ((buf[i] = byte) == '\n')
-				break;
+		i = sizeof(buf);
+
+		if (!io_read_line(&sess, sd, buf, &i)) {
+			ERRX1("io_read_line");
+			goto out;
 		}
+
 		if (i == sizeof(buf)) {
 			ERRX("line buffer overrun");
 			goto out;
