@@ -289,8 +289,8 @@ struct	opts {
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */
 	char		*ssh_prog;		/* --rsh or -e */
-	char		*port;			/* --port */
-	char		*address;		/* --address */
+	const char	*port;			/* --port */
+	const char	*address;		/* --address */
 	char		*basedir[MAX_BASEDIR];
 	char            *filesfrom;             /* --files-from */
 	int		 from0;			/* -0 */
