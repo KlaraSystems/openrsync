@@ -581,6 +581,11 @@ void	io_unbuffer_int(const void *, size_t *, size_t, int32_t *);
 int	io_unbuffer_size(const void *, size_t *, size_t, size_t *);
 void	io_unbuffer_buf(const void *, size_t *, size_t, void *, size_t);
 
+/* accept(2) callback */
+struct sockaddr_storage;
+typedef int (rsync_client_handler)(struct sess *, int,
+	    struct sockaddr_storage *, size_t);
+
 int	rsync_receiver(struct sess *, struct cleanup_ctx *, int, int,
 	    const char *);
 int	rsync_sender(struct sess *, int, int, size_t, char **);
@@ -588,6 +593,7 @@ int	rsync_client(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
 int	rsync_daemon(int, char *[], struct opts *);
 int	rsync_connect(const struct opts *, int *, const struct fargs *);
+int	rsync_listen(struct sess *, rsync_client_handler *);
 int	rsync_socket(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
 int	rsync_is_socket(int);
