@@ -658,12 +658,19 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	LOG2("socket detected client version %d, server version %d, seed %d",
 	    sess.lver, sess.rver, sess.seed);
 
-	assert(f->mode == FARGS_RECEIVER);
+	if (f->mode == FARGS_RECEIVER) {
+		LOG2("client starting receiver: %s", f->host);
+		if (!rsync_receiver(&sess, cleanup_ctx, sd, sd, f->sink)) {
+			ERRX1("rsync_receiver");
+			goto out;
+		}
+	} else {
+		LOG2("client starting sender: %s", f->host);
+		if (!rsync_sender(&sess, sd, sd, f->sourcesz, f->sources)) {
+			ERRX1("rsync_sender");
+			goto out;
+		}
 
-	LOG2("client starting receiver: %s", f->host);
-	if (!rsync_receiver(&sess, cleanup_ctx, sd, sd, f->sink)) {
-		ERRX1("rsync_receiver");
-		goto out;
 	}
 
 #if 0

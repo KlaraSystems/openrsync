@@ -306,16 +306,22 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 				    "remote sources: %s", f->sources[i]);
 			}
 	} else {
-		if (f->mode != FARGS_RECEIVER)
-			errx(ERR_SYNTAX, "sender mode for remote "
-				"daemon receivers not yet supported");
-		for (i = 0; i < f->sourcesz; i++) {
-			if (fargs_is_daemon(f->sources[i]))
-				continue;
-			errx(ERR_SYNTAX, "non-remote daemon file "
-				"in list of remote daemon sources: "
-				"%s", f->sources[i]);
-		}
+		if (f->mode == FARGS_SENDER)
+			for (i = 0; i < f->sourcesz; i++) {
+				if (!fargs_is_remote(f->sources[i]))
+					continue;
+				errx(ERR_SYNTAX,
+				    "remote file in list of local sources: %s",
+				    f->sources[i]);
+			}
+		if (f->mode == FARGS_RECEIVER)
+			for (i = 0; i < f->sourcesz; i++) {
+				if (fargs_is_daemon(f->sources[i]))
+					continue;
+				errx(ERR_SYNTAX, "non-remote daemon file "
+					"in list of remote daemon sources: "
+					"%s", f->sources[i]);
+			}
 	}
 
 	/*
@@ -339,8 +345,17 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 	assert(f->host != NULL);
 	assert(hostlen > 0);
 
-	for (i = 0; i < f->sourcesz; i++) {
-		fargs_normalize_spec(f, f->sources[i], hostlen);
+	if (f->mode == FARGS_RECEIVER) {
+		for (i = 0; i < f->sourcesz; i++)
+			fargs_normalize_spec(f, f->sources[i], hostlen);
+	} else {
+		/*
+		 * ssh and local transfers bailed out earlier and stripped the
+		 * host: part as needed.  If we got here, we're connecting to
+		 * a daemon as a sender.
+		 */
+		assert(f->remote);
+		fargs_normalize_spec(f, f->sink, hostlen);
 	}
 
 	return f;
@@ -1285,7 +1300,6 @@ basedir:
 	 */
 
 	if (fargs->remote && opts.ssh_prog == NULL) {
-		assert(fargs->mode == FARGS_RECEIVER);
 		if ((rc = rsync_connect(&opts, &sd, fargs)) == 0) {
 			rc = rsync_socket(cleanup_ctx, &opts, sd, fargs);
 			close(sd);
