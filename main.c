@@ -392,7 +392,7 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
  * is given.
  * Return 0 on success, -1 and errno set on error.
  */
-static int
+int
 scan_scaled_def(char *maybe_scaled, long long *result, char def)
 {
 	int ret;
