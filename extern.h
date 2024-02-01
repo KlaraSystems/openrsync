@@ -695,6 +695,7 @@ void             print_filesfrom(char *const *, int, const char *);
 void		 delayed_renames(struct sess *sess);
 
 int		chmod_parse(const char *arg, struct sess *sess);
+int		scan_scaled_def(char *, long long *, char);
 
 static inline int
 sess_is_inplace(struct sess *sess)
