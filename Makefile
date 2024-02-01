@@ -6,6 +6,7 @@ OBJS	   = blocks.o \
 	     compats.o \
 	     copy.o \
 	     daemon.o \
+	     daemon_cfg.o \
 	     downloader.o \
 	     fargs.o \
 	     flist.o \
