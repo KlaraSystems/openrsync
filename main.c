@@ -136,6 +136,57 @@ split_hostspec(const char *const input, char **host, char **port, char **path)
 }
 
 /*
+ * Strips the hostnames from the remote host.
+ *   rsync://host/module/path -> module/path
+ *   host::module/path -> module/path
+ *   host:path -> path
+ * Also make sure that the remote hosts are the same.
+ */
+static void
+fargs_normalize_spec(const struct fargs *f, char *spec, size_t hostlen)
+{
+	char *cp, *ccp;
+	size_t j;
+
+	cp = spec;
+	j = strlen(cp);
+	if (f->remote && strncasecmp(cp, "rsync://", 8) == 0) {
+		/* rsync://host[:port]/path */
+		size_t module_offset = hostlen;
+		cp += 8;
+		/* skip :port */
+		if ((ccp = strchr(cp, ':')) != NULL) {
+			*ccp = '\0';
+			module_offset += strcspn(ccp + 1, "/") + 1;
+		}
+		if (strncmp(cp, f->host, hostlen) ||
+		    (cp[hostlen] != '/' && cp[hostlen] != '\0'))
+			errx(ERR_SYNTAX, "different remote host: %s", spec);
+		memmove(spec,
+			spec + module_offset + 8 + 1,
+			j - module_offset - 8);
+	} else if (f->remote && strncmp(cp, "::", 2) == 0) {
+		/* ::path */
+		memmove(spec, spec + 2, j - 1);
+	} else if (f->remote) {
+		/* host::path */
+		if (strncmp(cp, f->host, hostlen) ||
+		    (cp[hostlen] != ':' && cp[hostlen] != '\0'))
+			errx(ERR_SYNTAX, "different remote host: %s", spec);
+		memmove(spec, spec + hostlen + 2, j - hostlen - 1);
+	} else if (cp[0] == ':') {
+		/* :path */
+		memmove(spec, spec + 1, j);
+	} else {
+		/* host:path */
+		if (strncmp(cp, f->host, hostlen) ||
+		    (cp[hostlen] != ':' && cp[hostlen] != '\0'))
+			errx(ERR_SYNTAX, "different remote host: %s", spec);
+		memmove(spec, spec + hostlen + 1, j - hostlen);
+	}
+}
+
+/*
  * Take the command-line filenames (e.g., rsync foo/ bar/ baz/) and
  * determine our operating mode.
  * For example, if the first argument is a remote file, this means that
@@ -149,8 +200,8 @@ static struct fargs *
 fargs_parse(size_t argc, char *argv[], struct opts *opts)
 {
 	struct fargs	*f = NULL;
-	char		*cp, *ccp;
-	size_t		 i, j, len = 0;
+	char		*cp;
+	size_t		 i, j, hostlen = 0;
 
 	/* Allocations. */
 
@@ -197,8 +248,8 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 		if (strncasecmp(f->host, "rsync://", 8) == 0) {
 			/* rsync://host[:port]/module[/path] */
 			f->remote = 1;
-			len = strlen(f->host) - 8 + 1;
-			memmove(f->host, f->host + 8, len);
+			hostlen = strlen(f->host) - 8 + 1;
+			memmove(f->host, f->host + 8, hostlen);
 			if ((cp = strchr(f->host, '/')) == NULL)
 				errx(ERR_SYNTAX,
 				    "rsync protocol requires a module name");
@@ -225,7 +276,7 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 					*cp = '\0';
 			}
 		}
-		if ((len = strlen(f->host)) == 0)
+		if ((hostlen = strlen(f->host)) == 0)
 			errx(ERR_SYNTAX, "empty remote host");
 		if (f->remote && strlen(f->module) == 0)
 			errx(ERR_SYNTAX, "empty remote module");
@@ -277,69 +328,19 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 			return f;
 		if (f->mode == FARGS_SENDER) {
 			assert(f->host != NULL);
-			assert(len > 0);
+			assert(hostlen > 0);
 			j = strlen(f->sink);
-			memmove(f->sink, f->sink + len + 1, j - len);
+			memmove(f->sink, f->sink + hostlen + 1, j - hostlen);
 			return f;
 		} else if (f->mode != FARGS_RECEIVER)
 			return f;
 	}
 
-	/*
-	 * Now strip the hostnames from the remote host.
-	 *   rsync://host/module/path -> module/path
-	 *   host::module/path -> module/path
-	 *   host:path -> path
-	 * Also make sure that the remote hosts are the same.
-	 */
-
 	assert(f->host != NULL);
-	assert(len > 0);
+	assert(hostlen > 0);
 
 	for (i = 0; i < f->sourcesz; i++) {
-		cp = f->sources[i];
-		j = strlen(cp);
-		if (f->remote &&
-		    strncasecmp(cp, "rsync://", 8) == 0) {
-			/* rsync://host[:port]/path */
-			size_t module_offset = len;
-			cp += 8;
-			/* skip :port */
-			if ((ccp = strchr(cp, ':')) != NULL) {
-				*ccp = '\0';
-				module_offset += strcspn(ccp + 1, "/") + 1;
-			}
-			if (strncmp(cp, f->host, len) ||
-			    (cp[len] != '/' && cp[len] != '\0'))
-				errx(ERR_SYNTAX, "different remote host: %s",
-				    f->sources[i]);
-			memmove(f->sources[i],
-				f->sources[i] + module_offset + 8 + 1,
-				j - module_offset - 8);
-		} else if (f->remote && strncmp(cp, "::", 2) == 0) {
-			/* ::path */
-			memmove(f->sources[i],
-				f->sources[i] + 2, j - 1);
-		} else if (f->remote) {
-			/* host::path */
-			if (strncmp(cp, f->host, len) ||
-			    (cp[len] != ':' && cp[len] != '\0'))
-				errx(ERR_SYNTAX, "different remote host: %s",
-				    f->sources[i]);
-			memmove(f->sources[i], f->sources[i] + len + 2,
-			    j - len - 1);
-		} else if (cp[0] == ':') {
-			/* :path */
-			memmove(f->sources[i], f->sources[i] + 1, j);
-		} else {
-			/* host:path */
-			if (strncmp(cp, f->host, len) ||
-			    (cp[len] != ':' && cp[len] != '\0'))
-				errx(ERR_SYNTAX, "different remote host: %s",
-				    f->sources[i]);
-			memmove(f->sources[i],
-				f->sources[i] + len + 1, j - len);
-		}
+		fargs_normalize_spec(f, f->sources[i], hostlen);
 	}
 
 	return f;
