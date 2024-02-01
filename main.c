@@ -731,24 +731,26 @@ usage(int exitcode)
 	exit(exitcode);
 }
 
-int
-main(int argc, char *argv[])
+/*
+ * Parse options out of argv; this will later be shared with daemon mode to
+ * parse options sent over the wire from clients.  We'll add at least a filter
+ * argument to be able to filter out some arguments and their values that make
+ * no sense for dealing with the daemon.
+ *
+ * Returns NULL on error or the client options struct on success-- for
+ * convenience we'll just use the global we've setup so that we don't need to
+ * change the definition of lopts, but if we wanted to be able to take a
+ * caller-allocated struct opts we'd need to return OP_* or 'f'lags from every
+ * option.
+ */
+static struct opts *
+rsync_getopt(int argc, char *argv[])
 {
-	pid_t		 child;
-	int		 cvs_excl, fds[2], sd = -1, rc, c, st, i, lidx;
+	long long	 tmpint;
 	size_t		 basedir_cnt = 0;
-	struct sess	 sess;
-	struct fargs	*fargs;
-	char		**args;
 	const char	*errstr;
-	long long 	 tmpint;
+	int		 c, cvs_excl, lidx;
 	int		 opts_F = 0, opts_no_relative = 0, opts_no_dirs = 0;
-
-	/* Global pledge. */
-
-	if (pledge("stdio unix rpath wpath cpath dpath inet fattr chown dns getpw proc exec unveil",
-	    NULL) == -1)
-		err(ERR_IPC, "pledge");
 
 	cvs_excl = 0;
 	opts.max_size = opts.min_size = -1;
@@ -1108,14 +1110,6 @@ basedir:
 	/* Shouldn't be possible. */
 	assert(opts.ipf == 0 || opts.ipf == 4 || opts.ipf == 6);
 
-	argc -= optind;
-	argv += optind;
-
-	/* FIXME: reference implementation rsync accepts this. */
-
-	if (argc < 2)
-		usage(ERR_SYNTAX);
-
 	if (opts.inplace) {
 		if (opts.partial_dir != NULL)
 			errx(ERR_SYNTAX,
@@ -1202,7 +1196,7 @@ basedir:
 			opts.filesfrom_path = strdup(opts.filesfrom);
 			if (opts.filesfrom_path == NULL) {
 				ERR("strdup filesfrom no host");
-				return 1;
+				return NULL;
 			}
 			opts.filesfrom_host = NULL;
 			opts.filesfrom_port = NULL;
@@ -1223,16 +1217,61 @@ basedir:
 		ERRX1("Cannot use --dirs and --no-dirs at the same time");
 
 	/*
-	 * Signals blocked until we understand what session we'll be using.
-	 */
-	cleanup_init(cleanup_ctx);
-
-	/*
-	 * XXX rsync started defaulting to --delete-during in later versions of the
-	 * protocol (30 and up).
+	 * XXX rsync started defaulting to --delete-during in later versions of
+	 * the protocol (30 and up).
 	 */
 	if (opts.del == DMODE_UNSPECIFIED)
 		opts.del = DMODE_BEFORE;
+
+	if (!opts.server) {
+		if (cvs_excl) {
+			int ret;
+
+			ret = parse_rule("-C", RULE_NONE);
+			assert(ret == 0);
+
+			ret = parse_rule(":C", RULE_NONE);
+			assert(ret == 0);
+
+			/* Silence NDEBUG warnings */
+			(void)ret;
+		}
+	}
+
+	return &opts;
+}
+
+int
+main(int argc, char *argv[])
+{
+	pid_t		 child;
+	int		 fds[2], sd = -1, rc, st, i;
+	struct sess	 sess;
+	struct fargs	*fargs;
+	char		**args;
+
+	/* Global pledge. */
+
+	if (pledge("stdio unix rpath wpath cpath dpath inet fattr chown dns getpw proc exec unveil",
+	    NULL) == -1)
+		err(ERR_IPC, "pledge");
+
+	if (rsync_getopt(argc, argv) == NULL) {
+		usage(ERR_SYNTAX);
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	/* FIXME: reference implementation rsync accepts this. */
+
+	if (argc < 2)
+		usage(ERR_SYNTAX);
+
+	/*
+	 * Signals blocked until we understand what session we'll be using.
+	 */
+	cleanup_init(cleanup_ctx);
 
 	/*
 	 * This is what happens when we're started with the "hidden"
@@ -1242,19 +1281,6 @@ basedir:
 
 	if (opts.server)
 		exit(rsync_server(cleanup_ctx, &opts, (size_t)argc, argv));
-
-	if (cvs_excl) {
-		int ret;
-
-		ret = parse_rule("-C", RULE_NONE);
-		assert(ret == 0);
-
-		ret = parse_rule(":C", RULE_NONE);
-		assert(ret == 0);
-
-		/* Silence NDEBUG warnings */
-		(void)ret;
-	}
 
 	/*
 	 * Now we know that we're the client on the local machine
