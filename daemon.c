@@ -170,10 +170,32 @@ daemon_read_hello(struct sess *sess, int fd, char **module)
 }
 
 static int
-daemon_read_options(struct sess *sess, int fd)
+daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 {
 	char buf[BUFSIZ];
-	size_t linesz;
+	char **argv, **pargv;
+	size_t argc, argvsz, linesz, nextsz;
+
+	argv = NULL;
+	argc = nextsz = 0;
+
+	/*
+	 * At a minimum we'll have these three lines:
+	 *
+	 * --server
+	 * .
+	 * <module>[/<path>]
+	 *
+	 * So we'll start with an array sized for 4 arguments to allow a little
+	 * wiggle room, and we'll allocate in groups of 5 as we need more.
+	 */
+#define	OPT_ALLOC_SLOTS	5
+	argvsz = OPT_ALLOC_SLOTS;
+	argv = recallocarray(argv, 0, OPT_ALLOC_SLOTS, sizeof(*argv));
+	if (argv == NULL) {
+		/* XXX Error */
+		return -1;
+	}
 
 	for (;;) {
 		linesz = sizeof(buf);
@@ -189,10 +211,49 @@ daemon_read_options(struct sess *sess, int fd)
 		} else if (linesz == 0) {
 			break;
 		}
-		fprintf(stderr, "Read option %s\n", buf);
+
+		if (argc == INT_MAX) {
+			/*
+			 * XXX Something hinky; don't allow it because we cannot
+			 * exceed an int's worth.  Do we want to limit byte size
+			 * as well? Possibly.
+			 */
+			goto fail;
+		}
+
+		/*
+		 * If argc == argvsz, we need more to be able to null terminate
+		 * the array properly.
+		 */
+		if (argc == argvsz) {
+			pargv = argv;
+			nextsz = argvsz + OPT_ALLOC_SLOTS;
+			argv = recallocarray(pargv, argvsz, nextsz,
+			    sizeof(*argv));
+			if (argv == NULL) {
+				/* XXX Error */
+				argv = pargv;
+				goto fail;
+			}
+		}
+
+		argv[argc] = strdup(buf);
+		if (argv[argc] == NULL) {
+			/* XXX Maybe try to log it? */
+			goto fail;
+		}
+
+		argc++;
 	}
 
+	*oargc = argc;
+	*oargv = argv;
 	return 0;
+fail:
+	for (size_t i = 0; i < argc; i++)
+		free(argv[i]);
+	free(argv);
+	return -1;
 }
 
 static int
@@ -200,7 +261,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
     size_t slen)
 {
 	struct daemon_role *role;
-	char *module;
+	char **argv, *module;
+	int argc;
 
 	role = (void *)sess->role;
 	cfg_free(role->dcfg);
@@ -211,6 +273,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	sess->lver = RSYNC_PROTOCOL;
 	module = NULL;
+	argc = 0;
+	argv = NULL;
 
 	/* saddr == NULL only for inetd driven invocations. */
 	if (daemon_read_hello(sess, fd, &module) < 0) {
@@ -232,10 +296,22 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 	}
 
-	if (daemon_read_options(sess, fd) < 0) {
+	if (daemon_read_options(sess, fd, &argc, &argv) < 0) {
 		/* XXX Error */
 		goto fail;
 	}
+
+#if 1
+	fprintf(stderr, "Got %d arguments.\n", argc);
+	for (int i = 0; i < argc; i++) {
+		fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
+	}
+#endif
+	/* XXX Parse arguments. */
+
+	for (int i = 0; i < argc; i++)
+		free(argv[i]);
+	free(argv);
 
 	return 0;
 
@@ -243,6 +319,10 @@ fail:
 	free(module);
 	cfg_free(role->dcfg);
 	role->dcfg = NULL;
+
+	for (int i = 0; i < argc; i++)
+		free(argv[i]);
+	free(argv);
 
 	return ERR_IPC;
 }
