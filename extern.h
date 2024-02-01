@@ -514,6 +514,16 @@ void	rsync_errx(const char *, ...)
 void	rsync_errx1(const char *, ...)
 			__attribute__((format(printf, 1, 2)));
 
+/* Opaque */
+struct daemon_cfg	*cfg_parse(const struct sess *, const char *,
+	    int module);
+void	 cfg_free(struct daemon_cfg *);
+int	 cfg_is_valid_module(struct daemon_cfg *, const char *);
+int	 cfg_param_long(struct daemon_cfg *, const char *, const char *,
+	    long *);
+int	 cfg_param_str(struct daemon_cfg *, const char *, const char *,
+	    const char **);
+
 int	flist_dir_cmp(const void *, const void *);
 int	flist_fts_check(struct sess *, FTSENT *, enum fmode);
 int	flist_del(struct sess *, int, const struct flist *, size_t);
