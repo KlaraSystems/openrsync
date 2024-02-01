@@ -540,6 +540,7 @@ void	cleanup_set_session(struct cleanup_ctx *, struct sess *);
 void	cleanup_set_download(struct cleanup_ctx *, struct download *);
 
 int	io_register_handler(enum iotag, io_tag_handler_fn *, void *);
+int	io_read_line(struct sess *, int, char *, size_t *);
 int	io_read_buf(struct sess *, int, void *, size_t);
 int	io_read_byte(struct sess *, int, uint8_t *);
 int	io_read_check(int);
