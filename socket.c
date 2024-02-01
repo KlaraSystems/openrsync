@@ -38,6 +38,8 @@
 
 #include "extern.h"
 
+#define	RSYNC_LISTEN_BACKLOG	5
+
 /*
  * Negative values don't make sense for any of the options we support, so we use
  * so_default_value < 0 with so_has_arg == true to indicate an option that
@@ -294,6 +296,156 @@ inet_connect(const struct opts *opts, int *sd, const struct source *src,
 	return 1;
 }
 
+static int
+inet_listen(const struct opts *opts, int *sock, const struct source *bsrc)
+{
+	int flags;
+
+	if ((*sock = socket(bsrc->family, SOCK_STREAM, 0)) == -1) {
+		ERR("socket");
+		return -1;
+	}
+
+#ifdef IPV6_V6ONLY
+	if (bsrc->family == PF_INET6) {
+		int v6only = 1;
+
+		/*
+		 * Don't assume a given default for IPV6_V6ONLY, set it
+		 * explicitly.
+		 */
+		if (setsockopt(*sock, IPPROTO_IPV6, IPV6_V6ONLY,
+		    &v6only, sizeof(v6only)) == -1) {
+			ERR("setsockopt");
+			goto failed;
+		}
+	}
+#endif
+
+	/* inet_setsockopts will produce a more specific error. */
+	if (inet_setsockopts(opts, *sock) == -1)
+		goto failed;
+
+	if (inet_bind(*sock, bsrc->family, bsrc, 1) == -1) {
+		ERR("bind");
+		goto failed;
+	}
+
+	/* Set up non-blocking mode, we'll be polling anyways. */
+	if ((flags = fcntl(*sock, F_GETFL, 0)) == -1) {
+		ERR("fcntl");
+		goto failed;
+	} else if (fcntl(*sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+		ERR("fcntl");
+		goto failed;
+	}
+
+	if (listen(*sock, RSYNC_LISTEN_BACKLOG) == -1) {
+		ERR("listen");
+		goto failed;
+	}
+
+	return 0;
+
+failed:
+	close(*sock);
+	*sock = -1;
+	return -1;
+}
+
+static int
+inet_resolve_port(const char *portstr, uint16_t *oport)
+{
+	struct servent *serv;
+
+	if (isdigit(portstr[0])) {
+		const char *err;
+
+		*oport = strtonum(portstr, 0, USHRT_MAX, &err);
+		if (err == NULL)
+			return 0;
+
+		/*
+		 * Try to resolve it with /etc/services instead, some services
+		 * may begin with a digit as well.
+		 */
+	}
+
+	if ((serv = getservbyname(portstr, "tcp")) == NULL) {
+		ERR("getservbyname: %s", portstr);
+		return -1;
+	}
+
+	/*
+	 * We're going to want it in network-byte order eventually anyways, but
+	 * push it to host-byte order for any logging and consistency with the
+	 * above.
+	 */
+	*oport = ntohs(serv->s_port);
+	return 0;
+}
+
+static struct source *
+inet_get_any(struct sess *sess, size_t *osz)
+{
+	struct source *curr, *src;
+	size_t sz;
+	uint16_t port;
+	int ipf_needed;
+
+	if (inet_resolve_port(sess->opts->port, &port) != 0)
+		return NULL;
+
+	if ((ipf_needed = sess->opts->ipf) == 0)
+		sz = 2;
+	else
+		sz = 1;
+
+	src = calloc(sz, sizeof(*src));
+	if (src == NULL) {
+		ERR("calloc");
+		return NULL;
+	}
+
+	/* XXX We don't currently populate src->ip, for better or worse. */
+	curr = NULL;
+#define	SRC_NEXT(src, curr)	((curr) == (NULL) ? (src) : (curr) + 1)
+	if (ipf_needed == 0 || ipf_needed == 4) {
+		struct sockaddr_in *sin;
+
+		curr = SRC_NEXT(src, curr);
+		curr->family = PF_INET;
+
+		sin = (void *)&curr->sa;
+		memset(sin, 0, sizeof(*sin));
+		sin->sin_len = sizeof(*sin);
+		sin->sin_family = AF_INET;
+		sin->sin_port = htons(port);
+		sin->sin_addr.s_addr = INADDR_ANY;
+
+		curr->salen = sin->sin_len;
+	}
+
+	if (ipf_needed == 0 || ipf_needed == 6) {
+		struct sockaddr_in6 *sin6;
+
+		curr = SRC_NEXT(src, curr);
+		curr->family = PF_INET6;
+
+		sin6 = (void *)&curr->sa;
+		memset(sin6, 0, sizeof(*sin6));
+		sin6->sin6_len = sizeof(*sin6);
+		sin6->sin6_family = AF_INET6;
+		sin6->sin6_port = htons(port);
+		sin6->sin6_addr = in6addr_any;
+
+		curr->salen = sin6->sin6_len;
+	}
+
+	*osz = sz;
+	return src;
+}
+
 /*
  * Resolve the socket addresses for host, both in IPV4 and IPV6.
  * Once completed, the "dns" pledge may be dropped.
@@ -521,6 +673,114 @@ out:
 	if (*sd != -1)
 		close(*sd);
 	return rc;
+}
+
+int
+rsync_listen(struct sess *sess, rsync_client_handler *handler)
+{
+	struct pollfd	  pfd[2];	/* IPv4 and/or IPv6 */
+	const struct opts *opts = sess->opts;
+	struct source	 *bsrc = NULL;
+	size_t		  bsrcsz = 0, i;
+	int		  c;
+
+	/*
+	 * We'll bind up to two sockets; one ipv4, one ipv6.
+	 */
+	assert(sess->opts->port != NULL);
+
+	pfd[0].fd = pfd[1].fd = -1;
+	pfd[0].events = pfd[1].events = POLLIN;
+
+	/*
+	 * rsync daemon needs to include both receiver and sender privileges,
+	 * since any given module /could/ use both.  Each client accepted will
+	 * promptly tighten it down.
+	 */
+	if (pledge("stdio unix rpath wpath cpath dpath fattr chown getpw unveil inet proc dns",
+	    NULL) == -1)
+		err(ERR_IPC, "pledge");
+
+	/*
+	 * We can't drop DNS until after a client is accepted, I believe, as we
+	 * might need to do a reverse lookup.  Don't quote me on that.
+	 */
+	if (opts->address != NULL) {
+		if ((bsrc = inet_resolve(sess, opts->address, &bsrcsz, 1)) ==
+		    NULL) {
+			ERRX1("inet_resolve bind");
+			exit(1);
+		}
+	} else {
+		if ((bsrc = inet_get_any(sess, &bsrcsz)) == NULL)
+			return ERR_IPC;
+	}
+
+	for (i = 0; i < bsrcsz; i++) {
+		const struct source *cursrc;
+		int *cursock;
+
+		cursrc = &bsrc[i];
+		cursock = &pfd[i].fd;
+
+		/*
+		 * inet_listen() will produce a more appropriate error; just
+		 * return.
+		 */
+		if (inet_listen(sess->opts, cursock, cursrc) != 0) {
+			for (size_t j = 0; j < i; j++)
+				close(pfd[j].fd);
+			return ERR_IPC;
+		}
+	}
+
+	for (;;) {
+		if ((c = poll(pfd, bsrcsz, INFTIM)) == -1) {
+			if (errno == EINTR)
+				continue;
+			ERR("poll");
+			break;
+		}
+
+		/* No timeout here. */
+		assert(c > 0);
+
+		for (i = 0; i < bsrcsz; i++) {
+			struct sockaddr_storage saddr;
+			socklen_t slen;
+			int clsock;
+			pid_t pid;
+
+			if ((pfd[i].revents & POLLIN) == 0)
+				continue;
+
+			slen = sizeof(saddr);
+			clsock = accept(pfd[i].fd, (struct sockaddr *)&saddr,
+			    &slen);
+			if (clsock < 0) {
+				/* XXX Log it, maybe? */
+				continue;
+			}
+
+			pid = fork();
+			if (pid != 0) {
+				/*
+				 * XXX Log it for pid < 0; in both cases, we do
+				 * not need the client socket in the parent.
+				 */
+				close(clsock);
+				continue;
+			}
+
+			/* Child, none of the listeners are needed anymore. */
+			for (i = 0; i < bsrcsz; i++)
+				close(pfd[i].fd);
+
+			_exit((*handler)(sess, clsock, &saddr, slen));
+		}
+	}
+
+	return 1;
 }
 
 /*
