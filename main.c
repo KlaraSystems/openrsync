@@ -1249,7 +1249,7 @@ basedir:
 	}
 
 	if (opts.port == NULL)
-		opts.port = (char *)"rsync";
+		opts.port = "rsync";
 
 	/* by default and for --contimeout=0 disable poll_contimeout */
 	if (poll_contimeout == 0)
