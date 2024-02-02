@@ -519,10 +519,13 @@ struct daemon_cfg	*cfg_parse(const struct sess *, const char *,
 	    int module);
 void	 cfg_free(struct daemon_cfg *);
 int	 cfg_is_valid_module(struct daemon_cfg *, const char *);
+int	 cfg_param_bool(struct daemon_cfg *, const char *, const char *,
+	    int *);
 int	 cfg_param_long(struct daemon_cfg *, const char *, const char *,
 	    long *);
 int	 cfg_param_str(struct daemon_cfg *, const char *, const char *,
 	    const char **);
+int	 cfg_has_param(struct daemon_cfg *, const char *, const char *);
 
 int	flist_dir_cmp(const void *, const void *);
 int	flist_fts_check(struct sess *, FTSENT *, enum fmode);
@@ -586,6 +589,15 @@ struct sockaddr_storage;
 typedef int (rsync_client_handler)(struct sess *, int,
 	    struct sockaddr_storage *, size_t);
 
+/*
+ * The option filter should return 1 to allow an option to be processed, 0 to
+ * stop processing, or -1 to simply skip it.
+ */
+struct option;
+typedef int (rsync_option_filter)(struct sess *, int, const struct option *);
+
+struct opts	*rsync_getopt(int, char *[], rsync_option_filter *,
+		    struct sess *);
 int	rsync_receiver(struct sess *, struct cleanup_ctx *, int, int,
 	    const char *);
 int	rsync_sender(struct sess *, int, int, size_t, char **);

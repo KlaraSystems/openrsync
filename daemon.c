@@ -22,6 +22,7 @@
 # include <err.h>
 #endif
 #include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <limits.h>
 #include <paths.h>
@@ -40,6 +41,8 @@
 #endif
 
 #define	_PATH_RSYNCD_CONF	_PATH_ETC "/rsyncd.conf"
+
+extern struct cleanup_ctx	*cleanup_ctx;
 
 static const char proto_prefix[] = "@RSYNCD: ";
 
@@ -197,6 +200,9 @@ daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 		return -1;
 	}
 
+	/* Fake first arg, because we can't actually reset to the 0'th argv */
+	argv[argc++] = NULL;
+
 	for (;;) {
 		linesz = sizeof(buf);
 		if (!io_read_line(sess, fd, buf, &linesz)) {
@@ -257,27 +263,79 @@ fail:
 }
 
 static int
+daemon_reject(struct sess *sess, int opt, const struct option *lopt)
+{
+
+	if (lopt != NULL && strcmp(lopt->name, "daemon") == 0) {
+		/* XXX Log it... this is sketchy. */
+		return 0;
+	}
+
+	return 1;
+}
+
+static void
+daemon_normalize_paths(const char *module, int argc, char *argv[])
+{
+	char *path;
+	size_t modlen, pathlen;
+
+	modlen = strlen(module);
+	for (int i = 0; i < argc; i++) {
+		path = argv[i];
+
+		/* Search for <module>/... */
+		if (strncmp(path, module, modlen) != 0 || path[modlen] != '/')
+			continue;
+
+		/*
+		 * Strip the leading <module>/ prefix.  Any unprefixed paths are
+		 * assumed to be relative to the module root anyways.
+		 */
+		pathlen = strlen(&path[modlen + 1]);
+		memmove(&path[0], &path[modlen + 1],  pathlen + 1);
+	}
+}
+
+static int
 rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
     size_t slen)
 {
 	struct daemon_role *role;
+	struct opts *client_opts;
+	const char *module_path;
 	char **argv, *module;
-	int argc;
+	int argc, flags, rc, use_chroot;
 
 	role = (void *)sess->role;
 	cfg_free(role->dcfg);
-
-	role->dcfg = cfg_parse(sess, role->cfg_file, 1);
-	if (role->dcfg == NULL)
-		return ERR_IPC;
 
 	sess->lver = RSYNC_PROTOCOL;
 	module = NULL;
 	argc = 0;
 	argv = NULL;
 
+	cleanup_init(cleanup_ctx);
+
+	if ((flags = fcntl(fd, F_GETFL, 0)) == -1) {
+		/* XXX Log */
+		goto fail;
+	} else if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+		/* XXX Log */
+		goto fail;
+	}
+
+	role->dcfg = cfg_parse(sess, role->cfg_file, 1);
+	if (role->dcfg == NULL)
+		return ERR_IPC;
+
 	/* saddr == NULL only for inetd driven invocations. */
 	if (daemon_read_hello(sess, fd, &module) < 0) {
+		/* XXX Error */
+		goto fail;
+	}
+
+	if (sess->rver < sess->lver) {
 		/* XXX Error */
 		goto fail;
 	}
@@ -288,8 +346,35 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 	}
 
-	/* XXX */
-	fprintf(stderr, "got valid module %s\n", module);
+	if (cfg_param_bool(role->dcfg, module, "use chroot",
+	    &use_chroot) != 0) {
+		/* XXX Badly formed, log it and pretend it's unset. */
+		fprintf(stderr, "badly formed\n");
+	} else if (use_chroot && !cfg_has_param(role->dcfg, module,
+	    "use chroot")) {
+		/*
+		 * If it's not set, note that in case it fails -- we will
+		 * fallback.
+		 */
+		use_chroot = 2;
+	}
+
+	rc = cfg_param_str(role->dcfg, module, "path", &module_path);
+	assert(rc == 0);
+
+	/*
+	 * We don't currently support the /./ chroot syntax of rsync 3.x.
+	 */
+	chdir(module_path);
+	if (use_chroot && chroot(".") == -1) {
+		if (errno != EPERM || use_chroot == 1) {
+			/* XXX Fail it. */
+			goto fail;
+		}
+
+		/* XXX Log the EPERM fallback because unset. */
+		use_chroot = 0;
+	}
 
 	if (!io_write_line(sess, fd, "@RSYNCD: OK")) {
 		ERRX1("io_write_line");
@@ -307,7 +392,70 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
 	}
 #endif
-	/* XXX Parse arguments. */
+	/*
+	 * Reset some state; our default poll_timeout is no longer valid, and
+	 * we need to reset getopt_long(3).
+	 */
+	poll_timeout = 0;
+	optreset = 1;
+	optind = 1;
+	client_opts = rsync_getopt(argc, argv, &daemon_reject, sess);
+	if (client_opts == NULL)
+		goto fail;	/* Should have been logged. */
+
+	argc -= optind;
+	argv += optind;
+
+	if (strcmp(argv[0], ".") != 0) {
+		/* XXX Must be a hard stop before file listing. */
+		goto fail;
+	}
+
+	argc--;
+	argv++;
+
+	/* Generate a seed. */
+	if (client_opts->checksum_seed == 0) {
+#if HAVE_ARC4RANDOM
+		sess->seed = arc4random();
+#else
+		sess->seed = random();
+#endif
+	} else {
+		sess->seed = client_opts->checksum_seed;
+	}
+
+	/* Seed send-off completes the handshake. */
+	if (!io_write_int(sess, fd, sess->seed)) {
+		/* XXX Log */
+		goto fail;
+	}
+
+	/* Strip any <module>/ off the beginning. */
+	daemon_normalize_paths(module, argc, argv);
+
+	/* Also from --files-from */
+	if (client_opts->filesfrom_path != NULL)
+		daemon_normalize_paths(module, 1, &client_opts->filesfrom_path);
+
+	sess->opts = client_opts;
+	sess->mplex_writes = 1;
+	/* XXX LOG2("write multiplexing enabled"); */
+
+	cleanup_set_session(cleanup_ctx, sess);
+	cleanup_release(cleanup_ctx);
+
+	if (client_opts->sender) {
+		if (!rsync_sender(sess, fd, fd, argc, argv)) {
+			/* XXX Log it */
+			goto fail;
+		}
+	} else {
+		if (!rsync_receiver(sess, cleanup_ctx, fd, fd, argv[0])) {
+			/* XXX Log it */
+			goto fail;
+		}
+	}
 
 	for (int i = 0; i < argc; i++)
 		free(argv[i]);
@@ -344,6 +492,10 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 
 	role.cfg_file = "/etc/rsyncd.conf";
 
+	/*
+	 * optind starting at 1, because we're parsing the original program args
+	 * and should skip argv[0].
+	 */
 	optreset = 1;
 	optind = 1;
 	while ((c = getopt_long(argc, argv, "46hv", daemon_lopts,
@@ -398,10 +550,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	if (argc != 0)
 		daemon_usage(ERR_SYNTAX);
 
-	if (poll_timeout == 0)
-		poll_timeout = -1;
-	else
-		poll_timeout *= 1000;
+	poll_timeout = -1;
 
 	if (rsync_is_socket(STDIN_FILENO))
 		return rsync_daemon_handler(&sess, STDIN_FILENO, NULL, 0);
