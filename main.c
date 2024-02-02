@@ -78,7 +78,8 @@ fargs_is_daemon(const char *v)
 }
 
 /*
- * Splits a string of the form host:/path/name
+ * Splits a string of the form host:/path/name, :/path/name, or
+ * rsync://host/[module/]path forms.
  * The components will be newly allocated strings.
  * Returns 0 on error, 1 on success.
  */
@@ -86,26 +87,72 @@ static int
 split_hostspec(const char *const input, char **host, char **path)
 {
 	char *cp;
-	char *pathpos;
 
-	pathpos = strstr(input, ":/");
-	if (pathpos == NULL)
+	if (*input == ':') {
+		*host = strdup("");
+		if (*host == NULL) {
+			ERR("malloc hostspec");
+			return 0;
+		}
+
+		*path = strdup(input + 1);
+		if (*path == NULL) {
+			ERR("malloc path");
+			return 0;
+		}
+
+		return 1;
+	} else if (fargs_is_daemon(input)) {
+		const char *hostpart;
+		size_t hostlen;
+
+		/*
+		 * The reference implementation doesn't seem to consider the
+		 * port as part of the host name, which seems like it could be
+		 * an oversight but we'll aim to be compatible.
+		 */
+		hostpart = &input[sizeof("rsync://") - 1];
+		hostlen = strcspn(hostpart, ":/");
+
+		*host = strndup(hostpart, hostlen);
+		if (*host == NULL) {
+			ERR("malloc hostspec");
+			return 0;
+		}
+
+		if (hostpart[hostlen] != '/')
+			hostlen = strcspn(hostpart, "/");
+		if (hostpart[hostlen] == '\0') {
+			/* Missing path... */
+			ERR("Missing path in --files-from: %s", input);
+			return 0;
+		}
+
+		*path = strdup(&hostpart[hostlen + 1]);
+		if (*path == NULL) {
+			ERR("malloc path");
+			free(*host);
+			*host = NULL;
+			return 0;
+		}
+
+		return 1;
+	}
+
+	/* Simple host:path */
+	cp = strchr(input, ':');
+	if (cp == NULL)
 		return 0;
-	*host = strdup(input);
+
+	*host = strndup(input, cp - input);
 	if (*host == NULL) {
 		ERR("malloc hostspec");
 		return 0;
 	}
-	cp = strchr(*host, ':');
-	if (cp == NULL) {
-		free(*host);
-		*host = NULL;
-		return 0;
-	}
-	*cp = '\0';
 
-	*path = strdup(pathpos + 1);
+	*path = strdup(cp + 1);
 	if (*path == NULL) {
+		ERR("malloc hostspec path");
 		free(*host);
 		*host = NULL;
 		return 0;
