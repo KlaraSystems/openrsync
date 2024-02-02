@@ -38,6 +38,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <limits.h>
+#include <zlib.h>
 
 #include "md4.h"
 
@@ -59,6 +60,9 @@ enum	downloadst {
 	DOWNLOAD_READ_LOCAL,
 	DOWNLOAD_READ_REMOTE
 };
+
+static enum zlib_state	 dec_state; /* decompression state */
+static z_stream		 dectx; /* decompression context */
 
 /*
  * Like struct upload, but used to keep track of what we're downloading.
@@ -85,6 +89,7 @@ struct	download {
 	size_t		    obufsz; /* current size of obuf */
 	size_t		    obufmax; /* max size we'll wbuffer */
 	size_t		    needredo; /* needs redo phase */
+	size_t		    curtok; /* current token */
 };
 
 
@@ -764,6 +769,412 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 	return 1;
 }
 
+enum protocol_token_result {
+	TOKEN_ERROR,
+	TOKEN_EOF,
+	TOKEN_NEXT,
+	TOKEN_RETRY,
+};
+
+
+static enum protocol_token_result
+protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
+{
+	int		 res;
+	size_t		 dsz;
+	char		 tbuf[4];
+
+	dectx.avail_in = 0;
+	dectx.avail_out = MAX_CHUNK_BUF;
+	res = inflate(&dectx, Z_SYNC_FLUSH);
+	dsz = MAX_CHUNK_BUF - dectx.avail_out;
+	if (res != Z_OK && res != Z_BUF_ERROR) {
+		return TOKEN_ERROR;
+	}
+	if (dsz != 0 && res != Z_BUF_ERROR) {
+		if (!buf_copy(dbuf, dsz, p, sess)) {
+			ERRX1("buf_copy dbuf");
+			return TOKEN_ERROR;
+		}
+		MD4_Update(&p->ctx, dbuf, dsz);
+		p->total += dsz;
+		p->downloaded += dsz; /* XXX: wrong */
+	}
+	/*
+	 * Check for compressor sync: 0x00 0x00 0xff 0xff
+	 */
+	if (!inflateSyncPoint(&dectx)) {
+		return TOKEN_ERROR;
+	}
+	dectx.avail_in = 4;
+	dectx.next_in = (Bytef *)&tbuf;
+	tbuf[0] = 0;
+	tbuf[1] = 0;
+	tbuf[2] = 0xff;
+	tbuf[3] = 0xff;
+	res = inflate(&dectx, Z_SYNC_FLUSH);
+
+	return TOKEN_NEXT;
+}
+
+static enum protocol_token_result
+protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
+{
+	char		*buf = NULL, *dbuf = NULL;
+	size_t		 sz, clen, rlen;
+	off_t		 off;
+	unsigned char	 hdr[5];
+	int		 res;
+
+	if (dec_state == COMPRESS_INIT) {
+		dectx.zalloc = NULL;
+		dectx.zfree = NULL;
+		dectx.next_in = NULL;
+		dectx.avail_in = 0;
+		dectx.next_out = NULL;
+		dectx.avail_out = 0;
+		if (inflateInit2(&dectx, -15) != Z_OK) {
+			ERRX1("inflateInit2");
+			return TOKEN_ERROR;
+		}
+		dec_state = COMPRESS_RUN;
+	}
+
+	if (tok >= p->blk.blksz) {
+		ERRX("%s: token not in block set: %zu (have %zu blocks)",
+		    p->fname, tok, p->blk.blksz);
+		return TOKEN_ERROR;
+	}
+	sz = (tok == p->blk.blksz - 1 && p->blk.rem) ? p->blk.rem : p->blk.len;
+	assert(sz);
+	assert(p->map != MAP_FAILED);
+	off = tok * p->blk.len;
+	buf = p->map + off;
+	assert(p->map != MAP_FAILED);
+
+	dbuf = malloc(MAX_CHUNK_BUF);
+	if (dbuf == NULL) {
+		ERRX1("malloc");
+		return TOKEN_ERROR;
+	}
+	dectx.avail_in = 0;
+	rlen = sz;
+	clen = 0;
+	hdr[0] = '\0';
+	while (rlen != 0) {
+		if (dectx.avail_in == 0) {
+			if (clen == 0) {
+				/* Provide a stored-block header */
+				clen = rlen;
+				if (clen > 0xffff) {
+					clen = 0xffff;
+				}
+				hdr[1] = clen;
+				hdr[2] = clen >> 8;
+				hdr[3] = ~hdr[1];
+				hdr[4] = ~hdr[2];
+				dectx.next_in = (Bytef *)hdr;
+				dectx.avail_in = 5;
+			} else {
+				dectx.next_in = (Bytef *)buf;
+				dectx.avail_in = clen;
+				rlen -= clen;
+				clen = 0;
+			}
+		}
+		dectx.next_out = (Bytef *)dbuf;
+		dectx.avail_out = MAX_CHUNK_BUF;
+		res = inflate(&dectx, Z_SYNC_FLUSH);
+		if (res != Z_OK) {
+			ERRX1("inflate ff res=%d", res);
+			return TOKEN_ERROR;
+		}
+		if (dectx.avail_out == 0) {
+			break;
+		}
+	}
+
+	return TOKEN_NEXT;
+}
+
+static enum protocol_token_result
+protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
+{
+	char		*buf = NULL;
+	size_t		 sz;
+	off_t		 off;
+	int		 c;
+
+	if (tok >= p->blk.blksz) {
+		ERRX("%s: token not in block set: %zu (have %zu blocks)",
+		    p->fname, tok, p->blk.blksz);
+		return TOKEN_ERROR;
+	}
+	sz = (tok == p->blk.blksz - 1 && p->blk.rem) ? p->blk.rem : p->blk.len;
+	assert(sz);
+	assert(p->map != MAP_FAILED);
+	off = tok * p->blk.len;
+	buf = p->map + off;
+	/*
+	 * Now we read from our block.
+	 * We should only be at this point if we have a
+	 * block to read from, i.e., if we were able to
+	 * map our origin file and create a block
+	 * profile from it.
+	 */
+
+	assert(p->map != MAP_FAILED);
+
+	if (download_is_inplace(sess, p, true) && p->total == off) {
+		/* Flush any pending data before we seek ahead. */
+		buf_copy(NULL, 0, p, sess);
+		if (lseek(p->fd, sz, SEEK_CUR) == -1) {
+			ERRX1("lseek");
+			return TOKEN_ERROR;
+		}
+	} else if (!buf_copy(buf, sz, p, sess)) {
+		ERRX1("buf_copy");
+		return TOKEN_ERROR;
+	}
+	buf_copy(NULL, 0, p, sess);
+	if (sess->opts->compress) {
+		if (protocol_token_ff_compress(sess, p, tok) == TOKEN_ERROR) {
+			ERRX1("protocol_token_ff_compress");
+			return TOKEN_ERROR;
+		}
+	}
+	p->total += sz;
+	LOG4("%s: copied %zu B", p->fname, sz);
+	MD4_Update(&p->ctx, buf, sz);
+	/* Fast-track more reads as they arrive. */
+	if ((c = io_read_check(sess, p->fdin)) < 0) {
+		ERRX1("io_read_check");
+		return TOKEN_ERROR;
+	} else if (c > 0) {
+		return TOKEN_RETRY;
+	}
+
+	return TOKEN_RETRY;
+}
+
+static enum protocol_token_result
+protocol_token_compressed(struct sess *sess, struct download *p)
+{
+	int32_t		 tok = p->curtok;
+	uint8_t		 flag;
+	size_t		 runsize, dsz;
+	bool		 need_count;
+	int		 res;
+	char		*buf = NULL, *dbuf = NULL;
+
+	if (!io_read_byte(sess, p->fdin, &flag)) {
+		ERRX1("io_read_byte");
+		return TOKEN_ERROR;
+	}
+	if (flag == 0) {
+		dec_state = COMPRESS_DONE;
+		protocol_token_cflush(sess, p, dbuf);
+
+		return TOKEN_EOF;
+	}
+
+	need_count = false;
+	if ((flag & TOKEN_RUN_RELATIVE) == TOKEN_DEFLATED) {
+		uint16_t bufsz;
+		uint8_t sizelo;
+
+		/* Read the lower 8 bits */
+		if (!io_read_byte(sess, p->fdin, &sizelo)) {
+			ERRX1("io_read_int");
+			return TOKEN_ERROR;
+		}
+		bufsz = ((flag & ~TOKEN_DEFLATED) << 8) | sizelo;
+
+		if (dec_state == COMPRESS_INIT) {
+			dectx.zalloc = NULL;
+			dectx.zfree = NULL;
+			dectx.next_in = NULL;
+			dectx.avail_in = 0;
+			dectx.next_out = NULL;
+			dectx.avail_out = 0;
+			if (inflateInit2(&dectx, -15) != Z_OK) {
+				ERRX1("inflateInit2");
+				return TOKEN_ERROR;
+			}
+			dec_state = COMPRESS_RUN;
+		} else if (dec_state >= COMPRESS_DONE) {
+			dectx.next_in = NULL;
+			dectx.avail_in = 0;
+			dectx.next_out = NULL;
+			dectx.avail_out = 0;
+			inflateReset(&dectx);
+			dec_state = COMPRESS_RUN;
+		}
+
+		buf = malloc(bufsz);
+		if (buf == NULL) {
+			ERRX1("malloc");
+			return TOKEN_ERROR;
+		}
+
+		dbuf = malloc(MAX_CHUNK_BUF);
+		if (dbuf == NULL) {
+			ERRX1("malloc");
+			return TOKEN_ERROR;
+		}
+
+		if (!io_read_buf(sess, p->fdin, buf, bufsz)) {
+			ERRX1("io_read_buf");
+			free(buf);
+			return TOKEN_ERROR;
+		}
+
+		assert(dec_state = COMPRESS_RUN);
+		dectx.next_in = (Bytef *)buf;
+		dectx.avail_in = bufsz;
+		dectx.next_out = (Bytef *)dbuf;
+		dectx.avail_out = MAX_CHUNK_BUF;
+
+		while (dectx.avail_in != 0 && (res = inflate(&dectx, Z_NO_FLUSH)) == Z_OK) {
+			dsz = MAX_CHUNK_BUF - dectx.avail_out;
+			if (!buf_copy(dbuf, dsz, p, sess)) {
+				ERRX1("buf_copy dbuf");
+				free(buf);
+				free(dbuf);
+				return TOKEN_ERROR;
+			}
+			MD4_Update(&p->ctx, dbuf, dsz);
+			p->total += dsz;
+			p->downloaded += bufsz;
+			dectx.next_out = (Bytef *)dbuf;
+			dectx.avail_out = MAX_CHUNK_BUF;
+		}
+		if (res != Z_OK && res != Z_BUF_ERROR) {
+			ERRX1("inflate res=%d", res);
+			return TOKEN_ERROR;
+		}
+		/* We have exhausted the input stream, write out the remaining data */
+		dsz = MAX_CHUNK_BUF - dectx.avail_out;
+		if (dsz != 0) {
+			if (!buf_copy(dbuf, dsz, p, sess)) {
+				ERRX1("buf_copy dbuf");
+				free(buf);
+				free(dbuf);
+				return TOKEN_ERROR;
+			}
+			MD4_Update(&p->ctx, dbuf, dsz);
+		}
+		p->total += dsz;
+		p->downloaded += bufsz;
+		free(buf);
+		free(dbuf);
+		assert(dectx.avail_in == 0);
+
+		return TOKEN_RETRY;
+	} else if (flag & TOKEN_RELATIVE) {
+		/*
+		 * Matches both TOKEN_RELATIVE and TOKEN_RUN_RELATIVE.
+		 * The token is the lower 6 bits of flag.
+		 * Token is relative to where we previously wrote.
+		 * If this is TOKEN_RUN_RELATIVE, it will be followed by a
+		 * 16 bit run count, (we set need_count to read this below).
+		 */
+		tok += (flag & ~TOKEN_RUN_RELATIVE);
+		flag >>= 6;
+		need_count = (flag & 1);
+		protocol_token_cflush(sess, p, dbuf);
+	} else if ((flag & TOKEN_LONG) != 0) {
+		if (!io_read_int(sess, p->fdin, &tok)) {
+			ERRX1("io_read_int");
+			return TOKEN_ERROR;
+		}
+		need_count = (flag & 0x1);
+		protocol_token_cflush(sess, p, dbuf);
+	}
+
+	runsize = 0;
+	if (need_count) {
+		uint8_t part;
+
+		if (!io_read_byte(sess, p->fdin, &part)) {
+			ERRX1("io_read_byte");
+			return TOKEN_ERROR;
+		}
+
+		runsize = part;
+
+		if (!io_read_byte(sess, p->fdin, &part)) {
+			ERRX1("io_read_byte");
+			return TOKEN_ERROR;
+		}
+
+		runsize |= part << 8;
+
+	}
+
+	for (dsz = 0; dsz < runsize + 1; dsz++) {
+		if ((res = protocol_token_ff(sess, p, tok++)) != TOKEN_RETRY) {
+			ERRX1("protocol_token_ff res=%d", res);
+			return res;
+		}
+	}
+
+	p->curtok = tok - 1;
+
+	return TOKEN_RETRY;
+}
+
+static enum protocol_token_result
+protocol_token_raw(struct sess *sess, struct download *p)
+{
+	char		*buf = NULL;
+	size_t		 sz, tok;
+	int32_t		 rawtok;
+	int		 c;
+
+	if (!io_read_int(sess, p->fdin, &rawtok)) {
+		ERRX1("io_read_int");
+		return TOKEN_ERROR;
+	}
+
+	if (rawtok > 0) {
+		sz = rawtok;
+		if ((buf = malloc(sz)) == NULL) {
+			ERR("realloc");
+			return TOKEN_ERROR;
+		}
+		if (!io_read_buf(sess, p->fdin, buf, sz)) {
+			ERRX1("io_read_int");
+			free(buf);
+			return TOKEN_ERROR;
+		} else if (!buf_copy(buf, sz, p, sess)) {
+			ERRX1("buf_copy");
+			free(buf);
+			return TOKEN_ERROR;
+		}
+		p->total += sz;
+		p->downloaded += sz;
+		LOG4("%s: received %zu B block", p->fname, sz);
+		MD4_Update(&p->ctx, buf, sz);
+		free(buf);
+
+		/* Fast-track more reads as they arrive. */
+
+		if ((c = io_read_check(sess, p->fdin)) < 0) {
+			ERRX1("io_read_check");
+			return TOKEN_ERROR;
+		} else if (c > 0)
+			return TOKEN_RETRY;
+
+		return TOKEN_NEXT;
+	} else if (rawtok < 0) {
+		tok = -rawtok - 1;
+		return protocol_token_ff(sess, p, tok);
+	}
+
+	return TOKEN_EOF;
+}
+
 /*
  * The downloader waits on a file the sender is going to give us, opens
  * and mmaps the existing file, opens a temporary file, dumps the file
@@ -776,17 +1187,15 @@ int
 rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
     const struct hardlinks *hl)
 {
-	int		 c;
-	int32_t		 idx, rawtok;
+	int32_t		 idx;
 	const struct flist *hl_p = NULL;
 	struct  flist	*f = NULL;
-	size_t		 sz, tok;
 	struct stat	 st, st2;
-	char		*buf = NULL;
 	unsigned char	 ourmd[MD4_DIGEST_LENGTH],
 			 md[MD4_DIGEST_LENGTH];
 	char             buf2[PATH_MAX];
 	char            *usethis;
+	enum protocol_token_result	tokres;
 	int		 dirlen;
 	struct dlrename  *renamer = NULL;
 
@@ -1098,88 +1507,20 @@ again:
 	assert(p->fd != -1 || sess->opts->dry_run);
 	assert(p->fdin != -1);
 
-	if (!io_read_int(sess, p->fdin, &rawtok)) {
-		ERRX1("io_read_int");
+	if (sess->opts->compress)
+		tokres = protocol_token_compressed(sess, p);
+	else
+		tokres = protocol_token_raw(sess, p);
+	switch (tokres) {
+	case TOKEN_EOF:
+		break;
+	case TOKEN_RETRY:
+		goto again;
+	case TOKEN_NEXT:
+		return 1;
+	case TOKEN_ERROR:
+	default:
 		goto out;
-	}
-
-	if (rawtok > 0) {
-		sz = rawtok;
-		if ((buf = malloc(sz)) == NULL) {
-			ERR("realloc");
-			goto out;
-		}
-		if (!io_read_buf(sess, p->fdin, buf, sz)) {
-			ERRX1("io_read_int");
-			goto out;
-		} else if (!buf_copy(buf, sz, p, sess)) {
-			ERRX1("buf_copy");
-			goto out;
-		}
-		p->total += sz;
-		p->downloaded += sz;
-		LOG4("%s: received %zu B block", p->fname, sz);
-		MD4_Update(&p->ctx, buf, sz);
-		free(buf);
-
-		/* Fast-track more reads as they arrive. */
-
-		if ((c = io_read_check(sess, p->fdin)) < 0) {
-			ERRX1("io_read_check");
-			goto out;
-		} else if (c > 0)
-			goto again;
-
-		return 1;
-	} else if (rawtok < 0) {
-		off_t off;
-
-		tok = -rawtok - 1;
-		if (tok >= p->blk.blksz) {
-			ERRX("%s: token not in block set: %zu (have %zu blocks)",
-			    p->fname, tok, p->blk.blksz);
-			goto out;
-		}
-		sz = tok == p->blk.blksz - 1 ? p->blk.rem : p->blk.len;
-		assert(sz);
-		assert(p->map != MAP_FAILED);
-		off = tok * p->blk.len;
-		buf = p->map + off;
-
-		/*
-		 * Now we read from our block.
-		 * We should only be at this point if we have a
-		 * block to read from, i.e., if we were able to
-		 * map our origin file and create a block
-		 * profile from it.
-		 */
-
-		assert(p->map != MAP_FAILED);
-
-		if (download_is_inplace(sess, p, true) && p->total == off) {
-			/* Flush any pending data before we seek ahead. */
-			buf_copy(NULL, 0, p, sess);
-			if (lseek(p->fd, sz, SEEK_CUR) == -1) {
-				ERRX1("lseek");
-				goto out;
-			}
-		} else if (!buf_copy(buf, sz, p, sess)) {
-			ERRX1("buf_copy");
-			goto out;
-		}
-		p->total += sz;
-		LOG4("%s: copied %zu B", p->fname, sz);
-		MD4_Update(&p->ctx, buf, sz);
-
-		/* Fast-track more reads as they arrive. */
-
-		if ((c = io_read_check(sess, p->fdin)) < 0) {
-			ERRX1("io_read_check");
-			goto out;
-		} else if (c > 0)
-			goto again;
-
-		return 1;
 	}
 
 	if (!sess->opts->dry_run && !buf_copy(NULL, 0, p, sess)) {
@@ -1187,8 +1528,8 @@ again:
 		goto out;
 	}
 
-	assert(rawtok == 0);
 	assert(p->obufsz == 0);
+	assert(tokres == TOKEN_EOF);
 
 	/*
 	 * Make sure our resulting MD4 hashes match.

@@ -88,6 +88,14 @@
  */
 #define MAX_CHUNK	(32 * 1024)
 
+/* Save 2 bytes to fit a 14 bit count and compression flags */
+#define	MAX_COMP_CHUNK	16383
+
+/*
+ * zlib needs a bit of extra space in the buffer.
+ */
+#define MAX_CHUNK_BUF	((MAX_CHUNK)*1001/1000+16)
+
 /*
  * This is the minimum size for a block of data not including those in
  * the remainder block.
@@ -143,6 +151,16 @@ enum dryrun {
 #define ERR_PARTIAL	23
 #define ERR_DEL_LIMIT	25
 
+#define TOKEN_END		0x00	/* end of sequence */
+#define TOKEN_LONG		0x20	/* Token is 32-bits */
+#define TOKEN_LONG_RUN		0x21	/* Token is 32-bits and has 16 bit run count */
+#define TOKEN_DEFLATED		0x40	/* Data is deflated */
+#define TOKEN_RELATIVE		0x80	/* Token number is relative */
+#define TOKEN_RUN_RELATIVE	0xc0	/* Run count is 16-bit */
+
+#define TOKEN_MAX_DATA		16383	/* reserve 2 bits for flags */
+#define TOKEN_MAX_BUF		(TOKEN_MAX_DATA + 2)
+
 /*
  * Use this for --timeout.
  * All poll events will use it and catch time-outs.
@@ -191,6 +209,12 @@ enum	iotag {
 };
 
 typedef int (io_tag_handler_fn)(void *, const void *, size_t sz);
+
+enum	zlib_state {
+	COMPRESS_INIT = 0,
+	COMPRESS_RUN,
+	COMPRESS_DONE,
+};
 
 /*
  * Delete modes:
@@ -382,6 +406,8 @@ struct	opts {
 	const char	*write_batch;		/* --write-batch */
 	const char	*password_file;		/* --password-file */
 	char		*temp_dir;		/* --temp-dir */
+	int		 compress;		/* -z --compress */
+	int		 compression_level;	/* --compress-level */
 #if 0
 	char		*syncfile;		/* --sync-file */
 #endif
@@ -428,6 +454,7 @@ enum	blkstatst {
 	BLKSTAT_HASH,
 	BLKSTAT_DONE,
 	BLKSTAT_PHASE,
+	BLKSTAT_FLUSH,
 };
 
 /*

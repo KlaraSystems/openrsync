@@ -51,6 +51,9 @@ struct	send_dl {
 	TAILQ_ENTRY(send_dl)	 entries;
 };
 
+static enum zlib_state	 comp_state; /* compression state */
+static z_stream		 cctx; /* compression context */
+
 /*
  * The current file being "updated": sent from sender to receiver.
  * If there is no file being uploaded, "cur" is NULL.
@@ -98,6 +101,361 @@ send_up_reset(struct send_up *p)
 	p->stat.offs = 0;
 	p->stat.hint = 0;
 	p->stat.curst = BLKSTAT_NONE;
+}
+
+/*
+ * Fast forward through part of the file the other side already
+ * has while keeping compression state intact.
+ * Returns 1 on success, 0 on error.
+ */
+static int
+token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
+{
+	char		*buf = NULL, *cbuf = NULL;
+	size_t		 sz, clen, rlen;
+	off_t		 off;
+	int		 res;
+
+	if (comp_state == COMPRESS_INIT) {
+		cctx.zalloc = NULL;
+		cctx.zfree = NULL;
+		cctx.next_in = NULL;
+		cctx.avail_in = 0;
+		cctx.next_out = NULL;
+		cctx.avail_out = 0;
+		if (deflateInit2(&cctx, sess->opts->compression_level,
+		    Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+			ERRX1("deflateInit2");
+			return 0;
+		}
+		comp_state = COMPRESS_RUN;
+	}
+
+	if (tok >= up->cur->blks->blksz) {
+		ERRX("token not in block set: %zu (have %zu blocks)",
+		    tok, up->cur->blks->blksz);
+		return 0;
+	}
+	sz = (tok == up->cur->blks->blksz - 1 && up->cur->blks->rem) ?
+	    up->cur->blks->rem : up->cur->blks->len;
+	assert(sz);
+	assert(up->stat.map != MAP_FAILED);
+	off = tok * up->cur->blks->len;
+	buf = up->stat.map + off;
+	assert(up->stat.map != MAP_FAILED);
+
+	cbuf = malloc(MAX_CHUNK_BUF);
+	if (cbuf == NULL) {
+		ERRX1("malloc");
+		return 0;
+	}
+	cctx.avail_in = 0;
+	rlen = sz;
+	clen = 0;
+	while (rlen > 0) {
+		clen = rlen;
+		if (clen > MAX_CHUNK) {
+			clen = MAX_CHUNK;
+		}
+		rlen -= clen;
+		cctx.next_in = (Bytef *)buf;
+		cctx.avail_in = clen;
+		cctx.next_out = (Bytef *)cbuf;
+		cctx.avail_out = TOKEN_MAX_DATA;
+		res = deflate(&cctx, Z_INSERT_ONLY);
+		if (res != Z_OK || cctx.avail_in != 0) {
+			ERRX1("deflate ff res=%d", res);
+			return 0;
+		}
+		buf += clen;
+	}
+
+	return 1;
+}
+
+/*
+ * This is like send_up_fsm() except for sending compressed blocks
+ * Returns zero on failure, non-zero on success.
+ */
+static int
+send_up_fsm_compressed(struct sess *sess, size_t *phase,
+	struct send_up *up, void **wb, size_t *wbsz, size_t *wbmax,
+	struct flist *fl)
+{
+	size_t		 pos = 0, isz = sizeof(int32_t),
+			 dsz = MD4_DIGEST_LENGTH;
+	unsigned char	 fmd[MD4_DIGEST_LENGTH];
+	off_t		 sz, ssz;
+	char		 buf[16];
+	char		*sbuf = NULL, *cbuf = NULL;
+	int		 res, pres;
+	unsigned	 pending_bytes;
+	int		 pending_bits;
+
+	if (comp_state == COMPRESS_INIT) {
+		cctx.zalloc = NULL;
+		cctx.zfree = NULL;
+		cctx.next_in = NULL;
+		cctx.avail_in = 0;
+		cctx.next_out = NULL;
+		cctx.avail_out = 0;
+		if (deflateInit2(&cctx, sess->opts->compression_level,
+		    Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+			ERRX1("deflateInit2");
+			return 0;
+		}
+		comp_state = COMPRESS_RUN;
+	} else if (comp_state >= COMPRESS_DONE) {
+		cctx.next_in = NULL;
+		cctx.avail_in = 0;
+		cctx.next_out = NULL;
+		cctx.avail_out = 0;
+		deflateReset(&cctx);
+		comp_state = COMPRESS_RUN;
+	}
+
+	switch (up->stat.curst) {
+	case BLKSTAT_DATA:
+		/*
+		 * A data segment to be written: buffer both the length
+		 * and the data.
+		 * If we've finished the transfer, move on to the token;
+		 * otherwise, keep sending data.
+		 */
+
+		sz = MINIMUM(MAX_CHUNK,
+			up->stat.mapsz - up->stat.curpos);
+		sbuf = up->stat.map + up->stat.curpos;
+
+		assert(comp_state = COMPRESS_RUN);
+		cbuf = malloc(TOKEN_MAX_BUF);
+		if (cbuf == NULL) {
+			ERRX1("malloc");
+			return 0;
+		}
+		cctx.next_in = (Bytef *)sbuf;
+		cctx.avail_in = sz;
+		cctx.next_out = (Bytef *)(cbuf + 2);
+		cctx.avail_out = TOKEN_MAX_DATA;
+
+		while ((res = deflate(&cctx, Z_NO_FLUSH)) == Z_OK) {
+			ssz = TOKEN_MAX_DATA - cctx.avail_out;
+			if (ssz == 0) {
+				break;
+			}
+			if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, ssz + 2)) {
+				ERRX1("io_lowbuffer_alloc");
+				free(cbuf);
+				return 0;
+			}
+			cbuf[0] = (TOKEN_DEFLATED + (ssz >> 8)) & 0xff;
+			cbuf[1] = ssz & 0xff;
+			io_lowbuffer_buf(sess, *wb, &pos, *wbsz, cbuf, ssz + 2);
+			if (cctx.avail_out != 0) {
+				break;
+			}
+			if (cctx.avail_out == 0) {
+				cctx.next_out = (Bytef *)(cbuf + 2);
+				/* Save room for the 4 byte trailer */
+				cctx.avail_out = TOKEN_MAX_DATA;
+			}
+		}
+		if (res != Z_OK && res != Z_BUF_ERROR) {
+			ERRX1("deflate res=%d", res);
+			free(cbuf);
+			return 0;
+		}
+		free(cbuf);
+		up->stat.curpos += sz;
+		if (up->stat.curpos == up->stat.mapsz) {
+			up->stat.curst = BLKSTAT_FLUSH;
+		}
+		return 1;
+	case BLKSTAT_TOK:
+		/*
+		 * The data token tells the receiver to copy a block of
+		 * data from the existing file they have, instead of having
+		 * us send the data.
+		 * It's followed by a hash or another data segment,
+		 * depending on the token.
+		 */
+
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, 1)) {
+			ERRX1("io_lowbuffer_alloc");
+			return 0;
+		}
+		io_lowbuffer_byte(sess, *wb,
+			&pos, *wbsz, TOKEN_LONG);
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, isz)) {
+			ERRX1("io_lowbuffer_alloc");
+			return 0;
+		}
+		io_lowbuffer_int(sess, *wb,
+			&pos, *wbsz, -(up->stat.curtok + 1));
+
+		token_ff_compressed(sess, up, -(up->stat.curtok + 1));
+		up->stat.curst = up->stat.curtok ?
+			BLKSTAT_NEXT : BLKSTAT_NEXT;
+		return 1;
+	case BLKSTAT_HASH:
+		/*
+		 * The hash following transmission of all file contents.
+		 * This is always followed by the state that we're
+		 * finished with the file.
+		 */
+
+		hash_file(up->stat.map, up->stat.mapsz, fmd, sess);
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, dsz)) {
+			ERRX1("io_lowbuffer_alloc");
+			return 0;
+		}
+		io_lowbuffer_buf(sess, *wb, &pos, *wbsz, fmd, dsz);
+		up->stat.curst = BLKSTAT_DONE;
+		return 1;
+	case BLKSTAT_FLUSH:
+		/*
+		 * Flush the end of the compressed stream.
+		 */
+
+		cbuf = malloc(TOKEN_MAX_DATA);
+		if (cbuf == NULL) {
+			ERRX1("malloc");
+			return 0;
+		}
+		cctx.avail_in = 0;
+		cctx.next_in = NULL;
+		cctx.next_out = (Bytef *)(cbuf + 2);
+		cctx.avail_out = TOKEN_MAX_DATA;
+
+		while ((res = deflate(&cctx, Z_SYNC_FLUSH)) == Z_OK) {
+			ssz = TOKEN_MAX_DATA - cctx.avail_out;
+			assert(ssz >= 4);
+			ssz -= 4; /* Trim off the trailer bytes */
+			if (ssz != 0 && res != Z_BUF_ERROR) {
+				if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, ssz + 2)) {
+					ERRX1("io_lowbuffer_alloc");
+					free(cbuf);
+					return 0;
+				}
+				cbuf[0] = (TOKEN_DEFLATED + (ssz >> 8)) & 0xff;
+				cbuf[1] = ssz & 0xff;
+				io_lowbuffer_buf(sess, *wb, &pos, *wbsz, cbuf, ssz + 2);
+			}
+			cctx.next_out = (Bytef *)(cbuf + 2);
+			cctx.avail_out = TOKEN_MAX_DATA;
+			memcpy(cctx.next_out, cbuf+TOKEN_MAX_DATA-2, 4);
+			cctx.next_out += 4;
+			cctx.avail_out -= 4;
+		}
+		if (res != Z_OK && res != Z_BUF_ERROR) {
+			ERRX1("final deflate() res=%d", res);
+			return 0;
+		}
+
+		/* Send the end of token marker */
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, 1)) {
+			ERRX1("io_lowbuffer_alloc");
+			return 0;
+		}
+		io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
+		free(cbuf);
+		comp_state = COMPRESS_DONE;
+		up->stat.curst = BLKSTAT_HASH;
+		return 1;
+	case BLKSTAT_DONE:
+		/*
+		 * The data has been written.
+		 * Clear our current send file and allow the block below
+		 * to find another.
+		 */
+
+		if (!sess->opts->dry_run)
+			LOG3("%s: flushed %jd KB total, %.2f%% uploaded",
+			    fl[up->cur->idx].path,
+			    (intmax_t)up->stat.total / 1024,
+			    100.0 * up->stat.dirty / up->stat.total);
+
+		send_up_reset(up);
+		return 1;
+	case BLKSTAT_PHASE:
+		/*
+		 * This is where we actually stop the algorithm: we're
+		 * already at the second phase.
+		 */
+
+		comp_state = COMPRESS_DONE;
+		send_up_reset(up);
+		(*phase)++;
+		sess->role->append = 0;
+		return 1;
+	case BLKSTAT_NEXT:
+		/*
+		 * Our last case: we need to find the
+		 * next block (and token) to transmit to
+		 * the receiver.
+		 * These will drive the finite state
+		 * machine in the first few conditional
+		 * blocks of this set.
+		 */
+
+		assert(up->stat.fd != -1);
+		blk_match(sess, up->cur->blks,
+			fl[up->cur->idx].path, &up->stat);
+		return 1;
+	case BLKSTAT_NONE:
+		break;
+	}
+
+	assert(BLKSTAT_NONE == up->stat.curst);
+
+	/*
+	 * We've either hit the phase change following the last file (or
+	 * start, or prior phase change), or we need to prime the next
+	 * file for transmission.
+	 * We special-case dry-run mode.
+	 */
+
+	if (up->cur->idx < 0) {
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, isz)) {
+			ERRX1("io_lowbuffer_alloc");
+			return 0;
+		}
+		io_lowbuffer_int(sess, *wb, &pos, *wbsz, -1);
+		up->stat.curst = BLKSTAT_PHASE;
+	} else if (sess->opts->dry_run) {
+		if (!sess->opts->server)
+			LOG1("%s", fl[up->cur->idx].wpath);
+
+		send_iflags(sess, wb, wbsz, wbmax, &pos, fl, up->cur->idx);
+		up->stat.curst = BLKSTAT_DONE;
+	} else {
+		assert(up->stat.fd != -1);
+
+		/*
+		 * FIXME: use the nice output of log_file() and so on in
+		 * downloader.c, which means moving this into
+		 * BLKSTAT_DONE instead of having it be here.
+		 */
+
+		if (!sess->opts->server)
+			LOG1("%s", fl[up->cur->idx].wpath);
+
+		send_iflags(sess, wb, wbsz, wbmax, &pos, fl, up->cur->idx);
+
+		assert(sizeof(buf) == 16);
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, sizeof(buf))) {
+			ERRX1("io_lowbuffer_alloc");
+			return 0;
+		}
+		blk_recv_ack(buf, up->cur->blks, up->cur->idx);
+		io_lowbuffer_buf(sess, *wb, &pos, *wbsz, buf, sizeof(buf));
+
+		LOG3("%s: primed for %jd B total",
+		    fl[up->cur->idx].path, (intmax_t)up->cur->blks->size);
+		up->stat.curst = BLKSTAT_NEXT;
+	}
+
+	return 1;
 }
 
 /*
@@ -179,6 +537,9 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		io_lowbuffer_buf(sess, *wb, &pos, *wbsz, fmd, dsz);
 		up->stat.curst = BLKSTAT_DONE;
 		return 1;
+	case BLKSTAT_FLUSH:
+		assert(0);
+		break;
 	case BLKSTAT_DONE:
 		/*
 		 * The data has been written.
@@ -377,9 +738,11 @@ send_iflags(struct sess *sess, void **wb, size_t *wbsz, size_t *wbmax,
  */
 static int
 send_dl_enqueue(struct sess *sess, struct send_dlq *q,
-	int32_t idx, struct flist *fl, size_t flsz, int fd)
+    void **wb, size_t *wbsz, size_t *wbmax,
+    int32_t idx, struct flist *fl, size_t flsz, int fd)
 {
 	struct send_dl	*s;
+	size_t		 pos = 0;
 
 	/* End-of-phase marker. */
 	if (idx == -1) {
@@ -508,7 +871,7 @@ rsync_sender(struct sess *sess, int fdin,
 	struct fl	    fl;
 	const struct flist *f;
 	size_t		    i, phase = 0;
-	int		    rc = 0, c, metadata_phase = 0;
+	int		    rc = 0, c, metadata_phase = 0, res = 0;
 	int32_t		    idx;
 	struct pollfd	    pfd[3];
 	struct send_dlq	    sdlq;
@@ -726,7 +1089,8 @@ rsync_sender(struct sess *sess, int fdin,
 				metadata_phase++;
 			}
 			if (!send_dl_enqueue(sess,
-			    &sdlq, idx, fl.flp, fl.sz, fdin)) {
+			    &sdlq, &wbuf, &wbufsz, &wbufmax,
+			    idx, fl.flp, fl.sz, fdin)) {
 				ERRX1("send_dl_enqueue");
 				goto out;
 			}
@@ -851,8 +1215,14 @@ rsync_sender(struct sess *sess, int fdin,
 		if (pfd[1].revents & POLLOUT && up.cur != NULL) {
 			assert(pfd[2].fd == -1);
 			assert(wbufpos == 0 && wbufsz == 0);
-			if (!send_up_fsm(sess, &phase,
-			    &up, &wbuf, &wbufsz, &wbufmax, fl.flp)) {
+			if (sess->opts->compress) {
+				res = send_up_fsm_compressed(sess, &phase, &up,
+				    &wbuf, &wbufsz, &wbufmax, fl.flp);
+			} else {
+				res = send_up_fsm(sess, &phase, &up,
+				    &wbuf, &wbufsz, &wbufmax, fl.flp);
+			}
+			if (!res) {
 				ERRX1("send_up_fsm");
 				goto out;
 			} else if (phase > (size_t)max_phase) {
