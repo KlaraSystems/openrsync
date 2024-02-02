@@ -293,7 +293,6 @@ struct	opts {
 	int		 size_only;		/* --size-only */
 	long		 block_size;		/* --block-size */
 	char            *filesfrom_host;        /* --files-from */
-	char            *filesfrom_port;        /* --files-from */
 	char            *filesfrom_path;        /* --files-from */
 	int		 whole_file;		/* --whole-file */
 #if 0
