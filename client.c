@@ -83,7 +83,7 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	 * side, we need to defer multiplexing.  The receiver just dumps
 	 * that file into the socket without further adherence to protocol.
 	 */
-	if (sess.opts->filesfrom_host)
+	if (sess.opts->filesfrom_host && f->mode == FARGS_SENDER)
 		sess.filesfrom_fd = fd;
 	else
 		sess.mplex_reads = 1;
