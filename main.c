@@ -884,6 +884,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 	cvs_excl = 0;
 	lidx = -1;
 	opts.max_size = opts.min_size = -1;
+	opts.compression_level = -1;
 	opts.whole_file = -1;
 	opts.outfile = stderr;
 #ifdef __APPLE__
@@ -1065,7 +1066,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.fuzzy_basis = 1;
 			break;
 		case 'z':
-			fprintf(stderr, "%s: -z not supported yet\n", getprogname());
+			opts.compress++;
 			break;
 		case 'I':
 			opts.ignore_times++;

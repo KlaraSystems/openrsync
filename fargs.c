@@ -267,6 +267,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-x");
 	if (sess->opts->one_file_system > 0)
 		addargs(&args, "-x");
+	if (sess->opts->compress)
+		addargs(&args, "-z");
 	if (sess->opts->specials && !sess->opts->devices)
 		addargs(&args, "--specials");
 	if (!sess->opts->specials && sess->opts->devices)

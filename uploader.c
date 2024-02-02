@@ -201,7 +201,7 @@ init_blk(struct blk *p, const struct blkset *set, off_t offs,
 
 	p->idx = idx;
 	/* Block length inherits for all but the last. */
-	p->len = idx < set->blksz - 1 ? set->len : set->rem;
+	p->len = (idx == set->blksz - 1 && set->rem) ? set->rem : set->len;
 	p->offs = offs;
 
 	p->chksum_short = hash_fast(map, p->len);
