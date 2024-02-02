@@ -315,6 +315,12 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		/* Must not transmit hostname and port as part of this */
 		addargs(&args, "--files-from");
 		addargs(&args, "%s", sess->opts->filesfrom_path);
+		if (sess->opts->relative == 0)
+			addargs(&args, "--no-relative");
+		if (sess->opts->dirs == 0)
+			addargs(&args, "--no-dirs");
+		if (sess->opts->recursive > 0)
+			addargs(&args, "--recursive");
 	}
 
 	/* extra options for the receiver (local is sender) */

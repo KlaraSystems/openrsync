@@ -728,6 +728,7 @@ rsync_getopt(int argc, char *argv[])
 	size_t		 basedir_cnt = 0;
 	const char	*errstr;
 	int		 c, cvs_excl, lidx;
+	int		 implied_recursive = 0;
 	int		 opts_F = 0, opts_no_relative = 0, opts_no_dirs = 0;
 
 	cvs_excl = 0;
@@ -784,6 +785,7 @@ rsync_getopt(int argc, char *argv[])
 			opts.hard_links = 1;
 			break;
 		case 'a':
+			implied_recursive = 1;
 			opts.recursive = 1;
 			opts.preserve_links = 1;
 			opts.preserve_perms = 1;
@@ -839,6 +841,7 @@ rsync_getopt(int argc, char *argv[])
 			opts.preserve_perms = 1;
 			break;
 		case 'r':
+			implied_recursive = 0;
 			opts.recursive = 1;
 			break;
 		case 't':
@@ -999,9 +1002,11 @@ basedir:
 			opts.relative++;
 			break;
 		case OP_NO_RELATIVE:
+			opts.relative = 0;
 			opts_no_relative++;
 			break;
 		case OP_NO_DIRS:
+			opts.dirs = 0;
 			opts_no_dirs++;
 			break;
 		case OP_FILESFROM:
@@ -1177,14 +1182,12 @@ basedir:
 			}
 			opts.filesfrom_host = NULL;
 		}
-		if (opts_no_relative)
-			opts.relative = 0;
-		else
+		if (!opts_no_relative)
 			opts.relative = 1;
-		if (opts_no_dirs)
-			opts.dirs = 0;
-		else
+		if (!opts_no_dirs)
 			opts.dirs = 1;
+		if (implied_recursive)
+			opts.recursive = 0;
 	}
 
 	if (opts.relative && opts_no_relative)
