@@ -46,6 +46,7 @@ struct daemon_cfg_param;
 #define	PARAM_DFLT(nameval, cnameval, dfltval)	\
 	{ .name = (nameval), .cname = (cnameval), .dflt = (dfltval) }
 
+/* XXX We may want to validate these on read. */
 static struct rsync_daemon_param {
 	const char	*name;
 	const char	*cname;
@@ -56,7 +57,10 @@ static struct rsync_daemon_param {
 } rsync_daemon_params[] = {
 	/* Implemented */
 	PARAM("address",	NULL),
-	PARAM_DFLT("port",	NULL,	"rsync"),
+	PARAM_DFLT("port",	NULL,			"rsync"),
+
+	PARAM_DFLT("use chroot",	"usechroot",	"true"),
+	PARAM("path",		NULL),
 
 	/* Not implemented global parameters */
 	PARAM("motd file",	"motdfile"),
@@ -65,15 +69,13 @@ static struct rsync_daemon_param {
 
 	/* Not implemented module options */
 	PARAM("comment",	NULL),
-	PARAM("path",		NULL),
-	PARAM("use chroot",	"usechroot"),
 	/* default enabled for chroot */
 	PARAM("numeric ids",	"numericds"),
 	/* default disabled when chroot */
 	PARAM("munge symlinks",	"mungesymlinks"),
 	PARAM("log file",	"logfile"),
 
-	PARAM_DFLT("max connectionms",	"maxconnections",	"0"),
+	PARAM_DFLT("max connections",	"maxconnections",	"0"),
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
 	PARAM_DFLT("max verbosity",	"maxverbosity",	"1"),
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
@@ -253,6 +255,8 @@ cfg_module_add_param(struct daemon_cfg_module *module,
 
 		if (strcmp(module->name, "global") == 0)
 			dparam->global = param;
+
+		STAILQ_INSERT_TAIL(&module->params, param, entry);
 	}
 
 	free(param->value);
@@ -645,11 +649,12 @@ cfg_is_valid_module(struct daemon_cfg *dcfg, const char *module)
 }
 
 static int
-cfg_param_fetch(struct daemon_cfg *dcfg, const char *which_mod, const char *key,
-    const char **value)
+cfg_param_resolve(struct daemon_cfg *dcfg, const char *which_mod,
+    const char *key, const struct rsync_daemon_param **odparam,
+    const struct daemon_cfg_param **ocparam, bool explicit_only)
 {
-	const struct daemon_cfg_param *cparam;
 	const struct rsync_daemon_param *dparam;
+	const struct daemon_cfg_param *cparam;
 	struct daemon_cfg_module *module;
 
 	if (which_mod == NULL)
@@ -670,14 +675,75 @@ cfg_param_fetch(struct daemon_cfg *dcfg, const char *which_mod, const char *key,
 		cparam = dparam->global;
 	} else {
 		cparam = cfg_module_find_param(module, dparam);
-		if (cparam == NULL)
+		if (cparam == NULL && !explicit_only)
 			cparam = dparam->global;
 	}
+
+	if (explicit_only && cparam == NULL) {
+		errno = ENOENT;
+		return -1;
+	}
+
+	if (odparam != NULL)
+		*odparam = dparam;
+	*ocparam = cparam;
+	return 0;
+}
+
+int
+cfg_has_param(struct daemon_cfg *dcfg, const char *which_mod, const char *key)
+{
+	const struct rsync_daemon_param *dparam;
+	const struct daemon_cfg_param *cparam;
+
+	if (cfg_param_resolve(dcfg, which_mod, key, &dparam, &cparam,
+	    true) != 0)
+		return 0;
+
+	return 1;
+}
+
+static int
+cfg_param_fetch(struct daemon_cfg *dcfg, const char *which_mod, const char *key,
+    const char **value)
+{
+	const struct rsync_daemon_param *dparam;
+	const struct daemon_cfg_param *cparam;
+
+	if (cfg_param_resolve(dcfg, which_mod, key, &dparam, &cparam,
+	    false) != 0)
+		return -1;
 
 	if (cparam == NULL)
 		*value = dparam->dflt;
 	else
 		*value = cparam->value;
+
+	return 0;
+}
+
+int
+cfg_param_bool(struct daemon_cfg *dcfg, const char *which_mod, const char *key,
+    int *val)
+{
+	const char *valuestr;
+
+	if (cfg_param_fetch(dcfg, which_mod, key, &valuestr) != 0)
+		return -1;
+
+	if (strcasecmp(valuestr, "yes") == 0 ||
+	    strcasecmp(valuestr, "true") == 0 ||
+	    strcasecmp(valuestr, "1") == 0) {
+		*val = 1;
+	} else if (strcasecmp(valuestr, "no") == 0 ||
+	    strcasecmp(valuestr, "false") == 0 ||
+	    strcasecmp(valuestr, "0") == 0) {
+		*val = 0;
+	} else {
+		errno = EINVAL;
+		return -1;
+	}
+
 	return 0;
 }
 

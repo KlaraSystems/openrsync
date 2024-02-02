@@ -774,10 +774,9 @@ usage(int exitcode)
 }
 
 /*
- * Parse options out of argv; this will later be shared with daemon mode to
- * parse options sent over the wire from clients.  We'll add at least a filter
- * argument to be able to filter out some arguments and their values that make
- * no sense for dealing with the daemon.
+ * Parse options out of argv; this ise shared with daemon mode to  parse options
+ * sent over the wire from clients.  Filtering is primarily so that the daemon
+ * can reject arguments based on their names.
  *
  * Returns NULL on error or the client options struct on success-- for
  * convenience we'll just use the global we've setup so that we don't need to
@@ -785,8 +784,9 @@ usage(int exitcode)
  * caller-allocated struct opts we'd need to return OP_* or 'f'lags from every
  * option.
  */
-static struct opts *
-rsync_getopt(int argc, char *argv[])
+struct opts *
+rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
+    struct sess *sess)
 {
 	long long	 tmpint;
 	size_t		 basedir_cnt = 0;
@@ -795,7 +795,14 @@ rsync_getopt(int argc, char *argv[])
 	int		 implied_recursive = 0;
 	int		 opts_F = 0, opts_no_relative = 0, opts_no_dirs = 0;
 
+	/*
+	 * In the case of the daemon, we're re-entering and opts may be dirty
+	 * in ways that matter.  Zero it out to be safe.
+	 */
+	memset(&opts, 0, sizeof(opts));
+
 	cvs_excl = 0;
+	lidx = -1;
 	opts.max_size = opts.min_size = -1;
 	opts.whole_file = -1;
 #ifdef __APPLE__
@@ -804,6 +811,37 @@ rsync_getopt(int argc, char *argv[])
 
 	while ((c = getopt_long(argc, argv, "046B:CDFHIKLOPRSVWabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
+		/* Give the filter a shot to reject the option. */
+		if (filter != NULL) {
+			const struct option *lopt;
+			int rc;
+
+			/*
+			 * If we can tie this particular option to a long opt,
+			 * even if the short option version of it was specified,
+			 * then we should.  The daemon needs to be able to
+			 * reject based on either name.
+			 */
+			if (lidx == -1) {
+				for (lopt = lopts; lopt->name != NULL; lopt++) {
+					if (lopt->flag == NULL &&
+					    lopt->val == c)
+						break;
+				}
+
+				if (lopt->name == NULL)
+					lopt = NULL;
+			} else {
+				lopt = &lopts[lidx];
+			}
+
+			rc = (*filter)(sess, c, lopt);
+			if (rc < 0)
+				continue;
+			else if (rc == 0)
+				return NULL;
+		}
+
 		switch (c) {
 		case '0':
 			opts.from0 = 1;
@@ -1180,6 +1218,8 @@ basedir:
 		default:
 			usage(ERR_SYNTAX);
 		}
+
+		lidx = -1;
 	}
 
 	/* Shouldn't be possible. */
@@ -1330,7 +1370,7 @@ main(int argc, char *argv[])
 	    NULL) == -1)
 		err(ERR_IPC, "pledge");
 
-	if (rsync_getopt(argc, argv) == NULL) {
+	if (rsync_getopt(argc, argv, NULL, NULL) == NULL) {
 		usage(ERR_SYNTAX);
 	}
 
