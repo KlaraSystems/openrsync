@@ -828,28 +828,6 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	int32_t		 ival;
 	uint32_t	 uival;
 	struct ident	*gids = NULL, *uids = NULL;
-	uint64_t         i, length;
-
-	if (sess->opts->filesfrom) {
-		read_filesfrom(sess, ".");
-		for (i = 0; i < sess->filesfrom_n; i++) {
-			length = strlen(sess->filesfrom[i]);
-			if (sess->filesfrom[i][length - 1] == '\n') {
-				sess->filesfrom[i][length - 1] = '\0';
-				length--;
-			}
-			/* Send the terminating zero, too */
-			if (write(fdout, sess->filesfrom[i], length + 1) < 0) {
-				ERR("write files-from remote file");
-				return 0;
-			}
-		}
-		i = 0;
-		if (write(fdout, &i, 1) < 0) {
-			ERR("write files-from remote file terminator");
-			return 0;
-		}
-	}
 
 	last[0] = '\0';
 

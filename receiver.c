@@ -271,7 +271,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 {
 	struct role	 receiver;
 	struct flist	*fl = NULL, *dfl = NULL;
-	size_t		 i, flsz = 0, dflsz = 0;
+	size_t		 i, flsz = 0, dflsz = 0, length;
 	char		*tofree;
 	int		 rc = 0, dfd = -1, phase = 0, c;
 	int32_t		 ioerror;
@@ -343,6 +343,31 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 */
 	if (sess->opts->server && sess->opts->del && !sess->opts->del_excl)
 		recv_rules(sess, fdin);
+
+	/*
+	 * If we're doing --files-from, we need to do that before we can receive
+	 * any files.
+	 */
+	if (sess->opts->server && sess->opts->filesfrom) {
+		read_filesfrom(sess, ".");
+		for (i = 0; i < sess->filesfrom_n; i++) {
+			length = strlen(sess->filesfrom[i]);
+			if (sess->filesfrom[i][length - 1] == '\n') {
+				sess->filesfrom[i][length - 1] = '\0';
+				length--;
+			}
+			/* Send the terminating zero, too */
+			if (write(fdout, sess->filesfrom[i], length + 1) < 0) {
+				ERR("write files-from remote file");
+				return 0;
+			}
+		}
+		i = 0;
+		if (write(fdout, &i, 1) < 0) {
+			ERR("write files-from remote file terminator");
+			return 0;
+		}
+	}
 
 	/*
 	 * Start by receiving the file list and our mystery number.
