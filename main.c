@@ -78,14 +78,14 @@ fargs_is_daemon(const char *v)
 }
 
 /*
- * Splits a string of the form host:port:/path/name
+ * Splits a string of the form host:/path/name
  * The components will be newly allocated strings.
  * Returns 0 on error, 1 on success.
  */
 static int
-split_hostspec(const char *const input, char **host, char **port, char **path)
+split_hostspec(const char *const input, char **host, char **path)
 {
-	char *cp, *cp2;
+	char *cp;
 	char *pathpos;
 
 	pathpos = strstr(input, ":/");
@@ -103,33 +103,11 @@ split_hostspec(const char *const input, char **host, char **port, char **path)
 		return 0;
 	}
 	*cp = '\0';
-	/* See if there is a port spec in there. */
-	cp = strchr(input, ':');
-	cp++;
-	cp2 = strchr(input, ':');
-	if (cp2 == NULL) {
-		free(*host);
-		*host = NULL;
-		return 0;
-	}
-	if (cp2 == pathpos) { /* No port spec */
-		*port = NULL;
-	} else { /* Does have port spec */
-		*port = strdup(cp2 + 1);
-		if (*port == NULL) {
-			free(*host);
-			*host = NULL;
-			return 0;
-		}
-		cp = strchr(*port, ':');
-		*cp = '\0';
-	}
+
 	*path = strdup(pathpos + 1);
 	if (*path == NULL) {
 		free(*host);
 		*host = NULL;
-		free(*port);
-		*port = NULL;
 		return 0;
 	}
 	return 1;
@@ -1187,10 +1165,9 @@ basedir:
 
 	if (opts.filesfrom != NULL) {
 		if (split_hostspec(opts.filesfrom, &opts.filesfrom_host,
-				&opts.filesfrom_port, &opts.filesfrom_path)) {
-			LOG2("remote file for filesfrom: '%s' '%s' '%s'\n",
-				opts.filesfrom_host, opts.filesfrom_port,
-				opts.filesfrom_path);
+				&opts.filesfrom_path)) {
+			LOG2("remote file for filesfrom: '%s' '%s'\n",
+				opts.filesfrom_host, opts.filesfrom_path);
 
 		} else {
 			opts.filesfrom_path = strdup(opts.filesfrom);
@@ -1199,7 +1176,6 @@ basedir:
 				return NULL;
 			}
 			opts.filesfrom_host = NULL;
-			opts.filesfrom_port = NULL;
 		}
 		if (opts_no_relative)
 			opts.relative = 0;
@@ -1298,8 +1274,7 @@ main(int argc, char *argv[])
 	cleanup_set_args(cleanup_ctx, fargs);
 
 	if (opts.filesfrom_host != NULL) {
-		LOG2("--files-from host '%s' port '%s'", 
-			opts.filesfrom_host, opts.filesfrom_port);
+		LOG2("--files-from host '%s'", opts.filesfrom_host);
 		if (opts.filesfrom_host[0] == '\0') {
 			LOG2("Inheriting --files-from hostname '%s'",
 				fargs->host);
@@ -1448,7 +1423,6 @@ main(int argc, char *argv[])
 	}
 
 	free(opts.filesfrom_host);
-	free(opts.filesfrom_port);
 	free(opts.filesfrom_path);
 
 	exit(rc);
