@@ -2099,13 +2099,13 @@ append_filesfrom(struct sess *sess, const char *basedir, char *file)
 		return 0;
 	}
 
-	asprintf(&(sess->filesfrom[sess->filesfrom_n]),"%s/%s", basedir, file);
+	asprintf(&(sess->filesfrom[sess->filesfrom_n]),"%s", file);
 	if (sess->filesfrom[sess->filesfrom_n] == NULL) {
 		ERR("asprintf");
 		cleanup_filesfrom(sess);
 		return 0;
 	}
-	LOG4("Added '%s' ('%s'/'%s') to flist", sess->filesfrom[sess->filesfrom_n], basedir, file);
+	LOG4("Added '%s' to flist", sess->filesfrom[sess->filesfrom_n]);
 	sess->filesfrom_n++;
 
 	return 1;
