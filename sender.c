@@ -452,9 +452,18 @@ rsync_sender(struct sess *sess, int fdin,
 			ERRX("Only one src dir allowed with --files-from");
 			goto out;
 		}
+
 		if (read_filesfrom(sess, argv[0]) == 0)
 			goto out;
 		else {
+			/*
+			 * The requested --files-from is expected to be relative
+			 * to the specified source directory, so chdir() to it.
+			 */
+			if (chdir(argv[0]) == -1) {
+				ERR("%s: chdir", argv[0]);
+				goto out;
+			}
 			argc = sess->filesfrom_n;
 			argv = sess->filesfrom;
 		}
