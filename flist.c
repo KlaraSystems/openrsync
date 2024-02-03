@@ -87,6 +87,105 @@ flist_cmp(const void *p1, const void *p2)
 }
 
 /*
+ * Required way to sort a filename list after protocol 29.
+ * Rule #1: directories compare with a trailing "/"
+ * Rule #2: Directories sort after non-directories
+ * Rule #3: a directory named "." sorts first
+ */
+static int
+flist_cmp29(const void *p1, const void *p2)
+{
+	const struct flist *f1 = p1, *f2 = p2;
+	const char *s1 = f1->wpath;
+	const char *s2 = f2->wpath;
+	const char *sep1 = NULL;
+	const char *sep2 = NULL;
+	int ret;
+
+	/* Rule #3: a directory named "." sorts first */
+	if (*s1 == '.' && !s1[1]) {
+		return -1;
+	}
+	if (*s2 == '.' && !s2[1]) {
+		return 1;
+	}
+
+	/* Advance cursor to the first difference */
+	while (*s1 == *s2) {
+		if (*s1 == '\0') {
+			return 0;
+		}
+		s1++;
+		s2++;
+	}
+
+	/* Rule #1: directories compare with a trailing "/" */
+	if (S_ISDIR(f1->st.mode) && *s1 == '\0') {
+		s1 = "/";
+	} else if (S_ISDIR(f2->st.mode) && *s2 == '\0') {
+		s2 = "/";
+	}
+
+	/* Rule #2: Directories sort after non-directories */
+	/* Find the dirname vs basename */
+	sep1 = strrchr(s1, '/');
+	sep2 = strrchr(s2, '/');
+
+	/* If its a directory, compare dirname instead of basename */
+	if (!sep1 && S_ISDIR(f1->st.mode)) {
+		sep1 = s1 + strlen(s1);
+	}
+	if (!sep2 && S_ISDIR(f2->st.mode)) {
+		sep2 = s2 + strlen(s2);
+	}
+
+	if (sep1 != NULL && sep2 != NULL) {
+		/* Compare basedirs, including the trailing / */
+		ret = strncmp(s1, s2, MIN(sep1 - s1, sep2 - s2) + 1);
+		if (ret == 0) {
+			/* If both are directories, sort the shorter one first */
+			if (S_ISDIR(f1->st.mode) && S_ISDIR(f2->st.mode)) {
+				return strlen(s1) > strlen(s2) ? 1 : -1;
+			}
+			/* Compare the remainder after the common basedir */
+			ret = MIN(sep1 - s1, sep2 - s2) + 1;
+			s1 += ret;
+			s2 += ret;
+			sep1 = strrchr(s1, '/');
+			sep2 = strrchr(s2, '/');
+			if (!sep1 && sep2) {
+				return -1;
+			} else if (!sep2 && sep1) {
+				return 1;
+			}
+			return strcmp(s1, s2);
+		}
+	} else if (sep1) {
+		return 1;
+	} else if (sep2) {
+		return -1;
+	}
+
+	/* Advance cursor to the first difference */
+	while (*s1 == *s2) {
+		if (*s1 == '\0') {
+			return 0;
+		}
+		s1++;
+		s2++;
+	}
+
+	/* Rule #1: directories compare with a trailing "/" */
+	if (S_ISDIR(f1->st.mode) && *s1 == '\0') {
+		s1 = "/";
+	} else if (S_ISDIR(f2->st.mode) && *s2 == '\0') {
+		s2 = "/";
+	}
+
+	return ((u_char)*s1 - (u_char)*s2);
+}
+
+/*
  * Like the above, but we need to guarantee the relative order of directory
  * contents to their directory.
  */
@@ -1185,7 +1284,12 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	/* Remember to order the received list. */
 
 	LOG2("received file metadata list: %zu", flsz);
-	qsort(fl, flsz, sizeof(struct flist), flist_cmp);
+	if (sess->protocol >= 29) {
+		qsort(fl, flsz, sizeof(struct flist), flist_cmp29);
+	} else {
+		qsort(fl, flsz, sizeof(struct flist), flist_cmp);
+	}
+
 	flist_topdirs(sess, fl, flsz);
 	*sz = flsz;
 	*flp = fl;
@@ -1492,6 +1596,14 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 			if (sz2 >= 2 && f->path[sz2 - 1] == '.' &&
 			    f->path[sz2 - 2] == '/') {
 				(f->path)[sz2 - 2] = '\0';
+			}
+
+			/*
+			 * If we recursed a symlink, removing the trailing
+			 * "/" to avoid issues sorting the flist.
+			 */
+			if (sz2 >= 1 && f->path[sz2 - 1] == '/') {
+				(f->path)[sz2 - 1] = '\0';
 			}
 		}
 
@@ -1850,7 +1962,11 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	if (!rc)
 		return 0;
 
-	qsort(fl->flp, fl->sz, sizeof(struct flist), flist_cmp);
+	if (sess->protocol >= 29) {
+		qsort(fl->flp, fl->sz, sizeof(struct flist), flist_cmp29);
+	} else {
+		qsort(fl->flp, fl->sz, sizeof(struct flist), flist_cmp);
+	}
 
 	if (flist_dedupe(sess->opts, &(fl->flp), &fl->sz)) {
 		flist_topdirs(sess, fl->flp, fl->sz);
@@ -2120,7 +2236,11 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		goto out;
 	}
 
-	qsort(*fl, *sz, sizeof(struct flist), flist_dir_cmp);
+	if (sess->protocol >= 29) {
+		qsort(*fl, *sz, sizeof(struct flist), flist_cmp29);
+	} else {
+		qsort(*fl, *sz, sizeof(struct flist), flist_dir_cmp);
+	}
 	rc = 1;
 out:
 	if (fts != NULL)
