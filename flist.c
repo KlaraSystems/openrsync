@@ -103,10 +103,10 @@ flist_cmp29(const void *p1, const void *p2)
 	int ret;
 
 	/* Rule #3: a directory named "." sorts first */
-	if (*s1 == '.' && !s1[1]) {
+	if (*s1 == '.' && s1[1] == '\0') {
 		return -1;
 	}
-	if (*s2 == '.' && !s2[1]) {
+	if (*s2 == '.' && s2[1] == '\0') {
 		return 1;
 	}
 
@@ -166,7 +166,7 @@ flist_cmp29(const void *p1, const void *p2)
 		return -1;
 	}
 
-	/* Advance cursor to the first difference */
+	/* Advance cursor to the next difference */
 	while (*s1 == *s2) {
 		if (*s1 == '\0') {
 			return 0;
@@ -467,7 +467,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		 * For protocol 28+: Only non-directories that have nlink > 1
 		 * For protocols less than 28: All regular files
 		 */
-		if (sess->opts->hard_links && sess->protocol >= 28 &&
+		if (sess->opts->hard_links && protocol_newflist &&
 		    (!S_ISDIR(f->st.mode) && f->st.nlink > 1)) {
 			flag |= FLIST_HARDLINKED;
 			if (minor(f->st.rdev) <= 0xff) {
@@ -477,7 +477,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			flag |= FLIST_HARDLINKED;
 		}
 
-		if (sess->protocol >= 28) {
+		if (protocol_newflist) {
 			if (!flag && !S_ISDIR(f->st.mode)) {
 				flag |= FLIST_TOP_LEVEL;
 			}
@@ -494,7 +494,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		/* Now write to the wire. */
 		/* FIXME: buffer this. */
 
-		if (sess->protocol >= 28 && (FLIST_XFLAGS & flag)) {
+		if (protocol_newflist && (FLIST_XFLAGS & flag)) {
 			if (!io_write_byte(sess, fdout, flag)) {
 				ERRX1("io_write_byte");
 				goto out;
@@ -565,7 +565,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			 * However, if the minor is small, we can optimize it
 			 * down to a byte instead.
 			 */
-			if (sess->protocol < 28) {
+			if (!protocol_newflist) {
 				if (!io_write_int(sess, fdout, f->st.rdev)) {
 					ERRX1("io_write_int");
 					goto out;
@@ -629,7 +629,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		 * the item is not a regular file.
 		 */
 		if (sess->opts->checksum &&
-		    (sess->protocol < 28 || S_ISREG(f->st.mode))) {
+		    (!protocol_newflist || S_ISREG(f->st.mode))) {
 			if (!io_write_buf(sess, fdout, f->md, sizeof(f->md))) {
 				ERRX1("io_write_buf checksum");
 				goto out;
@@ -1017,7 +1017,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			break;
 		}
 		/* Read the second byte of flags if there is one */
-		if (sess->protocol >= 28 && (FLIST_XFLAGS & flag)) {
+		if (protocol_newflist && (FLIST_XFLAGS & flag)) {
 			if (!io_read_byte(sess, fdin, &bval)) {
 				ERRX1("io_read_byte");
 				goto out;
@@ -1127,7 +1127,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		if (((sess->opts->devices && (S_ISBLK(ff->st.mode) ||
 		    S_ISCHR(ff->st.mode))) ||
 		    (sess->opts->specials && (S_ISFIFO(ff->st.mode) ||
-		    S_ISSOCK(ff->st.mode)))) && sess->protocol < 28) {
+		    S_ISSOCK(ff->st.mode)))) && !protocol_newflist) {
 			/*
 			 * Protocols less than 28, the device number is
 			 * transmitted as a single int.
@@ -1212,7 +1212,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		 * All plain files send this info.
 		 */
 
-		if (sess->opts->hard_links && sess->protocol < 28 &&
+		if (sess->opts->hard_links && !protocol_newflist &&
 		    S_ISREG(ff->st.mode)) {
 			flag |= FLIST_HARDLINKED;
 		}
@@ -1255,7 +1255,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		 * the item is not a regular file.
 		 */
 		if (sess->opts->checksum &&
-		    (sess->protocol < 28 || S_ISREG(ff->st.mode))) {
+		    (!protocol_newflist || S_ISREG(ff->st.mode))) {
 			if (!io_read_buf(sess, fdin, ff->md, sizeof(ff->md))) {
 				ERRX1("io_read_buf");
 				goto out;
@@ -1284,7 +1284,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	/* Remember to order the received list. */
 
 	LOG2("received file metadata list: %zu", flsz);
-	if (sess->protocol >= 29) {
+	if (protocol_newsort) {
 		qsort(fl, flsz, sizeof(struct flist), flist_cmp29);
 	} else {
 		qsort(fl, flsz, sizeof(struct flist), flist_cmp);
@@ -1962,7 +1962,7 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	if (!rc)
 		return 0;
 
-	if (sess->protocol >= 29) {
+	if (protocol_newsort) {
 		qsort(fl->flp, fl->sz, sizeof(struct flist), flist_cmp29);
 	} else {
 		qsort(fl->flp, fl->sz, sizeof(struct flist), flist_cmp);
@@ -2236,7 +2236,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		goto out;
 	}
 
-	if (sess->protocol >= 29) {
+	if (protocol_newsort) {
 		qsort(*fl, *sz, sizeof(struct flist), flist_cmp29);
 	} else {
 		qsort(*fl, *sz, sizeof(struct flist), flist_dir_cmp);

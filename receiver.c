@@ -281,6 +281,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	struct info_for_hardlink *hl = NULL;
 	struct hardlinks hls;
 	bool		 root_missing = false;
+	int		 max_phase = sess->protocol >= 29 ? 2 : 1;
 
 	if (pledge("stdio unix rpath wpath cpath dpath fattr chown getpw unveil", NULL) == -1)
 		err(ERR_IPC, "pledge");
@@ -664,13 +665,18 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 			} else if (c == 0) {
 				size_t cnt;
 
-				assert(phase == 0 || phase == 1);
+				assert(phase >= 0 && phase <= max_phase);
 				phase++;
 
-				/* Process any delayed updates */
-				delayed_renames(sess);
-				free(sess->dlrename);
-				sess->dlrename = NULL;
+				/*
+				 * Process any delayed updates.
+				 * For protocol 29 we handle these in a later phase.
+				 */
+				if (!protocol_dlrename) {
+					delayed_renames(sess);
+					free(sess->dlrename);
+					sess->dlrename = NULL;
+				}
 
 				/*
 				 * Downloader finished the last of this phase,
@@ -714,7 +720,17 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * sent the second end-of-phase and the downloader will have already
 	 * eaten the ack.
 	 */
-	if (phase == 1) {
+	while (phase <= max_phase) {
+		/*
+		 * In protocol 29 and later we delay this processing after
+		 * we have sent the first End-of-Phase marker.
+		 */
+		if (phase == 2 && protocol_dlrename) {
+			delayed_renames(sess);
+			free(sess->dlrename);
+			sess->dlrename = NULL;
+		}
+
 		if (!io_write_int(sess, fdout, -1)) {
 			ERRX1("io_write_int");
 			goto out;
@@ -727,6 +743,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 			ERRX("expected phase ack");
 			goto out;
 		}
+		phase++;
 	}
 
 	/*

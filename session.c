@@ -29,7 +29,8 @@
  */
 static void
 stats_log(struct sess *sess,
-	uint64_t tread, uint64_t twrite, uint64_t tsize)
+    uint64_t tread, uint64_t twrite, uint64_t tsize, uint64_t fbuild,
+    uint64_t fxfer)
 {
 	double		 tr, tw, ts;
 	const char	*tru = "B", *twu = "B", *tsu = "B";
@@ -100,7 +101,7 @@ stats_log(struct sess *sess,
 int
 sess_stats_send(struct sess *sess, int fd)
 {
-	uint64_t tw, tr, ts;
+	uint64_t tw, tr, ts, fb, fx;
 
 	if (!sess->opts->server && verbose == 0)
 		return 1;
@@ -108,6 +109,8 @@ sess_stats_send(struct sess *sess, int fd)
 	tw = sess->total_write;
 	tr = sess->total_read;
 	ts = sess->total_size;
+	fb = 0;
+	fx = 0;
 
 	if (sess->opts->server) {
 		if (!io_write_ulong(sess, fd, tr)) {
@@ -120,10 +123,19 @@ sess_stats_send(struct sess *sess, int fd)
 			ERRX1("io_write_ulong");
 			return 0;
 		}
+		if (protocol_fliststats) {
+			if (!io_write_ulong(sess, fd, fb)) {
+				ERRX1("io_write_ulong");
+				return 0;
+			} else if (!io_write_ulong(sess, fd, fx)) {
+				ERRX1("io_write_ulong");
+				return 0;
+			}
+		}
 	}
 
 	if (verbose > 0)
-		stats_log(sess, tr, tw, ts);
+		stats_log(sess, tr, tw, ts, fb, fx);
 	return 1;
 }
 
@@ -137,7 +149,7 @@ sess_stats_send(struct sess *sess, int fd)
 int
 sess_stats_recv(struct sess *sess, int fd)
 {
-	uint64_t tr, tw, ts;
+	uint64_t tr, tw, ts, fb, fx;
 
 	if (sess->opts->server)
 		return 1;
@@ -152,8 +164,17 @@ sess_stats_recv(struct sess *sess, int fd)
 		ERRX1("io_read_ulong");
 		return 0;
 	}
+	if (protocol_fliststats) {
+		if (!io_read_ulong(sess, fd, &fb)) {
+			ERRX1("io_read_ulong");
+			return 0;
+		} else if (!io_read_ulong(sess, fd, &fx)) {
+			ERRX1("io_read_ulong");
+			return 0;
+		}
+	}
 
 	if (verbose > 0)
-		stats_log(sess, tr, tw, ts);
+		stats_log(sess, tr, tw, ts, fb, fx);
 	return 1;
 }

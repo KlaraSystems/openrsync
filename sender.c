@@ -111,13 +111,13 @@ send_up_reset(struct send_up *p)
 static int
 send_up_fsm(struct sess *sess, size_t *phase,
 	struct send_up *up, void **wb, size_t *wbsz, size_t *wbmax,
-	const struct flist *fl)
+	struct flist *fl)
 {
 	size_t		 pos = 0, isz = sizeof(int32_t),
 			 dsz = MD4_DIGEST_LENGTH;
 	unsigned char	 fmd[MD4_DIGEST_LENGTH];
 	off_t		 sz;
-	char		 buf[20];
+	char		 buf[16];
 
 	switch (up->stat.curst) {
 	case BLKSTAT_DATA:
@@ -241,11 +241,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		if (!sess->opts->server)
 			LOG1("%s", fl[up->cur->idx].wpath);
 
-		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, isz)) {
-			ERRX1("io_lowbuffer_alloc");
-			return 0;
-		}
-		io_lowbuffer_int(sess, *wb, &pos, *wbsz, up->cur->idx);
+		send_iflags(sess, wb, wbsz, wbmax, &pos, fl, up->cur->idx);
 		up->stat.curst = BLKSTAT_DONE;
 	} else {
 		assert(up->stat.fd != -1);
@@ -259,17 +255,110 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		if (!sess->opts->server)
 			LOG1("%s", fl[up->cur->idx].wpath);
 
-		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, 20)) {
+		send_iflags(sess, wb, wbsz, wbmax, &pos, fl, up->cur->idx);
+
+		assert(sizeof(buf) == 16);
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, sizeof(buf))) {
 			ERRX1("io_lowbuffer_alloc");
 			return 0;
 		}
-		assert(sizeof(buf) == 20);
 		blk_recv_ack(buf, up->cur->blks, up->cur->idx);
-		io_lowbuffer_buf(sess, *wb, &pos, *wbsz, buf, 20);
+		io_lowbuffer_buf(sess, *wb, &pos, *wbsz, buf, sizeof(buf));
 
 		LOG3("%s: primed for %jd B total",
 		    fl[up->cur->idx].path, (intmax_t)up->cur->blks->size);
 		up->stat.curst = BLKSTAT_NEXT;
+	}
+
+	return 1;
+}
+
+/*
+ * Read the Itemization flags for an index off the wire.
+ * Deal with the conditional "follows" flags for extra metadata.
+ */
+int
+get_iflags(struct sess *sess, int fd, struct flist *fl, int32_t idx)
+{
+
+	if (idx < 0) {
+		return 0;
+	}
+
+	if (!protocol_itemize) {
+		fl[idx].iflags = IFLAG_TRANSFER;
+		return 1;
+	}
+
+	if (!io_read_short(sess, fd, &fl[idx].iflags)) {
+		ERRX1("io_read_short");
+		return 0;
+	}
+	if (IFLAG_BASIS_FOLLOWS & fl[idx].iflags) {
+		if (!io_read_byte(sess, fd, (uint8_t *)&fl[idx].basis)) {
+			ERRX1("io_read_byte");
+			return 0;
+		}
+	}
+	if (IFLAG_HLINK_FOLLOWS & fl[idx].iflags) {
+		assert(fl[idx].link == NULL);
+		if ((fl[idx].link = calloc(1, PATH_MAX)) == NULL) {
+			ERR("calloc hlink vstring");
+			return 0;
+		} else if (!io_read_vstring(sess, fd, fl[idx].link,
+		    PATH_MAX)) {
+			ERRX1("io_read_vstring");
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+/*
+ * Send the Itemization flags for an index over the wire.
+ * Deal with the conditional "follows" flags for extra metadata.
+ */
+int
+send_iflags(struct sess *sess, void **wb, size_t *wbsz, size_t *wbmax,
+    size_t *pos, struct flist *fl, int32_t idx)
+{
+	size_t linklen;
+
+	if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, sizeof(int32_t))) {
+		ERRX1("io_lowbuffer_alloc");
+		return 0;
+	}
+	io_lowbuffer_int(sess, *wb, pos, *wbsz, idx);
+
+	if (!protocol_itemize) {
+                return 1;
+	}
+
+	if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, sizeof(int16_t))) {
+		ERRX1("io_lowbuffer_alloc");
+		return 0;
+	}
+	io_lowbuffer_short(sess, *wb, pos, *wbsz, fl[idx].iflags);
+
+	if (IFLAG_BASIS_FOLLOWS & fl[idx].iflags) {
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax,
+		    sizeof(int8_t))) {
+			ERRX1("io_lowbuffer_alloc");
+			return 0;
+		}
+		io_lowbuffer_byte(sess, *wb, pos, *wbsz,
+		    fl[idx].basis);
+	}
+	if (IFLAG_HLINK_FOLLOWS & fl[idx].iflags) {
+		linklen = strlen(fl[idx].link);
+		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax,
+		    linklen + (linklen > 0x7f ? 2 : 1))) {
+			ERRX1("io_lowbuffer_alloc");
+			return 0;
+		}
+		io_lowbuffer_vstring(sess, *wb, pos, *wbsz,
+		    fl[idx].link, linklen);
 	}
 
 	return 1;
@@ -285,12 +374,11 @@ send_up_fsm(struct sess *sess, size_t *phase,
  */
 static int
 send_dl_enqueue(struct sess *sess, struct send_dlq *q,
-	int32_t idx, const struct flist *fl, size_t flsz, int fd)
+	int32_t idx, struct flist *fl, size_t flsz, int fd)
 {
 	struct send_dl	*s;
 
 	/* End-of-phase marker. */
-
 	if (idx == -1) {
 		if ((s = calloc(1, sizeof(struct send_dl))) == NULL) {
 			ERR("calloc");
@@ -300,14 +388,23 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 		s->blks = NULL;
 		TAILQ_INSERT_TAIL(q, s, entries);
 		return 1;
-	}
-
-	/* Validate the index. */
-
-	if (idx < 0 || (uint32_t)idx >= flsz) {
+	} else if (idx < 0 || (uint32_t)idx >= flsz) {
 		ERRX("file index out of bounds: invalid %d out of %zu",
 		    idx, flsz);
 		return 0;
+	}
+
+	if (!get_iflags(sess, fd, fl, idx)) {
+		ERRX1("get_iflags");
+		return 0;
+	}
+
+	/* Validate the index. */
+	if (fl[idx].iflags == IFLAG_NEW) {
+		/* Keep alive packet, do nothing */
+		return 1;
+	} else if (!(IFLAG_TRANSFER & fl[idx].iflags)) {
+		return 1;
 	} else if (S_ISDIR(fl[idx].st.mode)) {
 		ERRX("blocks requested for "
 			"directory: %s", fl[idx].path);
@@ -421,6 +518,7 @@ rsync_sender(struct sess *sess, int fdin,
 	int		    markers = 0, shutdown = 0;
 	struct timeval	    tv;
 	double		    now, rate, sleeptime;
+	int		    max_phase = sess->protocol >= 29 ? 2 : 1;
 
 	fl_init(&fl);
 	flg = &fl;
@@ -610,8 +708,9 @@ rsync_sender(struct sess *sess, int fdin,
 			 * messages above.
 			 */
 			if (idx == -1) {
-				if (++markers == PHASE_MAX)
+				if (++markers >= max_phase + 1) {
 					shutdown = 1;
+				}
 
 				/*
 				 * We track the metadata phase separately
@@ -736,8 +835,9 @@ rsync_sender(struct sess *sess, int fdin,
 			    &up, &wbuf, &wbufsz, &wbufmax, fl.flp)) {
 				ERRX1("send_up_fsm");
 				goto out;
-			} else if (phase > 1)
+			} else if (phase > max_phase) {
 				break;
+			}
 		}
 
 		/*
@@ -811,11 +911,38 @@ rsync_sender(struct sess *sess, int fdin,
 
 	/* Final "goodbye" message. */
 
-	if (!io_read_int(sess, fdin, &idx)) {
-		ERRX1("io_read_int");
-		goto out;
-	} else if (idx != -1) {
+	if (!protocol_keepalive) {
+		if (!io_read_int(sess, fdin, &idx)) {
+			ERRX1("io_read_int");
+			goto out;
+		}
+	} else {
+		int32_t keepalive;
+		while (1) {
+			if (!io_read_int(sess, fdin, &idx)) {
+				ERRX1("io_read_int");
+				goto out;
+			} else if ((uint32_t)idx != fl.sz) {
+				break;
+			} else if (!io_read_short(sess, fdin, &keepalive)) {
+				ERRX1("io_read_short");
+				goto out;
+			} else if (keepalive != IFLAG_NEW) {
+				break;
+			}
+			/* Reply to the keepalive ping */
+			if (!io_write_int(sess, fdout, fl.sz)) {
+				ERRX1("io_write_int");
+				goto out;
+			} else if (!io_write_short(sess, fdout, IFLAG_NEW)) {
+				ERRX1("io_write_short");
+				goto out;
+			}
+		}
+	}
+	if (idx != -1) {
 		ERRX("read incorrect update complete ack");
+		rc = ERR_PROTOCOL;
 		goto out;
 	}
 
@@ -832,5 +959,6 @@ out:
 	free(wbuf);
 	blkhash_free(up.stat.blktab);
 	cleanup_filesfrom(sess);
+
 	return rc;
 }

@@ -652,6 +652,31 @@ io_lowbuffer_buf(struct sess *sess, void *buf,
 }
 
 /*
+ * Like io_lowbuffer_buf() but a vstring, a size following by the raw string.
+ */
+void
+io_lowbuffer_vstring(struct sess *sess, void *buf, size_t *bufpos,
+    size_t buflen, char *str, size_t sz)
+{
+	int32_t	tagbuf;
+
+	if (sz == 0)
+		return;
+
+	if (!sess->mplex_writes) {
+		io_buffer_vstring(buf, bufpos, buflen, str, sz);
+		return;
+	}
+
+	assert(*bufpos + sz + sizeof(int32_t) <= buflen);
+	assert(sz == (sz & 0xFFFFFF));
+	tagbuf = htole32((7 << 24) + sz + (sz > 0x7f ? 2 : 1));
+
+	io_buffer_int(buf, bufpos, buflen, tagbuf);
+	io_buffer_vstring(buf, bufpos, buflen, str, sz);
+}
+
+/*
  * Allocate the space needed for io_lowbuffer_buf() and friends.
  * This should be called for *each* lowbuffer operation, so:
  *   io_lowbuffer_alloc(... sizeof(int32_t));
@@ -693,6 +718,18 @@ io_lowbuffer_int(struct sess *sess, void *buf,
 	int32_t	nv = htole32(val);
 
 	io_lowbuffer_buf(sess, buf, bufpos, buflen, &nv, sizeof(int32_t));
+}
+
+/*
+ * Like io_lowbuffer_buf(), but for a single byte.
+ */
+void
+io_lowbuffer_byte(struct sess *sess, void *buf,
+	size_t *bufpos, size_t buflen, int8_t val)
+{
+	int8_t	nv = val;
+
+	io_lowbuffer_buf(sess, buf, bufpos, buflen, &nv, sizeof(nv));
 }
 
 /*
