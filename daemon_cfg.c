@@ -56,14 +56,16 @@ static struct rsync_daemon_param {
 	const struct daemon_cfg_param	*global;
 } rsync_daemon_params[] = {
 	/* Implemented */
+	/** Global parameters **/
 	PARAM("address",	NULL),
 	PARAM_DFLT("port",	NULL,			"rsync"),
+	PARAM("motd file",	"motdfile"),
 
+	/** Module parameters **/
 	PARAM_DFLT("use chroot",	"usechroot",	"true"),
 	PARAM("path",		NULL),
 
 	/* Not implemented global parameters */
-	PARAM("motd file",	"motdfile"),
 	PARAM("pid file",	"pidfile"),
 	PARAM("socket options",	"socketoptions"),
 
