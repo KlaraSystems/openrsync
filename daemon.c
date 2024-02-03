@@ -284,9 +284,19 @@ daemon_normalize_paths(const char *module, int argc, char *argv[])
 	for (int i = 0; i < argc; i++) {
 		path = argv[i];
 
-		/* Search for <module>/... */
-		if (strncmp(path, module, modlen) != 0 || path[modlen] != '/')
+		/* Search for <module>[/...] */
+		if (strncmp(path, module, modlen) != 0 ||
+		    (path[modlen] != '/' && path[modlen] != '\0'))
 			continue;
+
+		/*
+		 * If we just had <module> and not <module>/..., then we can
+		 * just truncate it entirely.
+		 */
+		if (path[modlen] == '\0') {
+			path[0] = '\0';
+			continue;
+		}
 
 		/*
 		 * Strip the leading <module>/ prefix.  Any unprefixed paths are
