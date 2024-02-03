@@ -72,7 +72,7 @@ count_dir_depth(const char *path, int dirdepth, int strict)
 		return 0;
 	}
 
-	dp = path;
+	dp = (char *)path;
 	while (dp != NULL) {
 		/* Skip any excess slashes */
 		while (*dp == '/') {
