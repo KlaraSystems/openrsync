@@ -77,10 +77,17 @@ static const struct option	daemon_lopts[] = {
 	{ NULL,		0,		NULL,			0 },
 };
 
+/*
+ * Memory legend:
+ *
+ * (c) Allocated within config, or an option pointer -- do not free
+ * (f) Allocated independently, child should free
+ */
 struct daemon_role {
 	struct role		 role;
-	const char		*cfg_file;
-	struct daemon_cfg	*dcfg;
+	const char		*cfg_file;	/* (c) daemon config file */
+	char			*motd_file;	/* (f) client motd */
+	struct daemon_cfg	*dcfg;		/* (f) daemon config */
 };
 
 static void
@@ -308,16 +315,55 @@ daemon_normalize_paths(const char *module, int argc, char *argv[])
 }
 
 static int
+daemon_write_motd(struct sess *sess, const char *motd_file, int outfd)
+{
+	FILE *fp;
+	char *line;
+	size_t linesz;
+	ssize_t linelen;
+	int retval;
+
+	/* Errors largely ignored, maybe logged. */
+	if (motd_file[0] == '\0')
+		return 1;
+
+	line = NULL;
+	linesz = 0;
+	fp = fopen(motd_file, "r");
+	if (fp == NULL) {
+		/* XXX Log */
+		return 1;
+	}
+
+	retval = 1;
+	while ((linelen = getline(&line, &linesz, fp)) > 0) {
+		if (!io_write_buf(sess, outfd, line, linelen)) {
+			/* XXX Log */
+			retval = 0;
+			break;
+		}
+	}
+
+	fclose(fp);
+	free(line);
+	return retval;
+}
+
+static int
 rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
     size_t slen)
 {
 	struct daemon_role *role;
 	struct opts *client_opts;
 	const char *module_path;
-	char **argv, *module;
+	char **argv, *module, *motd_file;
 	int argc, flags, rc, use_chroot;
 
 	role = (void *)sess->role;
+
+	motd_file = role->motd_file;
+	role->motd_file = NULL;
+
 	cfg_free(role->dcfg);
 
 	sess->lver = RSYNC_PROTOCOL;
@@ -349,6 +395,15 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		/* XXX Error */
 		goto fail;
 	}
+
+	/* Grab the motd before we free it. */
+	rc = daemon_write_motd(sess, motd_file, fd);
+	free(motd_file);
+	motd_file = NULL;
+
+	/* Fatal error, already logged. */
+	if (!rc)
+		goto fail;
 
 	if (!cfg_is_valid_module(role->dcfg, module)) {
 		/* XXX Send error */
@@ -485,12 +540,23 @@ fail:
 	return ERR_IPC;
 }
 
+static void
+get_global_cfgstr(struct daemon_cfg *dcfg, const char *key, const char **out)
+{
+	int error;
+
+	error = cfg_param_str(dcfg, "global", key, out);
+
+	assert(error == 0);
+}
+
 int
 rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 {
 	struct sess sess;
 	struct daemon_role role;
 	long long tmpint;
+	const char *cfg_motd;
 	int c, opt_daemon = 0, detach = 1;
 
 	/* Start with a fresh session / opts */
@@ -582,19 +648,19 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 		}
 	}
 
-	/* Fetch the port if it wasn't specified via arguments. */
-	if (daemon_opts->port == NULL) {
-		int error;
+	/*
+	 * "rsync" is set as our default value, so if it's not found
+	 * we'll get that.  We'll only fetch it if it wasn't specified via
+	 * arguments.
+	 */
+	if (daemon_opts->port == NULL)
+		get_global_cfgstr(role.dcfg, "port", &daemon_opts->port);
 
-		/*
-		 * "rsync" is set as our default value, so if it's not found
-		 * we'll get that.
-		 */
-		error = cfg_param_str(role.dcfg, "global", "port",
-		    &daemon_opts->port);
-
-		assert(error == 0);
-	}
+	/* Grab the motd filename, too. */
+	get_global_cfgstr(role.dcfg, "motd file", &cfg_motd);
+	role.motd_file = strdup(cfg_motd);
+	if (role.motd_file == NULL)
+		err(ERR_IPC, "strdup");
 
 	return rsync_listen(&sess, &rsync_daemon_handler);
 }
