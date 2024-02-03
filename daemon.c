@@ -361,6 +361,10 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	role = (void *)sess->role;
 
+	/* XXX These should perhaps log an error, but they are not fatal. */
+	(void)rsync_setsockopts(fd, "SO_KEEPALIVE");
+	(void)rsync_setsockopts(fd, sess->opts->sockopts);
+
 	motd_file = role->motd_file;
 	role->motd_file = NULL;
 
@@ -661,6 +665,10 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	role.motd_file = strdup(cfg_motd);
 	if (role.motd_file == NULL)
 		err(ERR_IPC, "strdup");
+
+	if (daemon_opts->sockopts == NULL)
+		get_global_cfgstr(role.dcfg, "socket options",
+		    &daemon_opts->sockopts);
 
 	return rsync_listen(&sess, &rsync_daemon_handler);
 }
