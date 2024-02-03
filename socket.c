@@ -137,16 +137,16 @@ inet_setsockopt(const struct sockopt *soptdef, int sock, int value)
 }
 
 static int
-inet_setsockopts(const struct opts *opts, int sock)
+inet_setsockopts(int sock, const char *options)
 {
 	const struct sockopt *soptdef;
 	char *name, *part, *sockopts, *value;
 	int error, sockval;
 
-	if (opts->sockopts == NULL)
+	if (options == NULL || options[0] == '\0')
 		return 0;
 
-	sockopts = strdup(opts->sockopts);
+	sockopts = strdup(options);
 	if (sockopts == NULL) {
 		ERR("strdup");
 		return -1;
@@ -246,7 +246,7 @@ inet_connect(const struct opts *opts, int *sd, const struct source *src,
 #endif
 
 	/* inet_setsockopts will produce a more specific error. */
-	if (inet_setsockopts(opts, *sd) == -1)
+	if (inet_setsockopts(*sd, opts->sockopts) == -1)
 		return -1;
 
 	if (inet_bind(*sd, src->family, bsrc, bsrcsz) == -1) {
@@ -323,7 +323,7 @@ inet_listen(const struct opts *opts, int *sock, const struct source *bsrc)
 #endif
 
 	/* inet_setsockopts will produce a more specific error. */
-	if (inet_setsockopts(opts, *sock) == -1)
+	if (inet_setsockopts(*sock, opts->sockopts) == -1)
 		goto failed;
 
 	if (inet_bind(*sock, bsrc->family, bsrc, 1) == -1) {
@@ -781,6 +781,13 @@ rsync_listen(struct sess *sess, rsync_client_handler *handler)
 	}
 
 	return 1;
+}
+
+int
+rsync_setsockopts(int fd, const char *options)
+{
+
+	return inet_setsockopts(fd, options);
 }
 
 /*

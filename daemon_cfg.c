@@ -60,6 +60,7 @@ static struct rsync_daemon_param {
 	PARAM("address",	NULL),
 	PARAM_DFLT("port",	NULL,			"rsync"),
 	PARAM("motd file",	"motdfile"),
+	PARAM("socket options",	"socketoptions"),
 
 	/** Module parameters **/
 	PARAM_DFLT("use chroot",	"usechroot",	"true"),
@@ -67,7 +68,6 @@ static struct rsync_daemon_param {
 
 	/* Not implemented global parameters */
 	PARAM("pid file",	"pidfile"),
-	PARAM("socket options",	"socketoptions"),
 
 	/* Not implemented module options */
 	PARAM("comment",	NULL),

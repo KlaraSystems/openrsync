@@ -606,6 +606,7 @@ int	rsync_client(struct cleanup_ctx *, const struct opts *, int,
 int	rsync_daemon(int, char *[], struct opts *);
 int	rsync_connect(const struct opts *, int *, const struct fargs *);
 int	rsync_listen(struct sess *, rsync_client_handler *);
+int	rsync_setsockopts(int, const char *);
 int	rsync_socket(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
 int	rsync_is_socket(int);
