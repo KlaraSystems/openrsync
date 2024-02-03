@@ -36,9 +36,42 @@
 /*
  * This is the rsync protocol version that we support.
  */
-#define	RSYNC_PROTOCOL		(28)
+#define	RSYNC_PROTOCOL		(29)
 #define	RSYNC_PROTOCOL_MIN	(27)
 #define	RSYNC_PROTOCOL_MAX	(40)
+
+#define	protocol_newflist	(sess->protocol >= 28)
+#define	protocol_itemize	(sess->protocol >= 29)
+#define	protocol_newsort	(sess->protocol >= 29)
+#define	protocol_dlrename	(sess->protocol >= 29)
+#define	protocol_keepalive	(sess->protocol >= 29)
+#define	protocol_fliststats	(sess->protocol >= 29)
+
+/*
+ * itemize-changes flags.
+ */
+#define	IFLAG_ATIME		(1<<0)
+#define	IFLAG_CHECKSUM		(1<<1)
+#define	IFLAG_SIZE		(1<<2)
+#define	IFLAG_TIME		(1<<3)
+#define	IFLAG_PERMS		(1<<4)
+#define	IFLAG_OWNER		(1<<5)
+#define	IFLAG_GROUP		(1<<6)
+#define	IFLAG_ACL		(1<<7)
+#define	IFLAG_XATTR		(1<<8)
+#define	IFLAG_BASIS_FOLLOWS	(1<<11)
+#define	IFLAG_HLINK_FOLLOWS	(1<<12)
+#define	IFLAG_NEW		(1<<13)
+#define	IFLAG_LOCAL_CHANGE	(1<<14)
+#define	IFLAG_TRANSFER		(1<<15)
+/*
+ * Not for transmission.
+ */
+#define	IFLAG_MISSING_DATA	(1<<16)	/* used by log_formatted() */
+#define	IFLAG_DELETED		(1<<17)	/* used by log_formatted() */
+
+#define	SIGNIFICANT_IFLAGS	\
+	(~(IFLAG_BASIS_FOLLOWS | ITEM_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE))
 
 /*
  * Maximum amount of file data sent over the wire at once.
@@ -210,9 +243,11 @@ struct	flist {
 	int		 pdfd; /* dirfd for partial */
 	const char	*wpath; /* "working" path for receiver */
 	struct flstat	 st; /* file information */
-	char		*link; /* symlink target or NULL */
+	char		*link; /* symlink target, hlink name, or NULL */
 	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
 	int		 flstate; /* flagged for redo, or complete? */
+	int32_t		 iflags; /* Itemize flags */
+	int		 basis; /* Needed later */
 };
 
 #define	FLIST_COMPLETE		0x01	/* Finished */
@@ -591,6 +626,10 @@ void	io_lowbuffer_int(struct sess *, void *, size_t *, size_t, int32_t);
 void	io_lowbuffer_short(struct sess *, void *, size_t *, size_t, int32_t);
 void	io_lowbuffer_buf(struct sess *, void *, size_t *, size_t, const void *,
 	    size_t);
+void	io_lowbuffer_byte(struct sess *sess, void *buf, size_t *bufpos,
+	    size_t buflen, int8_t val);
+void	io_lowbuffer_vstring(struct sess *sess, void *buf, size_t *bufpos,
+	    size_t buflen, char *str, size_t sz);
 
 void	io_buffer_int(void *, size_t *, size_t, int32_t);
 void	io_buffer_short(void *, size_t *, size_t, int32_t);
@@ -616,6 +655,11 @@ typedef int (rsync_option_filter)(struct sess *, int, const struct option *);
 
 struct opts	*rsync_getopt(int, char *[], rsync_option_filter *,
 		    struct sess *);
+
+int	get_iflags(struct sess *, int, struct flist *, int32_t);
+int	send_iflags(struct sess *, void **, size_t *, size_t *,
+	    size_t *, struct flist *, int32_t);
+
 int	rsync_receiver(struct sess *, struct cleanup_ctx *, int, int,
 	    const char *);
 int	rsync_sender(struct sess *, int, int, size_t, char **);
@@ -660,7 +704,7 @@ int		 blkhash_set(struct blktab *, const struct blkset *);
 void		 blkhash_free(struct blktab *);
 
 struct blkset	*blk_recv(struct sess *, int, const char *);
-void		 blk_recv_ack(char [20], const struct blkset *, int32_t);
+void		 blk_recv_ack(char [16], const struct blkset *, int32_t);
 void		 blk_match(struct sess *, const struct blkset *,
 		    const char *, struct blkstat *);
 int		 blk_send(struct sess *, int, size_t, const struct blkset *,

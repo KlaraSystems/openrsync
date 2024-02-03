@@ -1500,6 +1500,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	void		   *mbuf, *bufp;
 	ssize_t		    msz;
 	size_t		    i, pos, sz;
+	size_t		    linklen;
 	off_t		    offs, filesize;
 	int		    c;
 
@@ -1578,6 +1579,8 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			if (u->phase > 0 &&
 			    (u->fl[u->idx].flstate & FLIST_REDO) == 0)
 				continue;
+			if (u->phase == 2)
+				continue;
 			if (S_ISDIR(u->fl[u->idx].st.mode))
 				c = pre_dir(u, sess);
 			else if (S_ISLNK(u->fl[u->idx].st.mode))
@@ -1598,6 +1601,48 @@ rsync_uploader(struct upload *u, int *fileinfd,
 				return -1;
 			else if (c > 0)
 				break;
+
+			u->fl[u->idx].flstate |= FLIST_SUCCESS;
+
+			if (!protocol_itemize) {
+				continue;
+			}
+			u->bufsz = sizeof(int32_t); /* identifier */
+			u->bufsz += sizeof(int16_t); /* iflags */
+			if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
+				/* basis flag */
+				u->bufsz += sizeof(int8_t);
+	                }
+			if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
+				/* vstring len byte */
+				u->bufsz += sizeof(int8_t);
+				if ((linklen = strlen(u->fl[u->idx].link)) >
+				    0x7f) {
+					/* 2nd len byte */
+					u->bufsz += sizeof(int8_t);
+				}
+				u->bufsz += linklen; /* vstring */
+			}
+			if (u->bufsz > u->bufmax) {
+				if ((bufp = realloc(u->buf, u->bufsz)) == NULL) {
+					ERR("realloc");
+					return -1;
+				}
+				u->buf = bufp;
+				u->bufmax = u->bufsz;
+			}
+			u->bufpos = pos = 0;
+			io_buffer_int(u->buf, &pos, u->bufsz, u->idx);
+			io_buffer_short(u->buf, &pos, u->bufsz,
+			    u->fl[u->idx].iflags);
+			if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
+				io_buffer_byte(u->buf, &pos, u->bufsz,
+				    u->fl[u->idx].basis);
+	                }
+			if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
+				io_buffer_vstring(u->buf, &pos, u->bufsz,
+				    u->fl[u->idx].link, linklen);
+	                }
 		}
 
 		/*
@@ -1729,6 +1774,20 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			(sizeof(int32_t) + /* short checksum */
 			 blk.csum); /* long checksum */
 	}
+	if (protocol_itemize) {
+		u->fl[u->idx].iflags |= IFLAG_TRANSFER;
+		u->bufsz += sizeof(int16_t); /* iflags */
+		if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
+			u->bufsz += sizeof(int8_t); /* basis flag */
+                }
+		if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
+			u->bufsz += sizeof(int8_t); /* vstring len byte */
+			if ((linklen = strlen(u->fl[u->idx].link)) > 0x7f) {
+				u->bufsz += sizeof(int8_t); /* 2nd len byte */
+			}
+			u->bufsz += linklen; /* vstring */
+		}
+	}
 
 	if (u->bufsz > u->bufmax) {
 		if ((bufp = realloc(u->buf, u->bufsz)) == NULL) {
@@ -1742,6 +1801,16 @@ rsync_uploader(struct upload *u, int *fileinfd,
 
 	u->bufpos = pos = 0;
 	io_buffer_int(u->buf, &pos, u->bufsz, u->idx);
+	if (protocol_itemize) {
+		io_buffer_short(u->buf, &pos, u->bufsz, u->fl[u->idx].iflags);
+		if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
+			io_buffer_byte(u->buf, &pos, u->bufsz, u->fl[u->idx].basis);
+                }
+		if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
+			io_buffer_vstring(u->buf, &pos, u->bufsz,
+			    u->fl[u->idx].link, linklen);
+                }
+	}
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.blksz);
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.len);
 	io_buffer_int(u->buf, &pos, u->bufsz, blk.csum);

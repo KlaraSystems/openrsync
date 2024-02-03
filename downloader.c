@@ -829,9 +829,18 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			LOG3("downloader: phase complete");
 			return 0;
 		}
+		if (!get_iflags(sess, p->fdin, p->fl, idx)) {
+			ERRX("get_iflags");
+			return 0;
+		}
+
+		f = &p->fl[idx];
+		/* Check for keep-alive packet */
+		if (f->iflags == IFLAG_NEW) {
+			return 1;
+		}
 
 		/* Short-circuit: dry_run mode does nothing. */
-
 		if (sess->opts->dry_run)
 			return 1;
 
@@ -857,7 +866,6 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 		 */
 
 		p->state = DOWNLOAD_READ_LOCAL;
-		f = &p->fl[idx];
 
 		rootfd = p->rootfd;
 		path = f->path;

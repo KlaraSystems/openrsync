@@ -344,18 +344,16 @@ blk_match(struct sess *sess, const struct blkset *blks,
  * Symmetrises blk_send_ack().
  */
 void
-blk_recv_ack(char buf[20], const struct blkset *blocks, int32_t idx)
+blk_recv_ack(char buf[16], const struct blkset *blocks, int32_t idx)
 {
 	size_t	 pos = 0, sz;
 
-	sz = sizeof(int32_t) + /* index */
-	    sizeof(int32_t) + /* block count */
+	sz = sizeof(int32_t) + /* block count */
 	    sizeof(int32_t) + /* block length */
 	    sizeof(int32_t) + /* checksum length */
 	    sizeof(int32_t); /* block remainder */
-	assert(sz == 20);
+	assert(sz == 16);
 
-	io_buffer_int(buf, &pos, sz, idx);
 	io_buffer_int(buf, &pos, sz, blocks->blksz);
 	io_buffer_int(buf, &pos, sz, blocks->len);
 	io_buffer_int(buf, &pos, sz, blocks->csum);
@@ -526,8 +524,7 @@ blk_send(struct sess *sess, int fd, size_t idx,
 
 	/* Put the entire send routine into a buffer. */
 
-	sz = sizeof(int32_t) + /* identifier */
-	    sizeof(int32_t) + /* block count */
+	sz = sizeof(int32_t) + /* block count */
 	    sizeof(int32_t) + /* block length */
 	    sizeof(int32_t) + /* checksum length */
 	    sizeof(int32_t) + /* block remainder */
@@ -540,7 +537,6 @@ blk_send(struct sess *sess, int fd, size_t idx,
 		return 0;
 	}
 
-	io_buffer_int(buf, &pos, sz, idx);
 	io_buffer_int(buf, &pos, sz, p->blksz);
 	io_buffer_int(buf, &pos, sz, p->len);
 	io_buffer_int(buf, &pos, sz, p->csum);
