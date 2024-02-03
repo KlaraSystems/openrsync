@@ -211,8 +211,8 @@ download_partial_path(struct sess *sess, const struct flist *f,
 
 	if (snprintf(path, pathsz, "%.*s/%s", dirlen, dir,
 	    sess->opts->partial_dir) > pathsz) {
-		ERR("%s: partial-dir: path too long: %.*s/%s > %d",
-		    dir, dirlen, dir, pathsz);
+		ERR("%s: partial-dir: path too long: %.*s/%s > %lu",
+		    dir, dirlen, dir, sess->opts->partial_dir, pathsz);
 		/* XXX: How do we error out here? */
 	}
 	return path;
