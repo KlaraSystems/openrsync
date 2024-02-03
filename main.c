@@ -1324,16 +1324,19 @@ main(int argc, char *argv[])
 	cleanup_set_args(cleanup_ctx, fargs);
 
 	if (opts.filesfrom_host != NULL) {
+		if (fargs->host == NULL) {
+			ERRX("Remote --files-from with a local transfer is not valid");
+			exit(2);
+		}
+
 		LOG2("--files-from host '%s'", opts.filesfrom_host);
 		if (opts.filesfrom_host[0] == '\0') {
-			LOG2("Inheriting --files-from hostname '%s'",
-				fargs->host);
-			free(opts.filesfrom_host);
-			opts.filesfrom_host = strdup(fargs->host);
-			if (opts.filesfrom_host == NULL) {
-				ERR("strdup");
-				exit(1);
-			}
+			/*
+			 * The exact host doesn't matter in this case, so we'll
+			 * just leave it empty -- not NULL is the pertinent
+			 * detail from this point.
+			 */
+			LOG2("Inheriting --files-from remote side");
 		} else {
 			if (strcmp(opts.filesfrom_host,fargs->host)) {
 				ERRX("Cannot have different hostnames "
