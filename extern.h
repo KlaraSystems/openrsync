@@ -18,6 +18,7 @@
 #define EXTERN_H
 
 #include <fts.h>
+#include <stdio.h>
 
 #include "md4.h"
 
@@ -499,6 +500,7 @@ extern int verbose;
 #define ERRX(_fmt, ...) \
 	rsync_errx( (_fmt), ##__VA_ARGS__)
 
+void	rsync_set_logfile(FILE *);
 void	rsync_log(int, const char *, ...)
 			__attribute__((format(printf, 2, 3)));
 void	rsync_warnx1(const char *, ...)

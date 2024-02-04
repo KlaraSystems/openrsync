@@ -1370,6 +1370,8 @@ main(int argc, char *argv[])
 	    NULL) == -1)
 		err(ERR_IPC, "pledge");
 
+	rsync_set_logfile(stderr);
+
 	if (rsync_getopt(argc, argv, NULL, NULL) == NULL) {
 		usage(ERR_SYNTAX);
 	}
