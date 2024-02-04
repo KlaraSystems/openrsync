@@ -15,16 +15,45 @@
  */
 #include "config.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 
 #include "extern.h"
 
 extern int verbose;
+
+static FILE *log_file;
+
+void
+rsync_set_logfile(FILE *new_logfile)
+{
+
+	log_file = new_logfile;
+}
+
+static void
+log_vwritef(int priority __attribute__((unused)), const char *fmt, va_list ap)
+{
+
+	assert(log_file != NULL);
+	vfprintf(log_file, fmt, ap);
+}
+
+static void
+log_writef(int priority, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	log_vwritef(priority, fmt, ap);
+	va_end(ap);
+}
 
 /*
  * Log a message at level "level", starting at zero, which corresponds
@@ -50,9 +79,9 @@ rsync_log(int level, const char *fmt, ...)
 	}
 
 	if (level <= 0 && buf != NULL)
-		fprintf(stderr, "%s\n", buf);
+		log_writef(LOG_INFO, "%s\n", buf);
 	else if (level > 0)
-		fprintf(stderr, "%s: %s%s\n", getprogname(),
+		log_writef(LOG_INFO, "%s: %s%s\n", getprogname(),
 		    (buf != NULL) ? ": " : "",
 		    (buf != NULL) ? buf : "");
 	free(buf);
@@ -77,7 +106,7 @@ rsync_errx(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	fprintf(stderr, "%s: error%s%s\n", getprogname(),
+	log_writef(LOG_ERR, "%s: error%s%s\n", getprogname(),
 	   (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
@@ -103,7 +132,7 @@ rsync_err(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	fprintf(stderr, "%s: error%s%s: %s\n", getprogname(),
+	log_writef(LOG_ERR, "%s: error%s%s: %s\n", getprogname(),
 	   (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "", strerror(er));
 	free(buf);
@@ -131,7 +160,7 @@ rsync_errx1(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	fprintf(stderr, "%s: error%s%s\n", getprogname(),
+	log_writef(LOG_ERR, "%s: error%s%s\n", getprogname(),
 	   (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
@@ -158,7 +187,7 @@ rsync_warnx1(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	fprintf(stderr, "%s: warning%s%s\n", getprogname(),
+	log_writef(LOG_WARNING, "%s: warning%s%s\n", getprogname(),
 	   (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
@@ -182,7 +211,7 @@ rsync_warnx(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	fprintf(stderr, "%s: warning%s%s\n", getprogname(),
+	log_writef(LOG_WARNING, "%s: warning%s%s\n", getprogname(),
 	   (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
@@ -211,7 +240,7 @@ rsync_warn(int level, const char *fmt, ...)
 		va_end(ap);
 	}
 
-	fprintf(stderr, "%s: warning%s%s: %s\n", getprogname(),
+	log_writef(LOG_WARNING, "%s: warning%s%s: %s\n", getprogname(),
 	   (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "", strerror(er));
 	free(buf);
