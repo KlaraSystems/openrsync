@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl 46BCDFHILPRSWVabcdghklnoprtuvx
+.Op Fl 46BCDFHILOPRSWVabcdghklnoprtuvx
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -444,6 +444,13 @@ Has no effect unless
 or
 .Fl o
 is also given.
+.It Fl O , -omit-dir-times
+Do not perserve the modification times of directories.
+This can be expensive when the directories reside on NFS.
+This option is inferred if you use
+.Fl -backup
+without
+.Fl -backup-dir .
 .It Fl o , -owner
 Set the user name to match the source, with similar matching logic as for
 .Fl g .

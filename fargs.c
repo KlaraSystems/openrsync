@@ -223,6 +223,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-r");
 	if (sess->opts->preserve_times)
 		addargs(&args, "-t");
+	if (sess->opts->omit_dir_times)
+		addargs(&args, "-O");
 	if (sess->opts->sparse)
 		addargs(&args, "-S");
 	if (sess->opts->hard_links)

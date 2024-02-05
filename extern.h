@@ -264,6 +264,7 @@ struct	opts {
 	int		 no_motd;		/* --no-motd */
 	int		 numeric_ids;		/* --numeric-ids */
 	int		 one_file_system;	/* -x */
+	int		 omit_dir_times;	/* -O */
 	int		 ignore_times;		/* -I --ignore-times */
 	int              progress;              /* --progress */
 	int		 alt_base_mode;

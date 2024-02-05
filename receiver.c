@@ -60,7 +60,8 @@ rsync_set_metadata(struct sess *sess, int newfile,
 
 	/* Conditionally adjust file modification time. */
 
-	if (sess->opts->preserve_times) {
+	if (sess->opts->preserve_times &&
+	    (!S_ISDIR(f->st.mode) || !sess->opts->omit_dir_times)) {
 		ts[0].tv_nsec = UTIME_NOW;
 		ts[1].tv_sec = f->st.mtime;
 		ts[1].tv_nsec = 0;
@@ -129,7 +130,8 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 
 	/* Conditionally adjust file modification time. */
 
-	if (sess->opts->preserve_times) {
+	if (sess->opts->preserve_times &&
+	    (!S_ISDIR(f->st.mode) || !sess->opts->omit_dir_times)) {
 		ts[0].tv_nsec = UTIME_NOW;
 		ts[1].tv_sec = f->st.mtime;
 		ts[1].tv_nsec = 0;
