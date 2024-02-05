@@ -67,8 +67,8 @@ static const struct option	daemon_lopts[] = {
 	{ "ipv4",	no_argument,	NULL,			'4' },
 	{ "ipv6",	no_argument,	NULL,			'6' },
 	{ "help",	no_argument,	NULL,			'h' },
-#if 0
 	{ "log-file",	required_argument,	NULL,		OP_LOG_FILE },
+#if 0
 	{ "log-file-format",	required_argument,	NULL,	OP_LOG_FILE_FORMAT },
 #endif
 	{ "port",	required_argument,	NULL,		OP_PORT },
@@ -95,7 +95,7 @@ daemon_usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s --daemon"
 	    " [-46hv] [--address=bindaddr] [--bwlimit=limit] [--no-detach]\n"
-	    "\t[--port=portnumber] [--sockopts=sockopts]\n",
+	    "\t[--log-file=logfile] [--port=portnumber] [--sockopts=sockopts]\n",
 	    getprogname());
 	exit(exitcode);
 }
@@ -560,7 +560,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	struct sess sess;
 	struct daemon_role role;
 	long long tmpint;
-	const char *cfg_motd;
+	const char *cfg_motd, *logfile;
 	int c, opt_daemon = 0, detach = 1;
 
 	/* Start with a fresh session / opts */
@@ -571,6 +571,8 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	sess.role = (void *)&role;
 
 	role.cfg_file = "/etc/rsyncd.conf";
+	/* Log to syslog by default. */
+	logfile = NULL;
 
 	/*
 	 * optind starting at 1, because we're parsing the original program args
@@ -601,6 +603,9 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 		case OP_NO_DETACH:
 			detach = 0;
 			break;
+		case OP_LOG_FILE:
+			logfile = optarg;
+			break;
 		case OP_PORT:
 			daemon_opts->port = optarg;
 			break;
@@ -626,6 +631,24 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 
 	argc -= optind;
 	argv += optind;
+
+	if (logfile != NULL && *logfile == '\0')
+		logfile = NULL;
+	if (logfile != NULL) {
+		FILE *fp;
+
+		fp = fopen(logfile, "a");
+		if (fp == NULL)
+			err(ERR_IPC, "fopen");
+
+		/*
+		 * Logging infrastructure will take the FILE and close it if we
+		 * switch away later.
+		 */
+		rsync_set_logfile(fp);
+	} else {
+		rsync_set_logfile(NULL);
+	}
 
 	/*
 	 * The reference rsync doesn't seem to complain about extra non-option
