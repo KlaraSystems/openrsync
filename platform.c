@@ -89,7 +89,7 @@ apple_flist_sent(struct sess *sess, int fdout, const struct flist *f)
 		send = 0;
 
 	if (!io_write_byte(sess, fdout, send)) {
-		ERRX("io_write_int");
+		ERRX("io_write_byte");
 		return 0;
 	}
 

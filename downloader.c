@@ -1291,6 +1291,19 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			return 1;
 
 		/*
+		 * `idx` is a sendidx, translate it back into our local file
+		 * index since we may have, e.g., trimmed duplicates.
+		 */
+		if (p->fl[idx].sendidx != idx) {
+			for (size_t flidx = 0; flidx < p->flsz; flidx++) {
+				if (p->fl[flidx].sendidx == idx) {
+					idx = flidx;
+					break;
+				}
+			}
+		}
+
+		/*
 		 * Now get our block information.
 		 * This is all we'll need to reconstruct the file from
 		 * the map, as block sizes are regular.
