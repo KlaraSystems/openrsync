@@ -26,23 +26,106 @@
 
 #include "extern.h"
 
+#ifndef LOG_NDELAY
+#define	LOG_NDELAY	0
+#endif
+
+#define	RSYNCD_SYSLOG_IDENT	"openrsyncd"
+#define	RSYNCD_SYSLOG_OPTIONS	(LOG_PID | LOG_NDELAY)
+
 extern int verbose;
 
+#define	FACILITY(f)	{ #f, LOG_ ##f }
+const struct syslog_facility {
+	const char	*name;
+	int		 value;
+} facilities[] = {
+	FACILITY(AUTH),
+	FACILITY(AUTHPRIV),
+#ifdef LOG_CONSOLE
+	FACILITY(CONSOLE),
+#endif
+	FACILITY(CRON),
+	FACILITY(DAEMON),
+	FACILITY(FTP),
+	FACILITY(KERN),
+	FACILITY(LPR),
+	FACILITY(MAIL),
+	FACILITY(NEWS),
+#ifdef LOG_NTP
+	FACILITY(NTP),
+#endif
+#ifdef LOG_SECURITY
+	FACILITY(SECURITY),
+#endif
+	FACILITY(USER),
+	FACILITY(UUCP),
+	FACILITY(LOCAL0),
+	FACILITY(LOCAL1),
+	FACILITY(LOCAL2),
+	FACILITY(LOCAL3),
+	FACILITY(LOCAL4),
+	FACILITY(LOCAL6),
+	FACILITY(LOCAL7),
+};
+
 static FILE *log_file;
+static int log_facility = LOG_DAEMON;
+
+int
+rsync_set_logfacility(const char *facility)
+{
+	const struct syslog_facility *def;
+
+	for (size_t i = 0; i < nitems(facilities); i++) {
+		def = &facilities[i];
+
+		if (strcasecmp(def->name, facility)) {
+			log_facility = def->value;
+			return 0;
+		}
+	}
+
+	errno = ENOENT;
+	return -1;
+}
+
+static void
+rsync_logfile_changed(FILE *old_logfile, FILE *new_logfile)
+{
+
+	/* We're the last reference to the log file; close it. */
+	if (old_logfile != stderr && old_logfile != NULL)
+		fclose(old_logfile);
+
+	if (old_logfile != NULL && new_logfile == NULL) {
+		/* <anything> -> syslog */
+		openlog(RSYNCD_SYSLOG_IDENT, RSYNCD_SYSLOG_OPTIONS,
+		    log_facility);
+	} else if (old_logfile == NULL && new_logfile != NULL) {
+		closelog();
+	}
+}
 
 void
 rsync_set_logfile(FILE *new_logfile)
 {
+	FILE *prev_logfile;
 
+	prev_logfile = log_file;
 	log_file = new_logfile;
+
+	rsync_logfile_changed(prev_logfile, new_logfile);
 }
 
 static void
-log_vwritef(int priority __attribute__((unused)), const char *fmt, va_list ap)
+log_vwritef(int priority, const char *fmt, va_list ap)
 {
 
-	assert(log_file != NULL);
-	vfprintf(log_file, fmt, ap);
+	if (log_file == NULL)
+		vsyslog(priority, fmt, ap);
+	else
+		vfprintf(log_file, fmt, ap);
 }
 
 static void

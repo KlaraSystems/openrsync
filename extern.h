@@ -500,6 +500,7 @@ extern int verbose;
 #define ERRX(_fmt, ...) \
 	rsync_errx( (_fmt), ##__VA_ARGS__)
 
+int	rsync_set_logfacility(const char *);
 void	rsync_set_logfile(FILE *);
 void	rsync_log(int, const char *, ...)
 			__attribute__((format(printf, 2, 3)));
