@@ -627,8 +627,10 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	argc -= optind;
 	argv += optind;
 
-	if (argc != 0)
-		daemon_usage(ERR_SYNTAX);
+	/*
+	 * The reference rsync doesn't seem to complain about extra non-option
+	 * arguments, though they aren't documented to do anything.
+	 */
 
 	poll_timeout = -1;
 
@@ -669,6 +671,8 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	if (daemon_opts->sockopts == NULL)
 		get_global_cfgstr(role.dcfg, "socket options",
 		    &daemon_opts->sockopts);
+
+	LOG0("openrsync listening on port '%s'", daemon_opts->port);
 
 	return rsync_listen(&sess, &rsync_daemon_handler);
 }
