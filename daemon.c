@@ -88,6 +88,8 @@ struct daemon_role {
 	const char		*cfg_file;	/* (c) daemon config file */
 	char			*motd_file;	/* (f) client motd */
 	struct daemon_cfg	*dcfg;		/* (f) daemon config */
+	const char		*pid_file;	/* (c) daemon pidfile path */
+	FILE			*pidfp;		/* (f) daemon pidfile */
 };
 
 static void
@@ -368,6 +370,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	motd_file = role->motd_file;
 	role->motd_file = NULL;
 
+	fclose(role->pidfp);
 	cfg_free(role->dcfg);
 
 	sess->lver = RSYNC_PROTOCOL;
@@ -554,6 +557,46 @@ get_global_cfgstr(struct daemon_cfg *dcfg, const char *key, const char **out)
 	assert(error == 0);
 }
 
+static int
+daemon_do_pidfile(struct sess *sess, struct daemon_cfg *dcfg)
+{
+	struct flock pidlock = {
+		.l_start = 0,
+		.l_len = 0,
+		.l_type = F_WRLCK,
+		.l_whence = SEEK_SET,
+	};
+	FILE *pidfp;
+	const char *pidfile;
+	struct daemon_role *role = (struct daemon_role *)sess->role;
+
+	/* If it's empty, nothing to do here. */
+	get_global_cfgstr(dcfg, "pid file", &pidfile);
+	if (*pidfile == '\0')
+		return 0;
+
+	pidfp = fopen(pidfile, "w");
+	if (pidfp == NULL) {
+		ERR("%s: fopen", pidfile);
+		return -1;
+	}
+
+	if (fcntl(fileno(pidfp), F_SETLK, &pidlock)) {
+		if (errno == EAGAIN)
+			ERRX("%s: failed to obtain lock (is another rsyncd running?)", pidfile);
+		else
+			ERR("%s: acquiring lock", pidfile);
+		return -1;
+	}
+
+	fprintf(pidfp, "%d\n", getpid());
+	fflush(pidfp);
+
+	role->pid_file = pidfile;
+	role->pidfp = pidfp;
+	return 0;
+}
+
 int
 rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 {
@@ -561,7 +604,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	struct daemon_role role;
 	long long tmpint;
 	const char *cfg_motd, *logfile;
-	int c, opt_daemon = 0, detach = 1;
+	int c, opt_daemon = 0, detach = 1, rc;
 
 	/* Start with a fresh session / opts */
 	memset(&role, 0, sizeof(role));
@@ -667,6 +710,9 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	if (role.dcfg == NULL)
 		return ERR_IPC;
 
+	if (daemon_do_pidfile(&sess, role.dcfg) != 0)
+		return ERR_IPC;
+
 	if (daemon_opts->address == NULL) {
 		if (cfg_param_str(role.dcfg, "global", "address",
 		    &daemon_opts->address) == -1) {
@@ -697,5 +743,17 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 
 	LOG0("openrsync listening on port '%s'", daemon_opts->port);
 
-	return rsync_listen(&sess, &rsync_daemon_handler);
+	rc = rsync_listen(&sess, &rsync_daemon_handler);
+	if (role.pidfp != NULL) {
+		/*
+		 * We still have the lock, so we can safely unlink and close it.
+		 * Failure doesn't change our exit disposition; it's not a
+		 * critical issue to have an unlocked stale pidfile laying
+		 * around.
+		 */
+		(void)unlink(role.pid_file);
+		fclose(role.pidfp);
+	}
+
+	return rc;
 }
