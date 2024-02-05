@@ -680,6 +680,7 @@ static const struct option	 lopts[] = {
     { "no-links",	no_argument,	&opts.preserve_links,	0 },
     { "no-l",		no_argument,	&opts.preserve_links,	0 },
     { "numeric-ids",	no_argument,	&opts.numeric_ids,	1 },
+    { "omit-dir-times",	no_argument,	NULL,			'O' },
     { "owner",		no_argument,	NULL,			'o' },
     { "no-owner",	no_argument,	&opts.preserve_uids,	0 },
     { "no-o",		no_argument,	&opts.preserve_uids,	0 },
@@ -739,7 +740,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-46BCDFHIKLPRSWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-46BCDFHIKLOPRSWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--compare-dest=dir]\n"
 	    "\t[--contimeout] [--copy-dest=dir]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
@@ -782,7 +783,7 @@ rsync_getopt(int argc, char *argv[])
 	opts.max_size = opts.min_size = -1;
 	opts.whole_file = -1;
 
-	while ((c = getopt_long(argc, argv, "46B:CDFHIKLPRSVWabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "46B:CDFHIKLOPRSVWabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
 		case '4':
@@ -830,6 +831,9 @@ rsync_getopt(int argc, char *argv[])
 		}
 		case 'H':
 			opts.hard_links = 1;
+			break;
+		case 'O':
+			opts.omit_dir_times = 1;
 			break;
 		case 'a':
 			implied_recursive = 1;
@@ -1198,6 +1202,9 @@ basedir:
 			errx(ERR_SYNTAX, "error adding protect rule: %s",
 			    rbuf);
 		}
+	}
+	if (opts.backup && !opts.backup_dir) {
+		opts.omit_dir_times = 1;
 	}
 
 	if (opts.port == NULL)

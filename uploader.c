@@ -911,6 +911,7 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
 
 	if (u->newdir[idx] ||
 	    (sess->opts->preserve_times &&
+	     (!S_ISDIR(f->st.mode) || !sess->opts->omit_dir_times) &&
 	     st.st_mtime != f->st.mtime)) {
 		tv[0].tv_sec = time(NULL);
 		tv[0].tv_nsec = 0;
