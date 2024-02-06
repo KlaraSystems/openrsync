@@ -329,8 +329,8 @@ enum name_basis {
  * a variably-sized structure and handling its variability in both the
  * sender and receiver.
  */
-typedef int (platform_open)(const struct sess *, const struct flist *, int);
-typedef int (platform_flist_sent)(struct sess *, int, const struct flist *);
+typedef int platform_open(const struct sess *, const struct flist *, int);
+typedef int platform_flist_sent(struct sess *, int, const struct flist *);
 
 struct	flist {
 	char		*path; /* path relative to root */
@@ -865,6 +865,13 @@ void		 hash_file(const void *, size_t, unsigned char *,
 		    const struct sess *);
 int		 hash_file_by_path(int, const char *, size_t, unsigned char *);
 
+/*
+ * Use of move_file should ideally be limited to copy.c and platform.c -- in
+ * recent versions of openrsync, there's a platform_move_file that may implement
+ * it slightly differently for a given platform, or it may call back into the
+ * generic move_file() that should handle things well enough for the majority of
+ * platforms.
+ */
 int		 move_file(int, const char *, int, const char *, int);
 void		 copy_file(int, const char *, const struct flist *);
 int		 backup_to_dir(struct sess *, int, const struct flist *,

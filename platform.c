@@ -135,19 +135,19 @@ platform_flist_modify(const struct sess *sess, struct fl *fl)
 
 		/* Setup the different bits */
 		if (asprintf(&packed->path, "%.*s._%s",
-		    base - f->path, f->path, basename(f->path)) == -1) {
+		    (int)(base - f->path), f->path, basename(f->path)) == -1) {
 			ERR("asprintf --extended-attributes path");
 			return 0;
 		}
 
 		packed->wpath = packed->path + stripdir;
 		packed->link = NULL;
-		packed->open = &apple_open_xattrs;
-		packed->sent = &apple_flist_sent;
+		packed->open = apple_open_xattrs;
+		packed->sent = apple_flist_sent;
 		f->st.flags |= FLSTAT_PLATFORM_XATTR;
 
 hooksent:
-		f->sent = &apple_flist_sent;
+		f->sent = apple_flist_sent;
 	}
 
 	return 1;
@@ -162,12 +162,21 @@ platform_flist_received(struct sess *sess, struct flist *fl, size_t flsz)
 	if (!sess->opts->extended_attributes)
 		return;
 
+	/*
+	 * With extended attributes, we synthesize an AppleDouble file (._foo)
+	 * and transmit that alongside the base file that it applies to.  In
+	 * order for this to work out cleanly, we need to be sure that we're
+	 * requesting the base file before the AppleDouble file so that we can
+	 * just pack the AppleDouble file back in when it's done.  If we don't
+	 * do it here, it requires searching both when a file we know has
+	 * some extended attributes finishes, and also when the AppleDouble file
+	 * finishes in case some other reordering has occurred.
+	 */
 	for (size_t i = 0; i < flsz - 1; i++) {
 		struct flist *search;
 		const char *search_base;
 		size_t search_prefix;
 
-		search_base = NULL;
 		search = &fl[i];
 
 		if (!S_ISREG(search->st.mode))
@@ -183,8 +192,8 @@ platform_flist_received(struct sess *sess, struct flist *fl, size_t flsz)
 			continue;
 
 		/*
-		 * Track the parts we need to match; the leading directory bits, and the
-		 * trailing filename.
+		 * Track the parts we need to match; the leading directory bits,
+		 * and the trailing filename.
 		 */
 		search_prefix = search_base - search->path;
 		search_base += 2;
@@ -195,9 +204,10 @@ platform_flist_received(struct sess *sess, struct flist *fl, size_t flsz)
 			next = &fl[j];
 
 			/*
-			 * It's already sorted in such a way that we shouldn't have to worry
-			 * about missing anything if we stop searching as soon as we move
-			 * out of the search prefix.
+			 * It's already sorted in such a way that we shouldn't
+			 * have to worry about missing anything if we stop
+			 * searching as soon as we move out of the search
+			 * prefix.
 			 */
 			if (strncmp(next->path, search->path, search_prefix) != 0)
 				break;
@@ -242,7 +252,7 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 {
 	char newname[PATH_MAX];
 	const char *base;
-	int ffd, tfd, retval, serr;
+	int error, ffd, tfd, serr;
 
 	/*
 	 * We'll redo our base name calculation just to preserve the parts of
@@ -255,8 +265,8 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 		base++;
 
 	/* Chop off the leading ._ to get the unpacked name */
-	if (snprintf(newname, sizeof(newname), "%.*s%s", base - toname, toname,
-	    base + 2) == -1) {
+	if (snprintf(newname, sizeof(newname), "%.*s%s", (int)(base - toname),
+	    toname, base + 2) == -1) {
 		ERR("snprintf");
 		return 0;
 	}
@@ -276,8 +286,8 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 		return 0;
 	}
 
-	retval = fcopyfile(ffd, tfd, NULL,
-	    COPYFILE_UNPACK | COPYFILE_ACL | COPYFILE_XATTR) == 0;
+	error = fcopyfile(ffd, tfd, NULL,
+	    COPYFILE_UNPACK | COPYFILE_ACL | COPYFILE_XATTR);
 	serr = errno;
 
 	close(tfd);
@@ -287,17 +297,18 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 	 * We won't make failing to unlink the AppleDouble file fatal to the
 	 * operation if the unpack succeeded.
 	 */
-	if (retval) {
-		if (unlinkat(fromfd, fname, 0) != 0)
-			ERRX1("%s: unlink: %s", fname, strerror(errno));
-
-		f->st.flags |= FLSTAT_PLATFORM_UNLINKED;
-	} else {
+	if (error != 0) {
 		ERRX1("%s: copyfile extended attributes from %s: %s",
 		    newname, fname, strerror(serr));
+		return 0;
 	}
 
-	return retval;
+	if (unlinkat(fromfd, fname, 0) != 0)
+		ERRX1("%s: unlink: %s", fname, strerror(errno));
+
+	f->st.flags |= FLSTAT_PLATFORM_UNLINKED;
+
+	return 1;
 }
 
 #define	HAVE_PLATFORM_MOVE_FILE	1
@@ -309,7 +320,7 @@ platform_move_file(const struct sess *sess, struct flist *fl,
 	if (final && sess->opts->extended_attributes) {
 		const char *base;
 
-		base = basename(toname);
+		base = basename((void *)toname);
 		if (strncmp(base, "._", 2) == 0) {
 			/* We won't move this, we'll just unpack it. */
 			return apple_merge_appledouble(sess, fl, fromfd, fname,
@@ -340,9 +351,9 @@ platform_finish_transfer(const struct sess *sess, struct flist *fl,
 	if ((fl->st.flags & FLSTAT_PLATFORM_UNLINKED) != 0)
 		return 1;
 
-	base = basename(name);
+	base = basename((void *)name);
 	if (strncmp(base, "._", 2) != 0) {
-#ifdef notyet
+#ifdef NOTYET
 		/*
 		 * Not yet clear: optimal approach to clearing extended
 		 * attributes on a file.  copyfile() from /dev/null -> path
