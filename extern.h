@@ -82,6 +82,7 @@ enum basemode {
 #define ERR_SIGNAL	20
 #define ERR_WAITPID	21
 #define ERR_NOMEM	22
+#define ERR_PARTIAL	23
 
 /*
  * Use this for --timeout.
@@ -305,6 +306,7 @@ struct	opts {
 	char		*syncfile;		/* --sync-file */
 #endif
 	int		 ipf;			/* -4 / -6 */
+	int		 force_delete;		/* --force */
 };
 
 enum rule_type {
@@ -427,6 +429,7 @@ struct	sess {
 	mode_t		   chmod_file_OR;
 	mode_t		   chmod_file_X;
 	double             start_time; /* Time of first transfer */
+	uint64_t           total_errors; /* Total non-fatal errors */
 };
 
 /*
