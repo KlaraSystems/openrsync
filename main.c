@@ -732,6 +732,7 @@ static const struct option	 lopts[] = {
     { "dirs",		no_argument,	NULL,			'd' },
     { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
+    { "from0",		no_argument,	NULL,			'0' },
     { "delay-updates",	no_argument,	&opts.dlupdates,	1 },
     { NULL,		0,		NULL,			0 }
 };
@@ -783,9 +784,12 @@ rsync_getopt(int argc, char *argv[])
 	opts.max_size = opts.min_size = -1;
 	opts.whole_file = -1;
 
-	while ((c = getopt_long(argc, argv, "46B:CDFHIKLOPRSVWabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "046B:CDFHIKLOPRSVWabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
 		switch (c) {
+		case '0':
+			opts.from0 = 1;
+			break;
 		case '4':
 			opts.ipf = 4;
 			break;
@@ -824,7 +828,8 @@ rsync_getopt(int argc, char *argv[])
 			if (new_rule != NULL) {
 				int ret;
 
-				ret = parse_rule(new_rule, RULE_NONE);
+				ret = parse_rule(new_rule, RULE_NONE,
+				    opts.from0 ? 0 : '\n');
 				assert(ret == 0);
 			}
 			break;
@@ -859,7 +864,8 @@ rsync_getopt(int argc, char *argv[])
 			opts.ssh_prog = optarg;
 			break;
 		case 'f':
-			if (parse_rule(optarg, RULE_NONE) == -1)
+			if (parse_rule(optarg, RULE_NONE,
+			    opts.from0 ? 0 : '\n') == -1)
 				errx(ERR_SYNTAX, "syntax error in filter: %s",
 				    optarg);
 			break;
@@ -949,20 +955,20 @@ rsync_getopt(int argc, char *argv[])
 				    errstr, optarg);
 			break;
 		case OP_EXCLUDE:
-			if (parse_rule(optarg, RULE_EXCLUDE) == -1)
+			if (parse_rule(optarg, RULE_EXCLUDE, 0) == -1)
 				errx(ERR_SYNTAX, "syntax error in exclude: %s",
 				    optarg);
 			break;
 		case OP_INCLUDE:
-			if (parse_rule(optarg, RULE_INCLUDE) == -1)
+			if (parse_rule(optarg, RULE_INCLUDE, 0) == -1)
 				errx(ERR_SYNTAX, "syntax error in include: %s",
 				    optarg);
 			break;
 		case OP_EXCLUDE_FROM:
-			parse_file(optarg, RULE_EXCLUDE);
+			parse_file(optarg, RULE_EXCLUDE, opts.from0 ? 0 : '\n');
 			break;
 		case OP_INCLUDE_FROM:
-			parse_file(optarg, RULE_INCLUDE);
+			parse_file(optarg, RULE_INCLUDE, opts.from0 ? 0 : '\n');
 			break;
 		case OP_COMP_DEST:
 			if (opts.alt_base_mode != 0 &&
@@ -1180,7 +1186,7 @@ basedir:
 				*endp-- = '\0';
 			}
 
-			if (parse_rule(partial_dir, RULE_EXCLUDE) == -1) {
+			if (parse_rule(partial_dir, RULE_EXCLUDE, 0) == -1) {
 				errx(ERR_SYNTAX, "syntax error in exclude: %s",
 				    partial_dir);
 			}
@@ -1198,7 +1204,7 @@ basedir:
 		char rbuf[PATH_MAX];
 
 		snprintf(rbuf, sizeof(rbuf), "P *%s", opts.backup_suffix);
-		if (parse_rule(rbuf, RULE_NONE) == -1) {
+		if (parse_rule(rbuf, RULE_NONE, 0) == -1) {
 			errx(ERR_SYNTAX, "error adding protect rule: %s",
 			    rbuf);
 		}
@@ -1260,10 +1266,10 @@ basedir:
 		if (cvs_excl) {
 			int ret;
 
-			ret = parse_rule("-C", RULE_NONE);
+			ret = parse_rule("-C", RULE_NONE, '\n');
 			assert(ret == 0);
 
-			ret = parse_rule(":C", RULE_NONE);
+			ret = parse_rule(":C", RULE_NONE, '\n');
 			assert(ret == 0);
 
 			/* Silence NDEBUG warnings */

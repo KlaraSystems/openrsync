@@ -1207,7 +1207,8 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 		}
 
 		if (ent->fts_info == FTS_D)
-			rules_dir_push(ent->fts_path, stripdir);
+			rules_dir_push(ent->fts_path, stripdir,
+			    sess->opts->from0 ? 0 : '\n');
 
 		/* We don't allow symlinks without -l. */
 
@@ -2112,7 +2113,7 @@ append_filesfrom(struct sess *sess, const char *basedir, char *file)
 }
 
 static int
-fdgets(int fd, char *buf, int bufsz)
+fdgets(struct sess *sess, int fd, char *buf, int bufsz)
 {
 	int length = 0;
 	int n = 1;
@@ -2125,13 +2126,17 @@ fdgets(int fd, char *buf, int bufsz)
 				n = 1;
 				continue;
 			} else {
-				ERR("read(2) for files-from remote file");
+				ERR("read(2) of files-from file failed");
 				return -1;
 			}
 		} else
 			length++;
 		if (*(buf + length - 1) == '\0')
 			break;
+		if (!sess->opts->from0 && *(buf + length - 1) == '\n') {
+			*(buf + length - 1) = '\0';
+			break;
+		}
 	}
 	return length;
 }
@@ -2157,7 +2162,6 @@ read_filesfrom(struct sess *sess, const char *basedir)
 {
 	FILE *f;
 	char buf[PATH_MAX] = { 0 };
-	char *s;
 	int retval;
 
 	if (strcmp(sess->opts->filesfrom, "-") == 0) {
@@ -2188,16 +2192,13 @@ read_filesfrom(struct sess *sess, const char *basedir)
 			 * The other side might be malicious, e.g. when
 			 * using a public rsync server.
 			 */
-			if (fdgets(sess->filesfrom_fd, buf, sizeof(buf)) == -1)
+			if (fdgets(sess, sess->filesfrom_fd, buf, sizeof(buf)) == -1)
 				goto out;
 			if (append_filesfrom(sess, basedir, buf) == 0)
 				goto out;
 		} else {
-			s = fgets(buf, PATH_MAX, f);
-			if (s == NULL)
-				break;
-			if (ferror(f)) {
-				ERR("fgets: '%s'", sess->opts->filesfrom);
+			if (fdgets(sess, fileno(f), buf, PATH_MAX) == -1) {
+				ERR("fdgets: '%s'", sess->opts->filesfrom);
 				goto out;
 			}
 			if (append_filesfrom(sess, basedir, buf) == 0)
