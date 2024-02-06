@@ -70,6 +70,17 @@
 .Op Fl -timeout Ns = Ns Ar seconds
 .Ar source ...
 .Ar directory
+.Pp
+.Nm
+.Fl -daemon
+.Op Fl 46hv
+.Op Fl -address Ns = Ns Ar bindaddr
+.Op Fl -bwlimit Ns = Ns Ar bwlimit
+.Op Fl -config Ns = Ns Ar configfile
+.Op Fl -no-detach
+.Op Fl -log-file Ns = Ns Ar logfile
+.Op Fl -port Ns = Ns Ar service
+.Op Fl -sockopts Ns = Ns Ar sockopts
 .Sh DESCRIPTION
 The
 .Nm
@@ -689,6 +700,45 @@ or symbolic links
 The destination
 .Ar directory
 must be a directory and is created if not found.
+.Pp
+.Nm
+also supports a
+.Fl -daemon
+mode, which may be run either standalone or may be invoked by, e.g.,
+.Xr inetd 8
+or similar services that hand a socket off to an external program for handling.
+.Pp
+Daemon options that are shared with the non-daemon mode of
+.Nm
+behave as described above.
+Options specified to daemon mode are as follows:
+.Bl -tag -width Ds
+.It Fl -config Ns = Ns Ar configfile
+Load daemon configuration from the named
+.Ar configfile
+instead of the default location.
+By default,
+.Nm
+will look for its configuration at
+.Pa /etc/rsyncd.conf .
+See
+.Xr rsyncd.conf 5
+for details of the format of this file.
+.It Fl -no-detach
+Run the
+.Nm
+daemon in the foreground, instead of the background.
+.El
+.Pp
+Note that the
+.Nm
+daemon mode will log to
+.Xr syslog 3
+by default unless
+.Fl -log-file
+is specified, regardless of whether
+.Fl -no-detach
+has been specified to run in the foreground or not.
 .Sh PATTERNS AND RULES
 The
 .Fl f ,
