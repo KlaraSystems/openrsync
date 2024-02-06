@@ -289,6 +289,7 @@ struct	opts {
 	char		*address;		/* --address */
 	char		*basedir[MAX_BASEDIR];
 	char            *filesfrom;             /* --files-from */
+	int		 from0;			/* -0 */
 	const char	*sockopts;		/* --sockopts */
 	off_t		 bwlimit;		/* --bwlimit */
 	int		 size_only;		/* --size-only */
@@ -629,12 +630,12 @@ char		*mkstempnodat(int, char *, mode_t, dev_t);
 char		*mkstempsock(const char *, char *);
 int		 mktemplate(char **, const char *, int);
 
-int		 parse_rule(const char *line, enum rule_type);
-void		 parse_file(const char *, enum rule_type);
+int		 parse_rule(const char *line, enum rule_type, int);
+void		 parse_file(const char *, enum rule_type, int);
 void		 send_rules(struct sess *, int);
 void		 recv_rules(struct sess *, int);
 int		 rules_match(const char *, int, enum fmode, int);
-void		 rules_dir_push(const char *, size_t);
+void		 rules_dir_push(const char *, size_t, int);
 void		 rules_dir_pop(const char *, size_t);
 void		 rules_base(const char *);
 

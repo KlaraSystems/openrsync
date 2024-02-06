@@ -84,6 +84,11 @@ struct rule_match_ctx {
 	enum fmode	 rulectx;
 };
 
+struct rule_dir_ctx {
+	size_t		 stripdir;
+	int		 delim;
+};
+
 enum rule_iter_action {
 	RULE_ITER_HALT,		/* Halt iteration entirely. */
 	RULE_ITER_HALT_CHAIN,	/* Halt this merge chain. */
@@ -114,9 +119,9 @@ static struct ruleset	 global_ruleset = {
 static size_t		 rule_dir_depth;
 
 static void parse_file_impl(struct ruleset *, const char *, enum rule_type,
-    unsigned int, bool);
+    unsigned int, bool, int);
 static int parse_rule_impl(struct ruleset *, const char *, enum rule_type,
-    unsigned int);
+    unsigned int, int);
 
 /* up to protocol 29 filter rules only support - + ! and no modifiers */
 
@@ -458,7 +463,7 @@ add_cvsignore_rules(void)
 	/* XXX shouldn't transfer any of these? */
 	/* First we add the internal cvsignore rules. */
 	ret = parse_rule_impl(&global_ruleset, builtin_cvsignore, RULE_EXCLUDE,
-	    MOD_MERGE_WORDSPLIT);
+	    MOD_MERGE_WORDSPLIT, '\n');
 	if (ret == -1)
 		return ret;
 
@@ -468,7 +473,7 @@ add_cvsignore_rules(void)
 		if (snprintf(home_cvsignore, sizeof(home_cvsignore),
 		    "%s/.cvsignore", home) < (int)sizeof(home_cvsignore)) {
 			parse_file_impl(&global_ruleset, home_cvsignore,
-			    RULE_EXCLUDE, MOD_MERGE_WORDSPLIT, false);
+			    RULE_EXCLUDE, MOD_MERGE_WORDSPLIT, false, '\n');
 		}
 	}
 
@@ -476,7 +481,7 @@ add_cvsignore_rules(void)
 	cvsignore = getenv("CVSIGNORE");
 	if (cvsignore != NULL && *cvsignore != '\0') {
 		ret = parse_rule_impl(&global_ruleset, cvsignore, RULE_EXCLUDE,
-		    MOD_MERGE_WORDSPLIT);
+		    MOD_MERGE_WORDSPLIT, '\n');
 	}
 
 
@@ -540,7 +545,7 @@ ruleset_free(struct ruleset *ruleset)
 
 
 static void
-ruleset_do_merge(struct ruleset *ruleset, const char *path, int modifiers)
+ruleset_do_merge(struct ruleset *ruleset, const char *path, int modifiers, int delim)
 {
 	enum rule_type def;
 
@@ -551,7 +556,7 @@ ruleset_do_merge(struct ruleset *ruleset, const char *path, int modifiers)
 	else
 		def = RULE_NONE;
 
-	parse_file_impl(ruleset, path, def, modifiers, true);
+	parse_file_impl(ruleset, path, def, modifiers, true, delim);
 }
 
 /*
@@ -559,7 +564,7 @@ ruleset_do_merge(struct ruleset *ruleset, const char *path, int modifiers)
  */
 static int
 parse_rule_impl(struct ruleset *ruleset, const char *line, enum rule_type def,
-    unsigned int imodifiers)
+    unsigned int imodifiers, int delim)
 {
 	enum rule_type type;
 	struct rule *r;
@@ -695,14 +700,14 @@ parse_rule_impl(struct ruleset *ruleset, const char *line, enum rule_type def,
 		if (type == RULE_MERGE || type == RULE_DIR_MERGE) {
 			if ((modifiers & MOD_MERGE_EXCLUDE_FILE) != 0) {
 				if (parse_rule_impl(ruleset, r->pattern,
-				    RULE_EXCLUDE, 0) == -1) {
+				    RULE_EXCLUDE, 0, delim) == -1) {
 					return -1;
 				}
 			}
 		}
 
 		if (type == RULE_MERGE) {
-			ruleset_do_merge(ruleset, r->pattern, modifiers);
+			ruleset_do_merge(ruleset, r->pattern, modifiers, delim);
 		} else if (type == RULE_DIR_MERGE) {
 			ruleset_add_merge(ruleset);
 		} else if ((modifiers & MOD_CVSEXCLUDE) != 0) {
@@ -716,14 +721,14 @@ parse_rule_impl(struct ruleset *ruleset, const char *line, enum rule_type def,
 }
 
 int
-parse_rule(const char *line, enum rule_type def)
+parse_rule(const char *line, enum rule_type def, int delim)
 {
-	return parse_rule_impl(&global_ruleset, line, def, 0);
+	return parse_rule_impl(&global_ruleset, line, def, 0, delim);
 }
 
 static void
 parse_file_impl(struct ruleset *ruleset, const char *file, enum rule_type def,
-    unsigned int imodifiers, bool must_exist)
+    unsigned int imodifiers, bool must_exist, int delim)
 {
 	FILE *fp;
 	char *line = NULL;
@@ -736,10 +741,10 @@ parse_file_impl(struct ruleset *ruleset, const char *file, enum rule_type def,
 		err(ERR_SYNTAX, "open: %s", file);
 	}
 
-	while ((linelen = getline(&line, &linesize, fp)) != -1) {
+	while ((linelen = getdelim(&line, &linesize, delim, fp)) != -1) {
 		linenum++;
 		line[linelen - 1] = '\0';
-		if (parse_rule_impl(ruleset, line, def, imodifiers) == -1)
+		if (parse_rule_impl(ruleset, line, def, imodifiers, delim) == -1)
 			errx(ERR_SYNTAX, "syntax error in %s at entry %zu",
 			    file, linenum);
 	}
@@ -751,10 +756,10 @@ parse_file_impl(struct ruleset *ruleset, const char *file, enum rule_type def,
 }
 
 void
-parse_file(const char *file, enum rule_type def)
+parse_file(const char *file, enum rule_type def, int delim)
 {
 
-	parse_file_impl(&global_ruleset, file, def, 0, true);
+	parse_file_impl(&global_ruleset, file, def, 0, true, delim);
 }
 
 static const char *
@@ -955,7 +960,7 @@ recv_rules(struct sess *sess, int fd)
 		modifiers = 0;
 		type = rule_xfer_type((const char **)&rule, &modifiers);
 		if (parse_rule_impl(&global_ruleset, rule, type,
-		    modifiers) == -1)
+		    modifiers, 0) == -1)
 			errx(ERR_PROTOCOL, "syntax error in received rules");
 	} while (1);
 }
@@ -1364,7 +1369,9 @@ rule_dir_push(struct ruleset *parent, struct rule *r, const char *path,
 	char mfile[PATH_MAX];
 	struct stat st;
 	struct merge_rule *mrule;
-	size_t stripdir = *(size_t *)cookie;
+	struct rule_dir_ctx ctx = *(struct rule_dir_ctx *)cookie;
+	size_t stripdir = ctx.stripdir;
+	int delim = ctx.delim;
 
 	/*
 	 * This is just a bit of an optimization; if we had a clear rule appear
@@ -1409,18 +1416,22 @@ rule_dir_push(struct ruleset *parent, struct rule *r, const char *path,
 
 	TAILQ_INSERT_HEAD(&r->merge_rule_chain, mrule, entries);
 
-	ruleset_do_merge(mrule->ruleset, mfile, r->modifiers & MOD_MERGE_MASK);
+	ruleset_do_merge(mrule->ruleset, mfile, r->modifiers & MOD_MERGE_MASK, delim);
 
 	return RULE_ITER_CONTINUE;
 }
 
 void
-rules_dir_push(const char *path, size_t stripdir)
+rules_dir_push(const char *path, size_t stripdir, int delim)
 {
+	struct rule_dir_ctx ctx;
+
+	ctx.stripdir = stripdir;
+	ctx.delim = delim;
 
 	rule_dir_depth++;
 	(void)rule_iter(&global_ruleset, path, RULE_DIR_MERGE, 0,
-	    &rule_dir_push, &stripdir);
+	    &rule_dir_push, &ctx);
 }
 
 static void
