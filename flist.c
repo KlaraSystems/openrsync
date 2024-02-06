@@ -640,7 +640,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		 * Keep this at the very end; platform should emit a suitable
 		 * looking error.
 		 */
-		if (f->sent != NULL && !(*f->sent)(sess, fdout, f))
+		if (f->sent != NULL && f->sent(sess, fdout, f))
 			goto out;
 	}
 
