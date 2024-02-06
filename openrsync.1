@@ -44,6 +44,7 @@
 .Op Fl -exclude Ar pattern
 .Op Fl -exclude-from Ns = Ns Ar file
 .Op Fl -files-from Ns = Ns Ar filespec
+.Op Fl -force
 .Op Fl -ignore-existing
 .Op Fl -ignore-non-existing
 .Op Fl -include Ar pattern
@@ -347,6 +348,12 @@ from
 .Em filespec .
 .Ar Filespec
 can be of the form hostname:port:path.
+.It Fl -force
+Force deletion of non-empty directories about to be replaced
+by a non-directory.
+This option has no effect if any of the
+.Fl -delete 
+options are present.
 .It Fl -ignore-existing
 Ignore files that already exist.
 .It Fl -ignore-non-existing , Fl -existing

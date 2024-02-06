@@ -800,5 +800,6 @@ out:
 
 	flist_free(fl, flsz);
 	flist_free(dfl, dflsz);
+
 	return rc;
 }

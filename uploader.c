@@ -71,6 +71,20 @@ struct	upload {
 	int		    phase; /* current uploader phase (transfer, redo) */
 };
 
+static int pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode);
+
+static inline bool
+force_delete_applicable(struct upload *p, struct sess *sess, mode_t mode)
+{
+	if (S_ISDIR(mode) && sess->opts->force_delete) {
+		return sess->opts->del == DMODE_NONE ||
+		    sess->opts->del == DMODE_AFTER ||
+		    sess->opts->del == DMODE_DELAY;
+	}
+
+	return false;
+}
+
 /*
  * Log a directory by emitting the file and a trailing slash, just to
  * show the operator that we're a directory.
@@ -226,10 +240,18 @@ pre_symlink(struct upload *p, struct sess *sess)
 		ERR("%s: fstatat", f->path);
 		return -1;
 	}
+
 	if (rc != -1 && (sess->opts->inplace || !S_ISLNK(st.st_mode))) {
+		if (force_delete_applicable(p, sess, st.st_mode))
+			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
+				return -1;
 		if ((sess->opts->inplace || S_ISDIR(st.st_mode)) &&
 		    unlinkat(p->rootfd, f->path,
 		    S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0) == -1) {
+			if (force_delete_applicable(p, sess, st.st_mode)) {
+				sess->total_errors++;
+				return 0;
+			}
 			ERR("%s: unlinkat", f->path);
 			return -1;
 		}
@@ -344,9 +366,18 @@ pre_dev(struct upload *p, struct sess *sess)
 		ERR("%s: fstatat", f->path);
 		return -1;
 	}
+
+
 	if (rc != -1 && !(S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
+		if (force_delete_applicable(p, sess, st.st_mode))
+			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
+				return -1;
 		if (S_ISDIR(st.st_mode) &&
 		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
+			if (force_delete_applicable(p, sess, st.st_mode)) {
+				sess->total_errors++;
+				return 0;
+			}
 			ERR("%s: unlinkat", f->path);
 			return -1;
 		}
@@ -444,9 +475,17 @@ pre_fifo(struct upload *p, struct sess *sess)
 		ERR("%s: fstatat", f->path);
 		return -1;
 	}
+
 	if (rc != -1 && !S_ISFIFO(st.st_mode)) {
+		if (force_delete_applicable(p, sess, st.st_mode))
+			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
+				return -1;
 		if (S_ISDIR(st.st_mode) &&
 		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
+			if (force_delete_applicable(p, sess, st.st_mode)) {
+				sess->total_errors++;
+				return 0;
+			}
 			ERR("%s: unlinkat", f->path);
 			return -1;
 		}
@@ -1015,13 +1054,14 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		return 4;
 	}
 
-	/* non-regular file needs attention */
-	if (!S_ISREG(st->st_mode))
-		return 2;
-
 	if (sess->opts->ign_exist) {
 		LOG1("Skip existing '%s'", f->path);
 		return 4;
+	}
+
+	/* non-regular file needs attention */
+	if (!S_ISREG(st->st_mode)) {
+		return 2;
 	}
 
 	if (sess->role->append) {
@@ -1149,7 +1189,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
  * success and the file needs attention.
  */
 static int
-pre_file(const struct upload *p, int *filefd, off_t *size,
+pre_file(struct upload *p, int *filefd, off_t *size,
     struct sess *sess, const struct hardlinks *hl)
 {
 	struct flist *f;
@@ -1196,6 +1236,10 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 		int uflags = 0;
 		bool do_unlink = false;
 
+		if (force_delete_applicable(p, sess, st.st_mode))
+			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
+				return -1;
+
 		/*
 		 * If we're operating --inplace, need to clear out any stale
 		 * non-file entries since we'll want to just open or create it
@@ -1205,6 +1249,10 @@ pre_file(const struct upload *p, int *filefd, off_t *size,
 		if (S_ISDIR(st.st_mode))
 			uflags |= AT_REMOVEDIR;
 		if (do_unlink && unlinkat(p->rootfd, f->path, uflags) == -1) {
+			if (force_delete_applicable(p, sess, st.st_mode)) {
+				sess->total_errors++;
+				return 0;
+			}
 			ERR("%s: unlinkat", f->path);
 			return -1;
 		}

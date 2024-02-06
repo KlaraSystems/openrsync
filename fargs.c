@@ -304,6 +304,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-B%ld", sess->opts->block_size);
 	if (f->mode == FARGS_SENDER && sess->opts->chmod != NULL)
 		addargs(&args, "--chmod=%s", sess->opts->chmod);
+	if (sess->opts->force_delete)
+		addargs(&args, "--force");
 
 #ifdef __APPLE__
 	if (sess->opts->no_cache == 0) {

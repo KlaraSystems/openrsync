@@ -679,7 +679,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		WARNX("data remains in read pipe");
 #endif
 
-	rc = 0;
+	rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
 out:
 	free(args);
 	return rc;

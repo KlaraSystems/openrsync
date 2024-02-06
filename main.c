@@ -627,6 +627,7 @@ enum {
 	OP_BACKUP_SUFFIX,
 	OP_COPY_UNSAFE_LINKS,
 	OP_SAFE_LINKS,
+	OP_FORCE,
 };
 
 static const struct option	 lopts[] = {
@@ -666,6 +667,7 @@ static const struct option	 lopts[] = {
     { "exclude-from",	required_argument, NULL,		OP_EXCLUDE_FROM },
     { "existing",	no_argument, NULL,			OP_IGNORE_NON_EXISTING },
     { "filter",		required_argument, NULL,		'f' },
+    { "force",		no_argument,	NULL,			OP_FORCE },
     { "group",		no_argument,	NULL,			'g' },
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
     { "no-g",		no_argument,	&opts.preserve_gids,	0 },
@@ -757,7 +759,7 @@ usage(int exitcode)
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
-	    "\t[--existing] [--ignore-existing] [--ignore-non-existing] [--include]\n"
+	    "\t[--existing] [--force] [--ignore-existing] [--ignore-non-existing] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress]\n"
@@ -1158,6 +1160,9 @@ basedir:
 			break;
 		case OP_SOCKOPTS:
 			opts.sockopts = optarg;
+			break;
+		case OP_FORCE:
+			opts.force_delete++;
 			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",

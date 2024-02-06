@@ -2026,8 +2026,8 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 	if (flsz == 0)
 		return 1;
 
-	assert(sess->opts->del);
-	assert(sess->opts->recursive);
+	assert(sess->opts->del || sess->opts->force_delete);
+	assert(sess->opts->recursive || sess->opts->force_delete);
 
 	for (i = 0; i < flsz; i++) {
 		LOG1("%s: deleting", fl[i].wpath);

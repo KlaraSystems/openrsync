@@ -178,7 +178,7 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	}
 #endif
 
-	rc = 0;
+	rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
 out:
 	return rc;
 }
