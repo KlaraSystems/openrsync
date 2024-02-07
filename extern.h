@@ -347,6 +347,7 @@ struct	opts {
 #endif
 	int		 ipf;			/* -4 / -6 */
 	int		 force_delete;		/* --force */
+	int		 ignore_errors;		/* --ignore-errors */
 };
 
 enum rule_type {

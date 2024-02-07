@@ -630,8 +630,8 @@ enum {
 	OP_COPY_UNSAFE_LINKS,
 	OP_SAFE_LINKS,
 	OP_FORCE,
-
 	OP_PROTOCOL,
+	OP_IGNORE_ERRORS,
 };
 
 static const struct option	 lopts[] = {
@@ -678,6 +678,7 @@ static const struct option	 lopts[] = {
     { "no-g",		no_argument,	&opts.preserve_gids,	0 },
     { "hard-links",	no_argument,	&opts.hard_links,	'H' },
     { "help",		no_argument,	NULL,			'h' },
+    { "ignore-errors",	no_argument,	NULL,			OP_IGNORE_ERRORS },
     { "ignore-existing", no_argument,	NULL,			OP_IGNORE_EXISTING },
     { "ignore-non-existing", no_argument, NULL,			OP_IGNORE_NON_EXISTING },
     { "ignore-times",	no_argument,	NULL,			'I' },
@@ -765,7 +766,8 @@ usage(int exitcode)
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
 	    "\t[--exclude] [--exclude-from=file]\n"
-	    "\t[--existing] [--force] [--ignore-existing] [--ignore-non-existing] [--include]\n"
+	    "\t[--existing] [--force] [--ignore-errors]\n"
+	    "\t[--ignore-existing] [--ignore-non-existing] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
 	    "\t[--partial] [--port=portnumber] [--progress] [--protocol]\n"
@@ -1237,6 +1239,8 @@ basedir:
 			break;
 		case OP_FORCE:
 			opts.force_delete++;
+		case OP_IGNORE_ERRORS:
+			opts.ignore_errors++;
 			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",

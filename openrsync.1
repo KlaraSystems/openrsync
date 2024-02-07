@@ -45,6 +45,7 @@
 .Op Fl -exclude-from Ns = Ns Ar file
 .Op Fl -files-from Ns = Ns Ar filespec
 .Op Fl -force
+.Op Fl -ignore-errors
 .Op Fl -ignore-existing
 .Op Fl -ignore-non-existing
 .Op Fl -include Ar pattern
@@ -365,6 +366,10 @@ by a non-directory.
 This option has no effect if any of the
 .Fl -delete 
 options are present.
+.It Fl -ignore-errors
+Works in conjunction with
+.Fl -delete
+to delete files despite I/O errors.
 .It Fl -ignore-existing
 Ignore files that already exist.
 .It Fl -ignore-non-existing , Fl -existing
