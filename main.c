@@ -236,15 +236,28 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 		err(ERR_NOMEM, NULL);
 
 	f->sourcesz = argc - 1;
-	if ((f->sources = calloc(f->sourcesz, sizeof(char *))) == NULL)
-		err(ERR_NOMEM, NULL);
-
-	for (i = 0; i < argc - 1; i++)
-		if ((f->sources[i] = strdup(argv[i])) == NULL)
+	if (f->sourcesz > 0) {
+		if ((f->sources = calloc(f->sourcesz, sizeof(char *))) == NULL)
 			err(ERR_NOMEM, NULL);
 
-	if ((f->sink = strdup(argv[i])) == NULL)
+		for (i = 0; i < argc - 1; i++)
+			if ((f->sources[i] = strdup(argv[i])) == NULL)
+				err(ERR_NOMEM, NULL);
+	} else if (opts->read_batch == NULL) {
+		errx(ERR_SYNTAX,
+		    "One argument without --read-batch not yet supported");
+	}
+
+	if ((f->sink = strdup(argv[argc - 1])) == NULL)
 		err(ERR_NOMEM, NULL);
+
+	if (opts->read_batch != NULL) {
+		/* --read-batch can only take a local sink. */
+		if (fargs_is_remote(f->sink))
+			errx(ERR_SYNTAX,
+			    "rsync --read-batch destination must be local");
+		return f;
+	}
 
 	/*
 	 * Test files for its locality.
@@ -639,6 +652,7 @@ enum {
 	OP_BLOCKING_IO,
 	OP_OUTFORMAT,
 	OP_BIT8,
+	OP_READ_BATCH,
 };
 
 static const struct option	 lopts[] = {
@@ -720,6 +734,7 @@ static const struct option	 lopts[] = {
     { "port",		required_argument, NULL,		OP_PORT },
     { "protocol",	required_argument, NULL,		OP_PROTOCOL },
     { "quiet",		no_argument,	NULL,			'q' },
+    { "read-batch",	required_argument, NULL,		OP_READ_BATCH },
     { "recursive",	no_argument,	NULL,			'r' },
     { "no-recursive",	no_argument,	&opts.recursive,	0 },
     { "no-r",		no_argument,	&opts.recursive,	0 },
@@ -1137,6 +1152,9 @@ basedir:
 				    lopts[lidx].name);
 			opts.basedir[basedir_cnt++] = optarg;
 			break;
+		case OP_READ_BATCH:
+			opts.read_batch = optarg;
+			break;
 		case OP_SPARSE:
 			opts.sparse++;
 			break;
@@ -1467,9 +1485,13 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	/* FIXME: reference implementation rsync accepts this. */
-
-	if (argc < 2)
+	/*
+	 * We've loosened this restriction for --read-batch, but rsync still
+	 * allows just one argument to be specified.  With only one argument,
+	 * it treats that argument as the source and runs in --list-only mode
+	 * instead of doing any copying.
+	 */
+	if (opts.read_batch == NULL && argc < 2)
 		usage(ERR_SYNTAX);
 
 	/*
@@ -1518,6 +1540,8 @@ main(int argc, char *argv[])
 	assert(fargs != NULL);
 
 	cleanup_set_args(cleanup_ctx, fargs);
+	if (opts.read_batch != NULL)
+		exit(rsync_batch(cleanup_ctx, &opts, fargs));
 
 	if (opts.filesfrom_host != NULL) {
 		if (fargs->host == NULL) {

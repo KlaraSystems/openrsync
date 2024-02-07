@@ -1,6 +1,7 @@
 include Makefile.configure
 
-OBJS	   = blocks.o \
+OBJS	   = batch.o \
+	     blocks.o \
 	     cleanup.o \
 	     client.o \
 	     compats.o \
