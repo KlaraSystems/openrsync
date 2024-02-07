@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 
 #include <assert.h>
+#include <dirent.h>
 #if HAVE_ERR
 # include <err.h>
 #endif
@@ -1193,6 +1194,92 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 }
 
 /*
+ * Try to find a file in the same directory as the target that is
+ * likely to be the same file (same size, mtime), and open that
+ * as a basis file, to reduce the amount of data to be transferred.
+ * Returns -1 on error, 0 on success, or 1 to keep trying further.
+ */
+static int
+pre_file_fuzzy(struct sess *sess, struct upload *p, struct flist *f,
+    struct stat *stp, int *filefd)
+{
+	int dirfd;
+	DIR *dirp;
+	int fd;
+	struct dirent *di;
+	struct stat st;
+	char pathbuf[PATH_MAX];
+	char root[PATH_MAX];
+	char *rp;
+
+	if (!S_ISREG(f->st.mode) || !f->st.size || !f->st.mtime) {
+		return 1;
+	}
+
+	strlcpy((char*)&root, f->path, sizeof(root));
+	if ((rp = strrchr(root, '/')) != NULL) {
+		/* Keep the trailing / */
+		*(++rp) = '\0';
+	} else {
+		root[0] = '\0';
+	}
+
+	if (*root == '\0') {
+		dirfd = dup(p->rootfd);
+	} else if ((dirfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY |
+	    O_RESOLVE_BENEATH)) < 0) {
+		ERR("%s: pre_file_fuzzy: openat", root);
+		return -1;
+	}
+
+	if (!(dirp = fdopendir(dirfd))) {
+		ERR("%s: pre_file_fuzzy: opendirfd", root);
+		close(dirfd);
+		return -1;
+	}
+
+	while ((di = readdir(dirp)) != NULL) {
+		if (di->d_name[0] == '.' && (di->d_name[1] == '\0' ||
+		    (di->d_name[1] == '.' && di->d_name[2] == '\0'))) {
+			continue;
+		}
+		if (!S_ISREG(DTTOIF(di->d_type))) {
+			continue;
+		}
+		/* root has the trailing / already */
+		if (snprintf(pathbuf, sizeof(pathbuf), "%s%s", root,
+		    di->d_name) > sizeof(pathbuf)) {
+			continue;
+		}
+		if (fstatat(p->rootfd, pathbuf, &st, AT_SYMLINK_NOFOLLOW) ==
+		    -1) {
+			ERR("%s: pre_file_fuzzy: fstatat", pathbuf);
+			continue;
+		}
+		if (st.st_size == f->st.size && st.st_mtime == f->st.mtime) {
+			if ((fd = openat(p->rootfd, pathbuf, O_RDONLY |
+			    O_NOFOLLOW | O_RESOLVE_BENEATH)) == -1) {
+				ERR("%s: pre_file_fuzzy: openat", pathbuf);
+				continue;
+			}
+			*stp = st;
+			*filefd = fd;
+			f->iflags |= IFLAG_BASIS_FOLLOWS | IFLAG_HLINK_FOLLOWS;
+			f->basis = BASIS_FUZZY;
+			free(f->link);
+			f->link = strdup(pathbuf);
+			LOG4("fuzzy basis selected for %s: %s", f->path, f->link);
+
+			(void)closedir(dirp);
+			return 0;
+		}
+	}
+	(void)closedir(dirp);
+
+	return 1;
+}
+
+/*
  * Try to open the file at the current index.
  * If the file does not exist, returns with >0.
  * Return <0 on failure, 0 on success w/nothing to be done, >0 on
@@ -1345,10 +1432,15 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 
 		if (*filefd != -1)
 			f->pdfd = pdfd;
+	} else if (sess->opts->fuzzy_basis && rc == 3 &&
+	    (ret = pre_file_fuzzy(sess, p, f, &st, filefd)) == 0) {
+		/* Only consider fuzzy matches if the destination does not exist */
+		assert(pdfd == -1);
+		*size = st.st_size;
 	} else {
 		assert(pdfd == -1);
 		*size = st.st_size;
-		*filefd = openat(TMPDIR_FD, f->path, O_RDONLY | O_NOFOLLOW);
+		*filefd = openat(p->rootfd, f->path, O_RDONLY | O_NOFOLLOW);
 	}
 	/* If there is a symlink in our way, we will get EMLINK */
 	if (*filefd == -1 && errno != ENOENT && errno != EMLINK) {

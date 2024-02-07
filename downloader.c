@@ -873,13 +873,17 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			rootfd = f->pdfd;
 			path = download_partial_filepath(f);
 		}
-
-		p->ofd = openat(rootfd, path, O_RDONLY | O_NONBLOCK);
+		if (f->basis == BASIS_FUZZY && f->link) {
+			/* We have a fuzzy match, open it instead */
+			p->ofd = openat(rootfd, f->link, O_RDONLY | O_NONBLOCK);
+		} else {
+			p->ofd = openat(rootfd, path, O_RDONLY | O_NONBLOCK);
+		}
 		if (sess->opts->progress && !verbose)
 			fprintf(stderr, "%s\n", f->path);
 
 		if (p->ofd == -1 && errno != ENOENT) {
-			ERR("%s: openat", f->path);
+			ERR("%s: rsync_downloader: openat", path);
 			goto out;
 		} else if (p->ofd != -1) {
 			*ofd = p->ofd;

@@ -231,6 +231,15 @@ struct	flstat {
 
 };
 
+enum name_basis {
+	BASIS_DIR_LOW = 0,
+	BASIS_DIR_HIGH = 0x7F,
+	BASIS_NORMAL,
+	BASIS_PARTIAL_DIR,
+	BASIS_BACKUP,
+	BASIS_FUZZY,
+};
+
 /*
  * A list of files with their statistics.
  * Note that the md[] field is only used by the --checksum option, and
@@ -247,7 +256,7 @@ struct	flist {
 	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
 	int		 flstate; /* flagged for redo, or complete? */
 	int32_t		 iflags; /* Itemize flags */
-	int		 basis; /* Needed later */
+	enum name_basis	 basis; /* name basis */
 };
 
 #define	FLIST_COMPLETE		0x01	/* Finished */
@@ -348,6 +357,9 @@ struct	opts {
 	int		 ipf;			/* -4 / -6 */
 	int		 force_delete;		/* --force */
 	int		 ignore_errors;		/* --ignore-errors */
+	int		 preserve_executability;	/* --executability */
+	int		 modwin;		/* --modify-windows=sec */
+	int		 fuzzy_basis;		/* -y */
 };
 
 enum rule_type {

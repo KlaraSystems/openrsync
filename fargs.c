@@ -292,6 +292,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--remove-source-files");
 	if (f->mode == FARGS_SENDER && sess->opts->ignore_times > 0)
 		addargs(&args, "--ignore-times");
+	if (f->mode == FARGS_SENDER && sess->opts->fuzzy_basis)
+		addargs(&args, "--fuzzy");
 	if (sess->opts->bwlimit >= 1024) {
 		addargs(&args, "--bwlimit=%lld",
 		    (long long)(sess->opts->bwlimit / 1024));

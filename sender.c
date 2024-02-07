@@ -301,7 +301,9 @@ get_iflags(struct sess *sess, int fd, struct flist *fl, int32_t idx)
 		}
 	}
 	if (IFLAG_HLINK_FOLLOWS & fl[idx].iflags) {
-		assert(fl[idx].link == NULL);
+		if (fl[idx].link != NULL) {
+			free(fl[idx].link);
+		}
 		if ((fl[idx].link = calloc(1, PATH_MAX)) == NULL) {
 			ERR("calloc hlink vstring");
 			return 0;

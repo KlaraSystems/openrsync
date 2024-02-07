@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl 046BCDFHILOPRSTWVabcdghklnoprtuvx
+.Op Fl 046BCDEFHILOPRSTWVabcdghklnoprtuvxy
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -370,6 +370,17 @@ options are present.
 Works in conjunction with
 .Fl -delete
 to delete files despite I/O errors.
+.It Fl y , Fl -fuzzy
+Look for files in the destination directory that might be the same to use as a
+basis to avoid copying the entire file.
+The first file with an identical size and modification time is used to try to
+reduce the total amount of data that has to be transferred.
+.Pp
+Note that the use of the
+.Fl -delete
+option might get rid of any potential fuzzy-matches, so either use
+.Fl -delete-after
+or specify some exclusions to prevent this.
 .It Fl -ignore-existing
 Ignore files that already exist.
 .It Fl -ignore-non-existing , Fl -existing
