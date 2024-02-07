@@ -395,7 +395,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		err(ERR_IPC, "unveil");
 
 	/* Client sends exclusions. */
-	if (!sess->opts->server)
+	if (!sess->opts->server && sess->opts->read_batch == NULL)
 		send_rules(sess, fdout);
 
 	/*
@@ -793,7 +793,8 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 			sess->dlrename = NULL;
 		}
 
-		if (!io_write_int(sess, fdout, -1)) {
+		if (sess->opts->read_batch == NULL &&
+		    !io_write_int(sess, fdout, -1)) {
 			ERRX1("io_write_int");
 			goto out;
 		}
@@ -846,7 +847,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		ERRX1("sess_stats_recv");
 		goto out;
 	}
-	if (!io_write_int(sess, fdout, -1)) {
+	if (sess->opts->read_batch == NULL && !io_write_int(sess, fdout, -1)) {
 		ERRX1("io_write_int");
 		goto out;
 	}

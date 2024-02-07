@@ -353,6 +353,7 @@ struct	opts {
 	char            *filesfrom_host;        /* --files-from */
 	char            *filesfrom_path;        /* --files-from */
 	int		 whole_file;		/* --whole-file */
+	const char	*read_batch;		/* --read-batch */
 	char		*temp_dir;		/* --temp-dir */
 #if 0
 	char		*syncfile;		/* --sync-file */
@@ -694,6 +695,7 @@ int	send_iflags(struct sess *, void **, size_t *, size_t *,
 int	rsync_receiver(struct sess *, struct cleanup_ctx *, int, int,
 	    const char *);
 int	rsync_sender(struct sess *, int, int, size_t, char **);
+int	rsync_batch(struct cleanup_ctx *, struct opts *, const struct fargs *);
 int	rsync_client(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
 int	rsync_daemon(int, char *[], struct opts *);

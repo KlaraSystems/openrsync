@@ -1303,9 +1303,10 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	f = &p->fl[p->idx];
 	assert(S_ISREG(f->st.mode));
 
-	if (sess->opts->dry_run) {
+	if (sess->opts->dry_run || sess->opts->read_batch != NULL) {
 		log_file(sess, f);
-		if (!io_write_int(sess, p->fdout, p->idx)) {
+		if (sess->opts->read_batch == NULL &&
+		    !io_write_int(sess, p->fdout, p->idx)) {
 			ERRX1("io_write_int");
 			return -1;
 		}
@@ -1759,7 +1760,8 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		*fileoutfd = -1;
 		if (u->idx == u->flsz) {
 			assert(*fileinfd == -1);
-			if (!io_write_int(sess, u->fdout, -1)) {
+			if (sess->opts->read_batch == NULL &&
+			    !io_write_int(sess, u->fdout, -1)) {
 				ERRX1("io_write_int");
 				return -1;
 			}
@@ -1778,6 +1780,9 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	assert(u->state == UPLOAD_WRITE);
 	memset(&blk, 0, sizeof(struct blkset));
 	blk.csum = u->csumlen;
+
+	if (sess->opts->read_batch != NULL)
+		goto nowrite;
 
 	if (*fileinfd != -1 && filesize > 0) {
 		if (sess->opts->block_size > (512 << 20))
@@ -1932,6 +1937,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	}
 	assert(pos == u->bufsz);
 
+nowrite:
 	/* Reenable the output poller and clean up. */
 
 	*fileoutfd = u->fdout;
