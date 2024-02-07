@@ -306,6 +306,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--chmod=%s", sess->opts->chmod);
 	if (sess->opts->force_delete)
 		addargs(&args, "--force");
+	if (sess->opts->ignore_errors)
+		addargs(&args, "--ignore-errors");
 
 #ifdef __APPLE__
 	if (sess->opts->no_cache == 0) {

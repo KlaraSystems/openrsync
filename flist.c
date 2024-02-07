@@ -2128,6 +2128,8 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		 */
 		if (ent->fts_info != FTS_DP &&
 		    !flist_fts_check(sess, ent, FARGS_RECEIVER)) {
+			if (ent->fts_errno != 0)
+				sess->total_errors++;
 			errno = 0;
 			continue;
 		} else if (stripdir >= ent->fts_pathlen)
@@ -2296,6 +2298,9 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 
 	assert(sess->opts->del || sess->opts->force_delete);
 	assert(sess->opts->recursive || sess->opts->force_delete);
+
+	if (sess->total_errors > 0 && !sess->opts->ignore_errors)
+		return 1;
 
 	for (i = 0; i < flsz; i++) {
 		LOG1("%s: deleting", fl[i].wpath);

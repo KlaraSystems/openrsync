@@ -78,11 +78,12 @@ force_delete_applicable(struct upload *p, struct sess *sess, mode_t mode)
 {
 	if (S_ISDIR(mode) && sess->opts->force_delete) {
 		return sess->opts->del == DMODE_NONE ||
+		    sess->opts->del == DMODE_BEFORE ||
 		    sess->opts->del == DMODE_AFTER ||
 		    sess->opts->del == DMODE_DELAY;
 	}
 
-	return false;
+	return sess->opts->del == DMODE_BEFORE;
 }
 
 /*
@@ -94,8 +95,6 @@ log_dir(struct sess *sess, const struct flist *f)
 {
 	size_t	 sz;
 
-	if (sess->opts->server)
-		return;
 	sz = strlen(f->path);
 	assert(sz > 0);
 	LOG1("%s%s", f->path, (f->path[sz - 1] == '/') ? "" : "/");
@@ -109,8 +108,17 @@ static void
 log_symlink(struct sess *sess, const struct flist *f)
 {
 
-	if (!sess->opts->server)
-		LOG1("%s -> %s", f->path, f->link);
+	LOG1("%s -> %s", f->path, f->link);
+}
+
+/*
+ * Simply log the socket, fifo, or device name.
+ */
+static void
+log_other(struct sess *sess, const struct flist *f)
+{
+
+	LOG1("%s", f->path);
 }
 
 /*
@@ -248,12 +256,9 @@ pre_symlink(struct upload *p, struct sess *sess)
 		if ((sess->opts->inplace || S_ISDIR(st.st_mode)) &&
 		    unlinkat(p->rootfd, f->path,
 		    S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0) == -1) {
-			if (force_delete_applicable(p, sess, st.st_mode)) {
-				sess->total_errors++;
-				return 0;
-			}
 			ERR("%s: unlinkat", f->path);
-			return -1;
+			sess->total_errors++;
+			return 0;
 		}
 		rc = -1;
 	}
@@ -317,13 +322,15 @@ pre_symlink(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
+			sess->total_errors++;
 			free(temp);
-			return -1;
+			return 0;
 		}
 		free(temp);
 	}
 
-	log_symlink(sess, f);
+	if (newlink)
+		log_symlink(sess, f);
 	return 0;
 }
 
@@ -349,7 +356,7 @@ pre_dev(struct upload *p, struct sess *sess)
 		return 0;
 	}
 	if (sess->opts->dry_run) {
-		log_file(sess, f);
+		log_other(sess, f);
 		return 0;
 	}
 
@@ -374,12 +381,9 @@ pre_dev(struct upload *p, struct sess *sess)
 				return -1;
 		if (S_ISDIR(st.st_mode) &&
 		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
-			if (force_delete_applicable(p, sess, st.st_mode)) {
-				sess->total_errors++;
-				return 0;
-			}
 			ERR("%s: unlinkat", f->path);
-			return -1;
+			sess->total_errors++;
+			return 0;
 		}
 		rc = -1;
 	}
@@ -427,13 +431,14 @@ pre_dev(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
+			sess->total_errors++;
 			free(temp);
-			return -1;
+			return 0;
 		}
 		free(temp);
 	}
 
-	log_file(sess, f);
+	log_other(sess, f);
 	return 0;
 }
 
@@ -458,7 +463,7 @@ pre_fifo(struct upload *p, struct sess *sess)
 		return 0;
 	}
 	if (sess->opts->dry_run) {
-		log_file(sess, f);
+		log_other(sess, f);
 		return 0;
 	}
 
@@ -482,12 +487,9 @@ pre_fifo(struct upload *p, struct sess *sess)
 				return -1;
 		if (S_ISDIR(st.st_mode) &&
 		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
-			if (force_delete_applicable(p, sess, st.st_mode)) {
-				sess->total_errors++;
-				return 0;
-			}
 			ERR("%s: unlinkat", f->path);
-			return -1;
+			sess->total_errors++;
+			return 0;
 		}
 		rc = -1;
 	}
@@ -521,13 +523,14 @@ pre_fifo(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
+			sess->total_errors++;
 			free(temp);
-			return -1;
+			return 0;
 		}
 		free(temp);
 	}
 
-	log_file(sess, f);
+	log_other(sess, f);
 	return 0;
 }
 
@@ -552,7 +555,7 @@ pre_sock(struct upload *p, struct sess *sess)
 		return 0;
 	}
 	if (sess->opts->dry_run) {
-		log_file(sess, f);
+		log_other(sess, f);
 		return 0;
 	}
 
@@ -573,7 +576,8 @@ pre_sock(struct upload *p, struct sess *sess)
 		if (S_ISDIR(st.st_mode) &&
 		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
 			ERR("%s: unlinkat", f->path);
-			return -1;
+			sess->total_errors++;
+			return 0;
 		}
 		rc = -1;
 	}
@@ -608,13 +612,14 @@ pre_sock(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
+			sess->total_errors++;
 			free(temp);
-			return -1;
+			return 0;
 		}
 		free(temp);
 	}
 
-	log_file(sess, f);
+	log_other(sess, f);
 	return 0;
 }
 
@@ -716,6 +721,11 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 
 		if (ent->fts_info != FTS_DP &&
 		    !flist_fts_check(sess, ent, FARGS_RECEIVER)) {
+			if (ent->fts_errno != 0) {
+				if (ent->fts_info == FTS_DNR)
+					LOG1("%.*s", (int)ent->fts_namelen, ent->fts_name);
+				sess->total_errors++;
+			}
 			errno = 0;
 			continue;
 		}
@@ -890,6 +900,7 @@ pre_dir(struct upload *p, struct sess *sess)
 		 * directory and that doesn't work.
 		 */
 		LOG3("%s: updating directory", f->path);
+		log_dir(sess, f);
 
 		if (sess->opts->del == DMODE_DURING || sess->opts->del == DMODE_DELAY) {
 			pre_dir_delete(p, sess, sess->opts->del);
@@ -905,7 +916,6 @@ pre_dir(struct upload *p, struct sess *sess)
 	 * case it's u-w or something.
 	 */
 
-	LOG3("%s: creating directory", f->path);
 	if (mkdirat(p->rootfd, f->path, 0777 & ~p->oumask) == -1) {
 		ERR("%s: mkdirat", f->path);
 		return -1;
@@ -1249,12 +1259,9 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		if (S_ISDIR(st.st_mode))
 			uflags |= AT_REMOVEDIR;
 		if (do_unlink && unlinkat(p->rootfd, f->path, uflags) == -1) {
-			if (force_delete_applicable(p, sess, st.st_mode)) {
-				sess->total_errors++;
-				return 0;
-			}
 			ERR("%s: unlinkat", f->path);
-			return -1;
+			sess->total_errors++;
+			return 0;
 		}
 
 		/*
