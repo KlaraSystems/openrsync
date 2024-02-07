@@ -789,6 +789,15 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		goto out;
 	}
 
+#if 0
+	if (sess->protocol >= 29) {
+		if (!io_write_int(sess, fdout, -1)) {
+			ERRX1("io_write_int");
+			goto out;
+		}
+	}
+#endif
+
 	LOG2("receiver finished updating");
 	rc = 1;
 out:

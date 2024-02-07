@@ -673,6 +673,7 @@ static const struct option	 lopts[] = {
     { "existing",	no_argument, NULL,			OP_IGNORE_NON_EXISTING },
     { "filter",		required_argument, NULL,		'f' },
     { "force",		no_argument,	NULL,			OP_FORCE },
+    { "fuzzy",		no_argument,	NULL,			'y' },
     { "group",		no_argument,	NULL,			'g' },
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
     { "no-g",		no_argument,	&opts.preserve_gids,	0 },
@@ -760,7 +761,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-46BCDFHIKLOPRSTWVabcdghklnoprtuvx] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-46BCDEFHIKLOPRSTWVabcdghklnoprtuvxy] [-e program] [-f filter] [--address=sourceaddr]\n"
 	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--cache | --no-cache]\n"
 	    "\t[--compare-dest=dir] [--contimeout] [--copy-dest=dir] [--copy-unsafe-links]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
@@ -815,7 +816,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 #endif
 	opts.protocol = RSYNC_PROTOCOL;
 
-	while ((c = getopt_long(argc, argv, "046B:CDFHIKLOPRSVWabcde:f:ghklnoprtuvxz", lopts,
+	while ((c = getopt_long(argc, argv, "046B:CDEFHIKLOPRSVWabcde:f:ghklnoprtuvxy", lopts,
 	    &lidx)) != -1) {
 		/* Give the filter a shot to reject the option. */
 		if (filter != NULL) {
@@ -975,6 +976,9 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			break;
 		case 'x':
 			opts.one_file_system++;
+			break;
+		case 'y':
+			opts.fuzzy_basis = 1;
 			break;
 		case 'z':
 			fprintf(stderr, "%s: -z not supported yet\n", getprogname());
