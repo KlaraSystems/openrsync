@@ -1303,7 +1303,8 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	f = &p->fl[p->idx];
 	assert(S_ISREG(f->st.mode));
 
-	if (sess->opts->dry_run || sess->opts->read_batch != NULL) {
+	if (sess->opts->dry_run == DRY_FULL ||
+	    sess->opts->read_batch != NULL) {
 		log_file(sess, f);
 		if (sess->opts->read_batch == NULL &&
 		    !io_write_int(sess, p->fdout, p->idx)) {
@@ -1371,7 +1372,8 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	 * the permissions are thoroughly messed up.
 	 */
 	if (rc >= 0 && rc < 3) {
-		bool fix_metadata = rc != 0 || !sess->opts->ign_non_exist;
+		bool fix_metadata = (rc != 0 || !sess->opts->ign_non_exist) &&
+		    !sess->opts->dry_run;
 
 		if (fix_metadata &&
 		    !rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {

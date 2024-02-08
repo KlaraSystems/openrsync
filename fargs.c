@@ -199,7 +199,7 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-g");
 	if (sess->opts->preserve_links)
 		addargs(&args, "-l");
-	if (sess->opts->dry_run)
+	if (sess->opts->dry_run == DRY_FULL)
 		addargs(&args, "-n");
 	if (sess->opts->inplace)
 		addargs(&args, "--inplace");
@@ -364,6 +364,11 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 
 	/* extra options for the receiver (local is sender) */
 	if (f->mode == FARGS_SENDER) {
+		if (sess->opts->write_batch != NULL &&
+		    sess->opts->dry_run == DRY_XFER) {
+			addargs(&args, "--only-write-batch=%s",
+			    sess->opts->write_batch);
+		}
 		if (sess->opts->size_only)
 			addargs(&args, "--size-only");
 

@@ -95,6 +95,12 @@ enum basemode {
 	BASE_MODE_LINK,		/* Hardlink into rootfd */
 };
 
+enum dryrun {
+	DRY_DISABLED = 0,	/* Full run */
+	DRY_XFER,		/* Xfer only */
+	DRY_FULL,		/* Full dry-run*/
+};
+
 /*
  * The sender and receiver use a two-phase synchronisation process.
  * The first uses two-byte hashes; the second, 16-byte.
@@ -295,7 +301,7 @@ struct	opts {
 	int		 checksum_seed;		/* --checksum-seed */
 	char		*chmod;			/* --chmod */
 	int		 recursive;		/* -r */
-	int		 dry_run;		/* -n */
+	enum dryrun	 dry_run;		/* -n */
 	int		 inplace;		/* --inplace */
 	int		 partial;		/* --partial */
 	char		*partial_dir;		/* --partial-dir */

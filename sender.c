@@ -186,7 +186,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		 * to find another.
 		 */
 
-		if (!sess->opts->dry_run)
+		if (sess->opts->dry_run != DRY_FULL)
 			LOG3("%s: flushed %jd KB total, %.2f%% uploaded",
 			    fl[up->cur->idx].path,
 			    (intmax_t)up->stat.total / 1024,
@@ -237,7 +237,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		}
 		io_lowbuffer_int(sess, *wb, &pos, *wbsz, -1);
 		up->stat.curst = BLKSTAT_PHASE;
-	} else if (sess->opts->dry_run) {
+	} else if (sess->opts->dry_run == DRY_FULL) {
 		if (!sess->opts->server)
 			LOG1("%s", fl[up->cur->idx].wpath);
 
@@ -436,7 +436,7 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 	 * off the wire.
 	 */
 
-	if (!sess->opts->dry_run) {
+	if (sess->opts->dry_run != DRY_FULL) {
 		s->blks = blk_recv(sess, fd, fl[idx].path);
 		if (s->blks == NULL) {
 			ERRX1("blk_recv");
@@ -788,15 +788,28 @@ rsync_sender(struct sess *sess, int fdin,
 		 */
 
 		if ((pfd[1].revents & POLLOUT) && wbufsz > 0) {
+			int writefd = fdout;
+
 			assert(pfd[2].fd == -1);
 			assert(wbufsz - wbufpos);
-			ssz = write(fdout, wbuf + wbufpos, wbufsz - wbufpos);
+
+			/*
+			 * If we're writing a batch file, we just send the file
+			 * data straight to the batch.  We still need to catch
+			 * the end of phase marker and send that over to the
+			 * other side.
+			 */
+			if (up.stat.curst != BLKSTAT_PHASE &&
+			    sess->wbatch_fd != -1 &&
+			    sess->opts->dry_run == DRY_XFER)
+				writefd = sess->wbatch_fd;
+			ssz = write(writefd, wbuf + wbufpos, wbufsz - wbufpos);
 			if (ssz == -1) {
 				ERR("write");
 				goto out;
 			}
 
-			if (!io_data_written(sess, fdout,
+			if (!io_data_written(sess, writefd,
 			    wbuf + wbufpos, ssz)) {
 				ERRX1("io_data_written");
 				goto out;

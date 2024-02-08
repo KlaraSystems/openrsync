@@ -840,8 +840,12 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 			return 1;
 		}
 
-		/* Short-circuit: dry_run mode does nothing. */
-		if (sess->opts->dry_run)
+		/*
+		 * Short-circuit: dry_run mode does nothing, with one exception:
+		 * if we're the client on an --only-write-batch transfer, we
+		 * need to receive the data, record it and throw it away.
+		 */
+		if (sess->opts->dry_run && sess->wbatch_fd == -1)
 			return 1;
 
 		/*
@@ -924,6 +928,16 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 
 	if (p->state == DOWNLOAD_READ_LOCAL) {
 		assert(p->fname == NULL);
+
+		if (sess->opts->dry_run) {
+			/*
+			 * Ideally we'd just be able to drive the token protocol
+			 * a little more cleanly.
+			 */
+			*ofd = -1;
+			p->state = DOWNLOAD_READ_REMOTE;
+			return 1;
+		}
 
 		/*
 		 * Try to fstat() the file descriptor if valid and make
@@ -1080,8 +1094,8 @@ again:
 	progress(sess, p->fl[p->idx].st.size, p->total, false);
 
 	assert(p->state == DOWNLOAD_READ_REMOTE);
-	assert(p->fname != NULL);
-	assert(p->fd != -1);
+	assert(p->fname != NULL || sess->opts->dry_run);
+	assert(p->fd != -1 || sess->opts->dry_run);
 	assert(p->fdin != -1);
 
 	if (!io_read_int(sess, p->fdin, &rawtok)) {
@@ -1168,7 +1182,7 @@ again:
 		return 1;
 	}
 
-	if (!buf_copy(NULL, 0, p, sess)) {
+	if (!sess->opts->dry_run && !buf_copy(NULL, 0, p, sess)) {
 		ERRX1("buf_copy");
 		goto out;
 	}
@@ -1211,6 +1225,10 @@ again:
 	 * erroneously clean it up later.
 	 */
 	f->flstate = (f->flstate & ~FLIST_REDO) | FLIST_COMPLETE;
+
+	/* We can still get here with a DRY_XFER in some cases. */
+	if (sess->opts->dry_run)
+		goto done;
 
 	if (sess->opts->backup) {
 		if (fstatat(p->rootfd, f->path, &st2, 0) == -1) {

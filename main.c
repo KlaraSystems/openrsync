@@ -654,6 +654,7 @@ enum {
 	OP_BIT8,
 	OP_READ_BATCH,
 	OP_WRITE_BATCH,
+	OP_ONLY_WRITE_BATCH,
 };
 
 static const struct option	 lopts[] = {
@@ -767,6 +768,7 @@ static const struct option	 lopts[] = {
     { "whole-file",	no_argument,	NULL,			'W' },
     { "no-whole-file",	no_argument,	&opts.whole_file,	0 },
     { "no-W",		no_argument,	&opts.whole_file,	0 },
+    { "only-write-batch",	required_argument, NULL,	OP_ONLY_WRITE_BATCH },
     { "write-batch",	required_argument, NULL,		OP_WRITE_BATCH },
     { "progress",	no_argument,	&opts.progress,		1 },
     { "no-progress",	no_argument,	&opts.progress,		0 },
@@ -833,6 +835,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 	int		 c, cvs_excl, lidx;
 	int		 implied_recursive = 0;
 	int		 opts_F = 0, opts_no_relative = 0, opts_no_dirs = 0;
+	int		 opts_only_batch = 0;
 
 	/*
 	 * In the case of the daemon, we're re-entering and opts may be dirty
@@ -1157,6 +1160,9 @@ basedir:
 		case OP_READ_BATCH:
 			opts.read_batch = optarg;
 			break;
+		case OP_ONLY_WRITE_BATCH:
+			opts_only_batch = 1;
+			/* FALLTHROUGH */
 		case OP_WRITE_BATCH:
 			opts.write_batch = optarg;
 			break;
@@ -1442,6 +1448,19 @@ basedir:
 	 */
 	if (opts.del == DMODE_UNSPECIFIED)
 		opts.del = DMODE_BEFORE;
+
+	if (opts.write_batch != NULL && opts.read_batch != NULL)
+		err(ERR_SYNTAX,
+		    "--write-batch and --read-batch are incompatible");
+
+	/*
+	 * --dry-run turns off write batching altogether; --only-write-batch
+	 * turns on the xfer-only dry-run mode.
+	 */
+	if (opts.dry_run)
+		opts.write_batch = NULL;
+	else if (opts_only_batch)
+		opts.dry_run = DRY_XFER;
 
 	if (!opts.server) {
 		if (cvs_excl) {
