@@ -807,8 +807,10 @@ usage(int exitcode)
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--modify-window=sec] [--no-motd] [--numeric-ids]\n"
 	    "\t[--out-format=FMT] [--partial] [--port=portnumber] [--progress] [--protocol]\n"
+	    "\t[--read-batch=file]\n"
 	    "\t[--remove-source-files] [--rsync-path=program] [--safe-links] [--size-only]\n"
 	    "\t[--sockopts=sockopts] [--specials] [--suffix] [--super] [--timeout=seconds]\n"
+	    "\t[--only-write-batch=file | --write-batch=file]\n"
 	    "\tsource ... directory\n",
 	    getprogname());
 	exit(exitcode);

@@ -65,6 +65,7 @@
 .Op Fl -partial
 .Op Fl -port Ns = Ns Ar service
 .Op Fl -progress
+.Op Fl -read-batch Ns = Ns Ar file
 .Op Fl -remove-source-files
 .Op Fl -rsync-path Ns = Ns Ar program
 .Op Fl -safe-links
@@ -74,6 +75,7 @@
 .Op Fl -suffix Ns = Ns Ar suffix
 .Op Fl -super
 .Op Fl -timeout Ns = Ns Ar seconds
+.Op Fl -only-write-batch Ns = Ns Ar file | Fl -write-batch Ns = Ns Ar file
 .Ar source ...
 .Ar directory
 .Pp
@@ -587,6 +589,17 @@ directory itself.
 If
 .Ar source
 is a file, this has no effect.
+.It Fl -read-batch Ns = Ns Ar file
+Read a batch file previously prepared by
+.Nm
+from
+.Ar file .
+See the
+.Fl -write-batch
+option for a description of a batch file.
+When reading a batch file, the
+.Ar source
+arguments are optional and ignored if specified.
 .It Fl -remove-source-files
 Remove
 .Ar source
@@ -692,6 +705,28 @@ Print version and exit.
 .It Fl W , -whole-file
 Copy the entire file rather than using the rsync incremental algorithm.
 This option may be faster, especially if the network link is faster than the disk.
+.It Fl -only-write-batch Ns = Ns Ar file
+Prepare a batch file and write it to
+.Ar file .
+With this option, the batch file is written without updating the destination.
+See the below
+.Fl -write-batch
+option for a description of a batch file.
+.It Fl -write-batch Ns = Ns Ar file
+Prepare a batch file and write it to
+.Ar file .
+A batch file is composed of a small heading describing the transfer parameters
+negotiated, followed by a raw dump of the data transmitted by the sender.
+When used with
+.Fl -read-batch
+on the other side, the transfer is simply replayed from the batch file against
+the application's reeceiver, and the destination tree is updated accordingly.
+.Pp
+Batch files are intended to reproduce an update to a destination tree to many
+other identical trees without needing to establish a direct connection between
+them.
+This mechanism also avoids having to perform many of the intermediate steps
+required for a transfer, such as receiver-side checksums and blocking.
 .El
 .Pp
 A remote
