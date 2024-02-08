@@ -735,7 +735,9 @@ parse_file_impl(struct ruleset *ruleset, const char *file, enum rule_type def,
 	size_t linesize = 0, linenum = 0;
 	ssize_t linelen;
 
-	if ((fp = fopen(file, "r")) == NULL) {
+	if (strcmp(file, "-") == 0) {
+		fp = stdin;
+	} else if ((fp = fopen(file, "r")) == NULL) {
 		if (errno == ENOENT && !must_exist)
 			return;
 		err(ERR_SYNTAX, "open: %s", file);
@@ -751,8 +753,10 @@ parse_file_impl(struct ruleset *ruleset, const char *file, enum rule_type def,
 
 	free(line);
 	if (ferror(fp))
-		err(ERR_SYNTAX, "failed to parse file %s", file);
-	fclose(fp);
+		err(ERR_SYNTAX, "failed to parse file %s",
+		    fp == stdin ? "stdin" : file);
+	if (fp != stdin)
+		fclose(fp);
 }
 
 void
