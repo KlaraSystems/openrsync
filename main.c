@@ -774,11 +774,11 @@ usage(int exitcode)
 }
 
 /*
- * Parse options out of argv; this ise shared with daemon mode to  parse options
+ * Parse options out of argv; this is shared with daemon mode to parse options
  * sent over the wire from clients.  Filtering is primarily so that the daemon
  * can reject arguments based on their names.
  *
- * Returns NULL on error or the client options struct on success-- for
+ * Returns NULL on error or the client options struct on success -- for
  * convenience we'll just use the global we've setup so that we don't need to
  * change the definition of lopts, but if we wanted to be able to take a
  * caller-allocated struct opts we'd need to return OP_* or 'f'lags from every
