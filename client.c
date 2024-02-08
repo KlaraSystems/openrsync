@@ -52,7 +52,7 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	memset(&sess, 0, sizeof(struct sess));
 	sess.opts = opts;
 	sess.mode = f->mode;
-	sess.lver = RSYNC_PROTOCOL;
+	sess.lver = sess.protocol = sess.opts->protocol;
 
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
@@ -68,15 +68,20 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		goto out;
 	}
 
-	if (sess.rver < sess.lver) {
-		ERRX("remote protocol %d is older than our own %d: unsupported",
-		    sess.rver, sess.lver);
+	if (sess.rver < RSYNC_PROTOCOL_MIN) {
+		ERRX("remote protocol %d is older than our minimum supported "
+		    "%d: exiting", sess.rver, RSYNC_PROTOCOL_MIN);
 		rc = 2;
 		goto out;
 	}
 
-	LOG2("client detected client version %d, server version %d, seed %d",
-	    sess.lver, sess.rver, sess.seed);
+	if (sess.rver < sess.lver) {
+		sess.protocol = sess.rver;
+	}
+
+	LOG2("client detected client version %d, server version %d, "
+	    "negotiated protocol version %d, seed %d",
+	    sess.lver, sess.rver, sess.protocol, sess.seed);
 
 	/*
 	 * When --files-from is in effect, and the file is on the remote

@@ -630,6 +630,8 @@ enum {
 	OP_COPY_UNSAFE_LINKS,
 	OP_SAFE_LINKS,
 	OP_FORCE,
+
+	OP_PROTOCOL,
 };
 
 static const struct option	 lopts[] = {
@@ -705,6 +707,7 @@ static const struct option	 lopts[] = {
     { "no-perms",	no_argument,	&opts.preserve_perms,	0 },
     { "no-p",		no_argument,	&opts.preserve_perms,	0 },
     { "port",		required_argument, NULL,		OP_PORT },
+    { "protocol",	required_argument, NULL,		OP_PROTOCOL },
     { "recursive",	no_argument,	NULL,			'r' },
     { "no-recursive",	no_argument,	&opts.recursive,	0 },
     { "no-r",		no_argument,	&opts.recursive,	0 },
@@ -765,7 +768,7 @@ usage(int exitcode)
 	    "\t[--existing] [--force] [--ignore-existing] [--ignore-non-existing] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
-	    "\t[--partial] [--port=portnumber] [--progress]\n"
+	    "\t[--partial] [--port=portnumber] [--progress] [--protocol]\n"
 	    "\t[--remove-source-files] [--rsync-path=program] [--safe-links] [--size-only]\n"
 	    "\t[--sockopts=sockopts] [--specials] [--suffix] [--super] [--timeout=seconds]\n"
 	    "\tsource ... directory\n",
@@ -808,6 +811,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 #ifdef __APPLE__
 	opts.no_cache = 1;
 #endif
+	opts.protocol = RSYNC_PROTOCOL;
 
 	while ((c = getopt_long(argc, argv, "046B:CDFHIKLOPRSVWabcde:f:ghklnoprtuvxz", lopts,
 	    &lidx)) != -1) {
@@ -1201,6 +1205,32 @@ basedir:
 			opts.partial_dir = strdup(optarg);
 			if (opts.partial_dir == NULL)
 				errx(ERR_NOMEM, NULL);
+			break;
+		case OP_PROTOCOL:
+			if (*optarg != '\0') {
+				char *endptr;
+
+				tmpint = strtoll(optarg, &endptr, 0);
+				if (*endptr != '\0') {
+					errx(1, "--protocol=%s: invalid value",
+					    optarg);
+				}
+				if (tmpint < RSYNC_PROTOCOL_MIN ||
+				    tmpint > RSYNC_PROTOCOL_MAX) {
+					errx(1, "--protocol=%s: out of range, "
+					    "min: %d, max: %d", optarg,
+					    RSYNC_PROTOCOL_MIN,
+					    RSYNC_PROTOCOL_MAX);
+				}
+				if (tmpint > RSYNC_PROTOCOL) {
+					WARNX("--protocol=%s: is not supported "
+					    "by this version of openrsync. "
+					    "min: %d, max: %d", optarg,
+					    RSYNC_PROTOCOL_MIN,
+					    RSYNC_PROTOCOL_MAX);
+				}
+				opts.protocol = tmpint;
+			}
 			break;
 		case OP_SOCKOPTS:
 			opts.sockopts = optarg;
