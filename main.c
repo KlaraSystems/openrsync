@@ -653,6 +653,7 @@ enum {
 	OP_OUTFORMAT,
 	OP_BIT8,
 	OP_READ_BATCH,
+	OP_WRITE_BATCH,
 };
 
 static const struct option	 lopts[] = {
@@ -766,6 +767,7 @@ static const struct option	 lopts[] = {
     { "whole-file",	no_argument,	NULL,			'W' },
     { "no-whole-file",	no_argument,	&opts.whole_file,	0 },
     { "no-W",		no_argument,	&opts.whole_file,	0 },
+    { "write-batch",	required_argument, NULL,		OP_WRITE_BATCH },
     { "progress",	no_argument,	&opts.progress,		1 },
     { "no-progress",	no_argument,	&opts.progress,		0 },
     { "backup",		no_argument,	NULL,			'b' },
@@ -1154,6 +1156,9 @@ basedir:
 			break;
 		case OP_READ_BATCH:
 			opts.read_batch = optarg;
+			break;
+		case OP_WRITE_BATCH:
+			opts.write_batch = optarg;
 			break;
 		case OP_SPARSE:
 			opts.sparse++;

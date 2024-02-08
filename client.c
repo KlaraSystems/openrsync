@@ -53,6 +53,7 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	sess.opts = opts;
 	sess.mode = f->mode;
 	sess.lver = sess.protocol = sess.opts->protocol;
+	sess.wbatch_fd = -1;
 
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
@@ -82,6 +83,12 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	LOG2("client detected client version %d, server version %d, "
 	    "negotiated protocol version %d, seed %d",
 	    sess.lver, sess.rver, sess.protocol, sess.seed);
+
+	if (sess.opts->write_batch != NULL && (rc = batch_open(&sess)) != 0) {
+		ERRX1("batch_open");
+		rc = 2;
+		goto out;
+	}
 
 	/*
 	 * When --files-from is in effect, and the file is on the remote
@@ -144,5 +151,6 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
 	}
 out:
+	batch_close(&sess, rc);
 	return rc;
 }

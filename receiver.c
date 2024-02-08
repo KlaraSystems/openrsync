@@ -439,6 +439,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		ERRX1("flist_recv");
 		goto out;
 	}
+
 	hl = reallocarray(NULL, flsz, sizeof(*hl));
 	if (hl == NULL) {
 		ERRX1("reallocarray receiver");
