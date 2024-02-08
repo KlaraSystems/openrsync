@@ -80,7 +80,7 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 
 	/* Standard rsync preamble, server side. */
 
-	sess.lver = RSYNC_PROTOCOL;
+	sess.lver = sess.protocol = sess.opts->protocol;
 	if (opts->checksum_seed == 0) {
 #if HAVE_ARC4RANDOM
 		sess.seed = arc4random();
@@ -104,15 +104,20 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 
 	sess.mplex_writes = 1;
 
-	if (sess.rver < sess.lver) {
-		ERRX("remote protocol %d is older than our own %d: unsupported",
-		    sess.rver, sess.lver);
+	if (sess.rver < RSYNC_PROTOCOL_MIN) {
+		ERRX("remote protocol %d is older than our minimum supported "
+		    "%d: exiting", sess.rver, RSYNC_PROTOCOL_MIN);
 		rc = 2;
 		goto out;
 	}
 
-	LOG2("server detected client version %d, server version %d, seed %d",
-	    sess.rver, sess.lver, sess.seed);
+	if (sess.rver < sess.lver) {
+		sess.protocol = sess.rver;
+	}
+
+	LOG2("server detected client version %d, server version %d, "
+	    "negotiated protocol version %d, seed %d",
+	    sess.rver, sess.lver, sess.protocol, sess.seed);
 
 	if (sess.opts->sender) {
 		LOG2("server starting sender");

@@ -586,7 +586,29 @@ io_write_int(struct sess *sess, int fd, int32_t val)
 }
 
 /*
- * A simple assertion-protected memory copy from th einput "val" or size
+ * Like io_write_buf(), but for an unsigned short.
+ * Returns zero on failure, non-zero on success.
+ */
+int
+io_write_ushort(struct sess *sess, int fd, uint32_t val)
+{
+	uint16_t oval = val;
+
+	return io_write_buf(sess, fd, &oval, sizeof(oval));
+}
+
+/*
+ * Like io_write_buf(), but for a short.
+ * Returns zero on failure, non-zero on success.
+ */
+int
+io_write_short(struct sess *sess, int fd, int32_t val)
+{
+	return io_write_ushort(sess, fd, (uint32_t)val);
+}
+
+/*
+ * A simple assertion-protected memory copy from the input "val" or size
  * "valsz" into our buffer "buf", full size "buflen", position "bufpos".
  * Increases our "bufpos" appropriately.
  * This has no return value, but will assert() if the size of the buffer
@@ -674,6 +696,18 @@ io_lowbuffer_int(struct sess *sess, void *buf,
 }
 
 /*
+ * Like io_lowbuffer_buf(), but for a single short.
+ */
+void
+io_lowbuffer_short(struct sess *sess, void *buf,
+	size_t *bufpos, size_t buflen, int32_t val)
+{
+	int16_t	nv = htole32((int16_t)val);
+
+	io_lowbuffer_buf(sess, buf, bufpos, buflen, &nv, sizeof(nv));
+}
+
+/*
  * Like io_buffer_buf(), but for a single integer.
  */
 void
@@ -682,6 +716,40 @@ io_buffer_int(void *buf, size_t *bufpos, size_t buflen, int32_t val)
 	int32_t	nv = htole32(val);
 
 	io_buffer_buf(buf, bufpos, buflen, &nv, sizeof(int32_t));
+}
+
+/*
+ * Like io_buffer_buf(), but for a single short.
+ */
+void
+io_buffer_short(void *buf, size_t *bufpos, size_t buflen, int32_t val)
+{
+	int16_t	nv = htole16((int16_t)val);
+
+	io_buffer_buf(buf, bufpos, buflen, &nv, sizeof(nv));
+}
+
+/*
+ * Like io_buffer_buf(), but for a single byte.
+ */
+void
+io_buffer_byte(void *buf, size_t *bufpos, size_t buflen, int8_t val)
+{
+
+	io_buffer_buf(buf, bufpos, buflen, &val, sizeof(val));
+}
+
+void
+io_buffer_vstring(void *buf, size_t *bufpos, size_t buflen, char *str,
+    size_t sz)
+{
+
+	assert(sz <= 0x7fff);
+	if (sz > 0x7f) {
+		io_buffer_byte(buf, bufpos, buflen, (sz >> 8) + 0x80);
+	}
+	io_buffer_byte(buf, bufpos, buflen, sz & 0xff);
+	io_buffer_buf(buf, bufpos, buflen, str, sz);
 }
 
 /*
@@ -786,6 +854,31 @@ io_read_int(struct sess *sess, int fd, int32_t *val)
 }
 
 /*
+ * Like io_read_buf(), but for a short.
+ * Returns zero on failure, non-zero on success.
+ */
+int
+io_read_ushort(struct sess *sess, int fd, uint32_t *val)
+{
+	uint16_t	oval;
+
+	if (!io_read_buf(sess, fd, &oval, sizeof(uint16_t))) {
+		ERRX1("io_read_buf");
+		return 0;
+	}
+
+	*val = le16toh(oval);
+
+	return 1;
+}
+
+int
+io_read_short(struct sess *sess, int fd, int32_t *val)
+{
+	return io_read_ushort(sess, fd, (uint32_t *)val);
+}
+
+/*
  * Copies "valsz" from "buf", full size "bufsz" at position" bufpos",
  * into "val".
  * Calls assert() if the source doesn't have enough data.
@@ -855,6 +948,65 @@ io_write_byte(struct sess *sess, int fd, uint8_t val)
 
 	if (!io_write_buf(sess, fd, &val, sizeof(uint8_t))) {
 		ERRX1("io_write_buf");
+		return 0;
+	}
+	return 1;
+}
+
+/*
+ */
+int
+io_read_vstring(struct sess *sess, int fd, char *str, size_t sz)
+{
+	uint8_t bval;
+	size_t len = 0;
+
+	if (!io_read_byte(sess, fd, &bval)) {
+		ERRX1("io_read_vstring byte 1");
+		return 0;
+	}
+	if (bval & 0x80) {
+		len = (bval - 0x80) << 8;
+		if (!io_read_byte(sess, fd, &bval)) {
+			ERRX1("io_read_vstring byte 1");
+			return 0;
+		}
+	}
+	len |= bval;
+
+	if (len >= sz) {
+		ERRX1("io_read_vstring: incoming string too large (%zu > %zu)",
+		    len, sz);
+		return 0;
+	}
+
+	if (!io_read_buf(sess, fd, str, len)) {
+		ERRX1("io_read_vstring buf");
+		return 0;
+	}
+
+	return 1;
+}
+
+/*
+ * Write a vstring, a size following by the raw string.
+ * Returns zero on failure, non-zero on success.
+ */
+int
+io_write_vstring(struct sess *sess, int fd, char *str, size_t sz)
+{
+
+	if (sz > 0x7fff) {
+		ERRX1("io_write_vstring too long: (%zu > %d)", sz, 0x7fff);
+		return 0;
+	} else if (sz > 0x7f && !io_write_byte(sess, fd, (sz >> 8) + 0x80)) {
+		ERRX1("io_write_vstring byte 1");
+		return 0;
+	} else if (!io_write_byte(sess, fd, sz & 0xff)) {
+		ERRX1("io_write_vstring byte 2");
+		return 0;
+	} else if (!io_write_buf(sess, fd, str, sz)) {
+		ERRX1("io_write_vstring buf");
 		return 0;
 	}
 	return 1;

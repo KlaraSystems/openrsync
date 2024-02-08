@@ -36,7 +36,9 @@
 /*
  * This is the rsync protocol version that we support.
  */
-#define	RSYNC_PROTOCOL	(27)
+#define	RSYNC_PROTOCOL		(28)
+#define	RSYNC_PROTOCOL_MIN	(27)
+#define	RSYNC_PROTOCOL_MAX	(40)
 
 /*
  * Maximum amount of file data sent over the wire at once.
@@ -191,6 +193,7 @@ struct	flstat {
 	unsigned int	 flags;
 	int64_t		 device; /* device number, for hardlink detection */
 	int64_t		 inode;  /* inode number, for hardlink detection */
+	uint64_t	 nlink;  /* number of links, for hardlink detection */
 #define	FLSTAT_TOP_DIR	 0x01	 /* a top-level directory */
 
 };
@@ -242,6 +245,7 @@ void fl_print(const char *id, struct fl *fl);
 struct	opts {
 	int		 sender;		/* --sender */
 	int		 server;		/* --server */
+	int		 protocol;		/* --protocol */
 	int		 append;		/* --append */
 	int		 checksum;		/* -c --checksum */
 	int		 checksum_seed;		/* --checksum-seed */
@@ -431,6 +435,7 @@ struct	sess {
 	mode_t		   chmod_file_X;
 	double             start_time; /* Time of first transfer */
 	uint64_t           total_errors; /* Total non-fatal errors */
+	int		   protocol; /* negotiated protocol version */
 };
 
 /*
@@ -561,27 +566,37 @@ int	io_read_buf(struct sess *, int, void *, size_t);
 int	io_read_byte(struct sess *, int, uint8_t *);
 int	io_read_check(int);
 int	io_read_flush(struct sess *, int);
+int	io_read_ushort(struct sess *, int, uint32_t *);
+int	io_read_short(struct sess *, int, int32_t *);
 int	io_read_int(struct sess *, int, int32_t *);
 int	io_read_uint(struct sess *, int, uint32_t *);
 int	io_read_long(struct sess *, int, int64_t *);
 int	io_read_size(struct sess *, int, size_t *);
 int	io_read_ulong(struct sess *, int, uint64_t *);
+int	io_read_vstring(struct sess *, int, char *, size_t);
 int	io_write_buf(struct sess *, int, const void *, size_t);
 int	io_write_byte(struct sess *, int, uint8_t);
 int	io_write_int_tagged(struct sess *, int, int32_t, enum iotag);
 int	io_write_int(struct sess *, int, int32_t);
 int	io_write_uint(struct sess *, int, uint32_t);
+int	io_write_short(struct sess *, int, int32_t);
+int	io_write_ushort(struct sess *, int, uint32_t);
 int	io_write_line(struct sess *, int, const char *);
 int	io_write_long(struct sess *, int, int64_t);
 int	io_write_ulong(struct sess *, int, uint64_t);
+int	io_write_vstring(struct sess *, int, char *, size_t);
 
 int	io_lowbuffer_alloc(struct sess *, void **, size_t *, size_t *, size_t);
 void	io_lowbuffer_int(struct sess *, void *, size_t *, size_t, int32_t);
+void	io_lowbuffer_short(struct sess *, void *, size_t *, size_t, int32_t);
 void	io_lowbuffer_buf(struct sess *, void *, size_t *, size_t, const void *,
 	    size_t);
 
 void	io_buffer_int(void *, size_t *, size_t, int32_t);
+void	io_buffer_short(void *, size_t *, size_t, int32_t);
 void	io_buffer_buf(void *, size_t *, size_t, const void *, size_t);
+void	io_buffer_byte(void *, size_t *, size_t, int8_t);
+void	io_buffer_vstring(void *, size_t *, size_t, char *, size_t);
 
 void	io_unbuffer_int(const void *, size_t *, size_t, int32_t *);
 int	io_unbuffer_size(const void *, size_t *, size_t, size_t *);

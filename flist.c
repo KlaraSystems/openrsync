@@ -52,17 +52,31 @@
  * They are sent as the first byte for a file transmission and encode
  * information that affects subsequent transmissions.
  */
-#define FLIST_TOP_LEVEL	 0x0001 /* needed for remote --delete */
-#define FLIST_MODE_SAME  0x0002 /* mode is repeat */
-#define	FLIST_RDEV_SAME  0x0004 /* rdev is repeat */
-#define	FLIST_UID_SAME	 0x0008 /* uid is repeat */
-#define	FLIST_GID_SAME	 0x0010 /* gid is repeat */
-#define	FLIST_NAME_SAME  0x0020 /* name is repeat */
-#define FLIST_NAME_LONG	 0x0040 /* name >255 bytes */
-#define FLIST_TIME_SAME  0x0080 /* time is repeat */
+#define	FLIST_TOP_LEVEL	 	0x0001 /* needed for remote --delete */
+#define	FLIST_MODE_SAME  	0x0002 /* mode is repeat */
+#define	FLIST_XFLAGS	 	0x0004 /* Extended flags (protocol 28+) */
+#define	FLIST_RDEV_SAME  	FLIST_XFLAGS /* protocol 27, rdev is repeat */
+#define	FLIST_UID_SAME	 	0x0008 /* uid is repeat */
+#define	FLIST_GID_SAME	 	0x0010 /* gid is repeat */
+#define	FLIST_NAME_SAME  	0x0020 /* name is repeat */
+#define	FLIST_NAME_LONG	 	0x0040 /* name >255 bytes */
+#define	FLIST_TIME_SAME  	0x0080 /* time is repeat */
+
+#define	FLIST_RDEV_MAJOR_SAME	0x0100 /* protocol 28+ (devices only) */
+#define	FLIST_NO_DIR_CONTENT	0x0100 /* protocol 30+ (dirs only) */
+#define	FLIST_HARDLINKED	0x0200 /* protocol 28+ (non-dirs only) */
+#define	FLIST_INC_USER_NAME	0x0400 /* protocol 30+ */
+#define	FLIST_DEV_SAME		FLIST_INC_USER_NAME /* protocol 28-29 only */
+#define	FLIST_INC_GROUP_NAME	0x0800 /* protocol 30+ */
+#define	FLIST_RDEV_MINOR_8	FLIST_INC_GROUP_NAME /* protocol 28-29 */
+#define	FLIST_FIRST_HLINK	0x1000 /* protocol 30+ (hardlinks only) */
+#define	FLIST_SEND_IO_ERRORS	0x1000 /* protocol 30 with flag, 31+ */
+#define	FLIST_MODTIME_NSEC	0x2000 /* protocol 31+ */
+#define	FLIST_ATIME_SAME	0x4000 /* command-line option, any protocol */
+#define	FLIST_UNUSED_15		0x8000 /* unused */
 
 /*
- * Required way to sort a filename list.
+ * Required way to sort a filename list before protocol 29.
  */
 static int
 flist_cmp(const void *p1, const void *p2)
@@ -276,6 +290,7 @@ flist_copy_stat(struct flist *f, const struct stat *st)
 	f->st.rdev = st->st_rdev;
 	f->st.device = st->st_dev;
 	f->st.inode = st->st_ino;
+	f->st.nlink = st->st_nlink;
 }
 
 void
@@ -306,7 +321,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
     size_t flsz)
 {
 	size_t		 i, sz, gidsz = 0, uidsz = 0;
-	uint8_t		 flag;
+	uint16_t	 flag;
 	const struct flist *f;
 	const char	*fn;
 	struct ident	*gids = NULL, *uids = NULL;
@@ -348,18 +363,54 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		if ((FLSTAT_TOP_DIR & f->st.flags))
 			flag |= FLIST_TOP_LEVEL;
 
+		/*
+		 * When we need to send the extra hardlinks data:
+		 * For protocol 28+: Only non-directories that have nlink > 1
+		 * For protocols less than 28: All regular files
+		 */
+		if (sess->opts->hard_links && sess->protocol >= 28 &&
+		    (!S_ISDIR(f->st.mode) && f->st.nlink > 1)) {
+			flag |= FLIST_HARDLINKED;
+			if (minor(f->st.rdev) <= 0xff) {
+                                flag |= FLIST_RDEV_MINOR_8;
+			}
+		} else if (sess->opts->hard_links && S_ISREG(f->st.mode)) {
+			flag |= FLIST_HARDLINKED;
+		}
+
+		if (sess->protocol >= 28) {
+			if (!flag && !S_ISDIR(f->st.mode)) {
+				flag |= FLIST_TOP_LEVEL;
+			}
+			if ((flag & 0xFF00) || !flag) {
+				flag |= FLIST_XFLAGS;
+			}
+		}
+
 		LOG3("%s: sending file metadata: "
-			"size %jd, mtime %jd, mode %o",
+			"size %jd, mtime %jd, mode %o, flag %o",
 			fn, (intmax_t)f->st.size,
-			(intmax_t)f->st.mtime, f->st.mode);
+			(intmax_t)f->st.mtime, f->st.mode, flag);
 
 		/* Now write to the wire. */
 		/* FIXME: buffer this. */
 
-		if (!io_write_byte(sess, fdout, flag)) {
-			ERRX1("io_write_byte");
-			goto out;
-		} else if (!io_write_int(sess, fdout, sz)) {
+		if (sess->protocol >= 28 && (FLIST_XFLAGS & flag)) {
+			if (!io_write_byte(sess, fdout, flag)) {
+				ERRX1("io_write_byte");
+				goto out;
+			} else if (!io_write_byte(sess, fdout, flag >> 8)) {
+				ERRX1("io_write_byte");
+				goto out;
+			}
+		} else {
+			if (!io_write_byte(sess, fdout, flag)) {
+				ERRX1("io_write_byte");
+				goto out;
+			}
+		}
+
+		if (!io_write_int(sess, fdout, sz)) {
 			ERRX1("io_write_int");
 			goto out;
 		} else if (!io_write_buf(sess, fdout, fn, sz)) {
@@ -408,7 +459,28 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		    S_ISCHR(f->st.mode))) ||
 		    (sess->opts->specials && (S_ISFIFO(f->st.mode) ||
 		    S_ISSOCK(f->st.mode)))) {
-			if (!io_write_int(sess, fdout, f->st.rdev)) {
+			/*
+			 * Protocols less than 28, the device number is
+			 * transmitted as a single int.  In newer protocols, it
+			 * is sent as separate ints for the major and minor.
+			 * However, if the minor is small, we can optimize it
+			 * down to a byte instead.
+			 */
+			if (sess->protocol < 28) {
+				if (!io_write_int(sess, fdout, f->st.rdev)) {
+					ERRX1("io_write_int");
+					goto out;
+				}
+			} else if (!io_write_int(sess, fdout,
+			    major(f->st.rdev))) {
+				ERRX1("io_write_int");
+				goto out;
+			} else if ((FLIST_RDEV_MINOR_8 & flag) &&
+			    !io_write_byte(sess, fdout, minor(f->st.rdev))) {
+				ERRX1("io_write_byte");
+				goto out;
+			} else if (!io_write_int(sess, fdout,
+			    minor(f->st.rdev))) {
 				ERRX1("io_write_int");
 				goto out;
 			}
@@ -433,10 +505,9 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 
 		/*
 		 * Conditional part: hard link. 
-		 * All plain files send this info.
 		 */
 
-		if (S_ISREG(f->st.mode) && sess->opts->hard_links) {
+		if ((FLIST_HARDLINKED & flag)) {
 			/*
 			 * We do not talk to older versions of the protocol,
 			 * so we can always send 64 bits here.
@@ -454,7 +525,12 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		if (S_ISREG(f->st.mode))
 			sess->total_size += f->st.size;
 
-		if (sess->opts->checksum) {
+		/*
+		 * In protocols 28 and newer, we don't send the checksum if
+		 * the item is not a regular file.
+		 */
+		if (sess->opts->checksum &&
+		    (sess->protocol < 28 || S_ISREG(f->st.mode))) {
 			if (!io_write_buf(sess, fdout, f->md, sizeof(f->md))) {
 				ERRX1("io_write_buf checksum");
 				goto out;
@@ -822,21 +898,33 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	struct flist	*ff;
 	const struct flist *fflast = NULL;
 	size_t		 flsz = 0, flmax = 0, lsz, gidsz = 0, uidsz = 0;
-	uint8_t		 flag;
+	uint16_t	 flag;
 	char		 last[PATH_MAX];
 	int64_t		 lval; /* temporary values... */
 	int32_t		 ival;
 	uint32_t	 uival;
+	uint8_t		 bval;
 	struct ident	*gids = NULL, *uids = NULL;
 
 	last[0] = '\0';
 
 	for (;;) {
-		if (!io_read_byte(sess, fdin, &flag)) {
+		if (!io_read_byte(sess, fdin, &bval)) {
 			ERRX1("io_read_byte");
 			goto out;
-		} else if (flag == 0)
+		}
+		flag = bval;
+		if (flag == 0) {
 			break;
+		}
+		/* Read the second byte of flags if there is one */
+		if (sess->protocol >= 28 && (FLIST_XFLAGS & flag)) {
+			if (!io_read_byte(sess, fdin, &bval)) {
+				ERRX1("io_read_byte");
+				goto out;
+			}
+			flag |= bval << 8;
+		}
 
 		if (!flist_realloc(&fl, &flsz, &flmax)) {
 			ERRX1("flist_realloc");
@@ -937,10 +1025,14 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 
 		/* Conditional part: devices & special files. */
 
-		if ((sess->opts->devices && (S_ISBLK(ff->st.mode) ||
+		if (((sess->opts->devices && (S_ISBLK(ff->st.mode) ||
 		    S_ISCHR(ff->st.mode))) ||
 		    (sess->opts->specials && (S_ISFIFO(ff->st.mode) ||
-		    S_ISSOCK(ff->st.mode)))) {
+		    S_ISSOCK(ff->st.mode)))) && sess->protocol < 28) {
+			/*
+			 * Protocols less than 28, the device number is
+			 * transmitted as a single int.
+			 */
 			if (!(FLIST_RDEV_SAME & flag)) {
 				if (!io_read_int(sess, fdin, &ival)) {
 					ERRX1("io_read_int");
@@ -950,8 +1042,48 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			} else if (fflast == NULL) {
 				ERRX("same device without last entry");
 				goto out;
-			} else
+			} else {
 				ff->st.rdev = fflast->st.rdev;
+			}
+		} else if ((sess->opts->devices && (S_ISBLK(ff->st.mode) ||
+		    S_ISCHR(ff->st.mode))) ||
+		    (sess->opts->specials && (S_ISFIFO(ff->st.mode) ||
+		    S_ISSOCK(ff->st.mode)))) {
+			uint32_t dev_major, dev_minor;
+			/*
+			 * In protocol 28 and newer, the device number is sent
+			 * as separate ints for the major and minor.
+			 * However, if the minor is small, we can optimize it
+			 * down to a byte instead.
+			 */
+			if (!(FLIST_RDEV_MAJOR_SAME & flag)) {
+				if (!io_read_int(sess, fdin, &ival)) {
+					ERRX1("io_read_int");
+					goto out;
+				}
+				dev_major = ival;
+			} else if (fflast == NULL) {
+				ERRX("same device major without last entry");
+				goto out;
+			} else {
+				dev_major = fflast->st.rdev;
+			}
+
+			if ((FLIST_RDEV_MINOR_8 & flag)) {
+				if (!io_read_byte(sess, fdin, &bval)) {
+					ERRX1("io_read_int");
+					goto out;
+				}
+				dev_minor = bval;
+			} else {
+				if (!io_read_int(sess, fdin, &ival)) {
+					ERRX1("io_read_int");
+					goto out;
+				}
+				dev_minor = ival;
+			}
+
+			ff->st.rdev = makedev(dev_major, dev_minor);
 		}
 
 		/* Conditional part: symbolic link. */
@@ -981,15 +1113,29 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		 * All plain files send this info.
 		 */
 
-		if (S_ISREG(ff->st.mode) && sess->opts->hard_links) {
+		if (sess->opts->hard_links && sess->protocol < 28 &&
+		    S_ISREG(ff->st.mode)) {
+			flag |= FLIST_HARDLINKED;
+		}
+
+		if ((FLIST_HARDLINKED & flag)) {
 			/*
 			 * We do not talk to older versions of the protocol,
 			 * so we can always read 64 bits here.
 			 */
-			if (!io_read_long(sess, fdin, &ff->st.device)) {
-				ERRX1("io_read_long");
+			if (!(FLIST_DEV_SAME & flag)) {
+				if (!io_read_long(sess, fdin, &lval)) {
+					ERRX1("io_read_long");
+					goto out;
+				}
+				ff->st.device = lval;
+			} else if (fflast == NULL) {
+				ERRX("same device without last entry");
 				goto out;
+			} else {
+				ff->st.device = fflast->st.device;
 			}
+
 			if (!io_read_long(sess, fdin, &ff->st.inode)) {
 				ERRX1("io_read_long");
 				goto out;
@@ -1005,7 +1151,12 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		if (S_ISREG(ff->st.mode))
 			sess->total_size += ff->st.size;
 
-		if (sess->opts->checksum) {
+		/*
+		 * In protocols 28 and newer, we don't get the checksum if
+		 * the item is not a regular file.
+		 */
+		if (sess->opts->checksum &&
+		    (sess->protocol < 28 || S_ISREG(ff->st.mode))) {
 			if (!io_read_buf(sess, fdin, ff->md, sizeof(ff->md))) {
 				ERRX1("io_read_buf");
 				goto out;

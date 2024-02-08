@@ -830,7 +830,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		err(ERR_IPC, "pledge");
 
 	memset(&sess, 0, sizeof(struct sess));
-	sess.lver = RSYNC_PROTOCOL;
+	sess.lver = sess.protocol = sess.opts->protocol;
 	sess.opts = opts;
 	sess.mode = f->mode;
 
@@ -930,19 +930,23 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 
 	/* Now we've completed the handshake. */
 
-	if (sess.rver < sess.lver) {
-		ERRX("remote protocol is older than our own (%d < %d): "
-		    "this is not supported",
-		    sess.rver, sess.lver);
+	if (sess.rver < RSYNC_PROTOCOL_MIN) {
+		ERRX("remote protocol %d is older than our minimum supported "
+		    "%d: exiting", sess.rver, RSYNC_PROTOCOL_MIN);
 		rc = 2;
 		goto out;
+	}
+
+	if (sess.rver < sess.lver) {
+		sess.protocol = sess.rver;
 	}
 
 	sess.mplex_reads = 1;
 	LOG2("read multiplexing enabled");
 
-	LOG2("socket detected client version %d, server version %d, seed %d",
-	    sess.lver, sess.rver, sess.seed);
+	LOG2("socket detected client version %d, server version %d, "
+	    "negotiated protocol version %d, seed %d",
+	    sess.lver, sess.rver, sess.protocol, sess.seed);
 
 	if (f->mode == FARGS_RECEIVER) {
 		LOG2("client starting receiver: %s", f->host);
