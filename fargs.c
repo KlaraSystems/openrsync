@@ -123,7 +123,7 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 	memset(&args, 0, sizeof args);
 
 	assert(f != NULL);
-	assert(f->sourcesz > 0);
+	assert(f->sourcesz > 0 || f->mode != FARGS_RECEIVER);
 
 	if ((rsync_path = sess->opts->rsync_path) == NULL)
 		rsync_path = (char *)RSYNC_PATH;

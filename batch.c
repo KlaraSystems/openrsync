@@ -19,7 +19,11 @@
 
 #include <assert.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -259,13 +263,98 @@ out:
 }
 
 void
-batch_close(struct sess *sess, int rc)
+batch_close(struct sess *sess, const struct fargs *f, int rc)
 {
+	struct fargs batchf;
+	char shell_path[PATH_MAX];
+	FILE *fp;
+	char **args;
+	char **rules;
 
 	if (sess->wbatch_fd == -1)
 		return;
 
-	/* XXX Unlink if we failed? */
 	close(sess->wbatch_fd);
 	sess->wbatch_fd = -1;
+
+	if (rc != 0)
+		return;
+
+	if (snprintf(shell_path, sizeof(shell_path), "%s.sh",
+	    sess->opts->write_batch) >= (int)sizeof(shell_path)) {
+		WARNX1("%s.sh: path too long, did not write batch shell",
+		    sess->opts->write_batch);
+		return;
+	}
+
+	/*
+	 * We're writing out arguments that the receiver needs, so pretend that
+	 * we're the sender even if we aren't.  Clear out the sources because
+	 * those will not be used.
+	 */
+	memset(&batchf, 0, sizeof(batchf));
+	batchf.mode = FARGS_SENDER;
+	batchf.sink = f->sink;
+
+	args = fargs_cmdline(sess, &batchf, NULL);
+
+	rules = rules_export(sess);
+
+	fp = fopen(shell_path, "w");
+	if (fp == NULL) {
+		ERR("%s: fopen", shell_path);
+		return;
+	}
+
+	fprintf(fp, "#!/bin/sh\n\n");
+
+	/*
+	 * We want to avoid writing out the sink argument, as we want that to
+	 * use the first argument with a default value of what was provided to
+	 * this script.
+	 */
+	for (const char **arg = (const char **)args; *(arg + 1) != NULL;
+	    arg++) {
+		if (strcmp(*arg, ".") == 0)
+			break;
+
+		if (strcmp(*arg, "--server") == 0)
+			continue;
+
+		if (strncmp(*arg, "--only-write-batch",
+		    strlen("--only-write-batch")) == 0) {
+			fprintf(fp, "--read-batch=%s ", sess->opts->write_batch);
+			continue;
+		}
+
+		fprintf(fp, "%s ", *arg);
+	}
+
+	free(args);
+
+	if (*rules != NULL) {
+		/* XXX Negotiated protocol */
+		if (sess->lver < 29)
+			fprintf(fp, "--exclude-from=- ");
+		else
+			fprintf(fp, "--filter=\". -\"");
+	}
+
+	fprintf(fp, "${1-%s}", batchf.sink);
+
+	if (*rules != NULL) {
+		fprintf(fp, " <<@REOF@\n");
+
+		for (const char **rule = (const char **)rules; *rule != NULL;
+		    rule++) {
+			fprintf(fp, "%s\n", *rule);
+		}
+
+		fprintf(fp, "@REOF@");
+	}
+
+	free(rules);
+
+	fprintf(fp, "\n");
+	fclose(fp);
 }

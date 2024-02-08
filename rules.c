@@ -1505,3 +1505,52 @@ rules_match(const char *path, int isdir, enum fmode rulectx, int perishing)
 	return ctx.match;
 }
 
+struct rule_export_ctx {
+	arglist			*args;
+	const struct sess	*sess;
+};
+
+static enum rule_iter_action
+rule_export(struct ruleset *ruleset, struct rule *r, const char *path,
+    void *cookie)
+{
+	struct rule_export_ctx *ctx = cookie;
+	arglist *args = ctx->args;
+	const char *cmd, *postfix;
+
+	if (r->type == RULE_MERGE)
+		return RULE_ITER_SKIP;
+
+	if (ctx->sess->lver < 29 && r->type != RULE_EXCLUDE &&
+	    r->type != RULE_INCLUDE)
+		return RULE_ITER_CONTINUE;
+
+	cmd = send_command(r);
+	if (cmd != NULL) {
+		postfix = postfix_command(r);
+
+		addargs(args, "%s%s%s", cmd, r->pattern, postfix);
+	}
+
+	return RULE_ITER_CONTINUE;
+}
+
+/*
+ * Export rules for inclusion in, e.g., batch files.  A future version of this
+ * may want to use the session to determine what kind of prefixes we write out.
+ */
+char **
+rules_export(struct sess *sess)
+{
+	arglist args;
+	struct rule_export_ctx ctx;
+
+	memset(&args, 0, sizeof(args));
+	ctx.args = &args;
+	ctx.sess = sess;
+
+	(void)rule_iter(&global_ruleset, NULL, RULE_NONE, 0, rule_export,
+	    &ctx);
+
+	return args.list;
+}
