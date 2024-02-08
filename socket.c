@@ -987,7 +987,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
 	}
 out:
-	batch_close(&sess, rc);
+	batch_close(&sess, f, rc);
 	free(args);
 	return rc;
 }

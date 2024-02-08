@@ -626,7 +626,7 @@ const char	 *alt_base_mode(int);
 char		**fargs_cmdline(struct sess *, const struct fargs *, size_t *);
 
 int	batch_open(struct sess *);
-void	batch_close(struct sess *, int);
+void	batch_close(struct sess *, const struct fargs *, int);
 
 void	cleanup_hold(struct cleanup_ctx *);
 void	cleanup_release(struct cleanup_ctx *);
@@ -785,6 +785,7 @@ int		 parse_rule(const char *line, enum rule_type, int);
 void		 parse_file(const char *, enum rule_type, int);
 void		 send_rules(struct sess *, int);
 void		 recv_rules(struct sess *, int);
+char		**rules_export(struct sess *);
 int		 rules_match(const char *, int, enum fmode, int);
 void		 rules_dir_push(const char *, size_t, int);
 void		 rules_dir_pop(const char *, size_t);
