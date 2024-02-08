@@ -195,6 +195,29 @@ io_write_blocking(int fd, const void *buf, size_t sz)
 }
 
 /*
+ * Record data written to fdout outside of the io layer.  For example, file data
+ * may be sent out-of-band to avoid write multiplexing.
+ * Returns zero on failure, non-zero on success.  io_data_written() will only
+ * fail if we're writing a batch file and for some reason couldn't write to it.
+ */
+int
+io_data_written(struct sess *sess, int fdout, const void *buf, size_t bsz)
+{
+
+	sess->total_write += bsz;
+
+	if (sess->wbatch_fd != -1 && sess->mode == FARGS_SENDER) {
+		if (fdout != sess->wbatch_fd &&
+		    !io_write_blocking(sess->wbatch_fd, buf, bsz)) {
+			ERRX("write outgoing to batch");
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+/*
  * Write "buf" of size "sz" to non-blocking descriptor.
  * Returns zero on failure, non-zero on success (all bytes written to
  * the descriptor).
@@ -207,13 +230,21 @@ io_write_buf_tagged(struct sess *sess, int fd, const void *buf, size_t sz,
 	size_t	 wsz;
 	int	 c;
 
+	if (sess->wbatch_fd != -1 && sess->mode == FARGS_SENDER &&
+	    iotag == IT_DATA) {
+		if (fd != sess->wbatch_fd &&
+		    !io_write_blocking(sess->wbatch_fd, buf, sz)) {
+			ERRX("write outgoing to batch");
+			return 0;
+		}
+	}
+
 	if (!sess->mplex_writes) {
 		/*
 		 * If we try to write non-data to a non-multiplexed socket, then
 		 * we're going to have a bad time.
 		 */
 		assert(iotag == IT_DATA);
-
 		c = io_write_blocking(fd, buf, sz);
 		sess->total_write += sz;
 		return c;
@@ -518,7 +549,8 @@ io_read_line(struct sess *sess, int fd, char *buf, size_t *sz)
 int
 io_read_buf(struct sess *sess, int fd, void *buf, size_t sz)
 {
-	size_t	 rsz;
+	char	*inbuf = buf;
+	size_t	 rsz, totalsz = sz;
 	int	 c;
 
 	/* If we're not multiplexing, read directly. */
@@ -527,34 +559,43 @@ io_read_buf(struct sess *sess, int fd, void *buf, size_t sz)
 		assert(sess->mplex_read_remain == 0);
 		c = io_read_blocking(fd, buf, sz);
 		sess->total_read += sz;
-		return c;
-	}
+		if (!c)
+			return 0;
+	} else {
+		while (sz > 0) {
+			/*
+			 * First, check to see if we have any regular data
+			 * hanging around waiting to be read.
+			 * If so, read the lesser of that data and whatever
+			 * amount we currently want.
+			 */
 
-	while (sz > 0) {
-		/*
-		 * First, check to see if we have any regular data
-		 * hanging around waiting to be read.
-		 * If so, read the lesser of that data and whatever
-		 * amount we currently want.
-		 */
+			if (sess->mplex_read_remain) {
+				rsz = sess->mplex_read_remain < sz ?
+					sess->mplex_read_remain : sz;
+				if (!io_read_blocking(fd, buf, rsz)) {
+					ERRX1("io_read_blocking");
+					return 0;
+				}
+				sz -= rsz;
+				sess->mplex_read_remain -= rsz;
+				buf += rsz;
+				sess->total_read += rsz;
+				continue;
+			}
 
-		if (sess->mplex_read_remain) {
-			rsz = sess->mplex_read_remain < sz ?
-				sess->mplex_read_remain : sz;
-			if (!io_read_blocking(fd, buf, rsz)) {
-				ERRX1("io_read_blocking");
+			assert(sess->mplex_read_remain == 0);
+			if (!io_read_flush(sess, fd)) {
+				ERRX1("io_read_flush");
 				return 0;
 			}
-			sz -= rsz;
-			sess->mplex_read_remain -= rsz;
-			buf += rsz;
-			sess->total_read += rsz;
-			continue;
 		}
+	}
 
-		assert(sess->mplex_read_remain == 0);
-		if (!io_read_flush(sess, fd)) {
-			ERRX1("io_read_flush");
+	/* Snatch the sender's output if we're the receiver. */
+	if (sess->wbatch_fd != -1 && sess->mode == FARGS_RECEIVER) {
+		if (!io_write_blocking(sess->wbatch_fd, inbuf, totalsz)) {
+			ERRX("write incoming to batch");
 			return 0;
 		}
 	}

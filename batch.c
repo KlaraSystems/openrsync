@@ -83,6 +83,28 @@ read_batch_header(struct sess *sess, int batch_fd, struct batchhdr *hdr)
 	return 0;
 }
 
+static int
+write_batch_header(struct sess *sess, int batch_fd, struct batchhdr *hdr)
+{
+
+	if (!io_write_int(sess, batch_fd, hdr->flags)) {
+		ERRX1("io_write_int");
+		return ERR_PROTOCOL;
+	}
+
+	if (!io_write_int(sess, batch_fd, hdr->rver)) {
+		ERRX1("io_write_int");
+		return ERR_PROTOCOL;
+	}
+
+	if (!io_write_int(sess, batch_fd, hdr->seed)) {
+		ERRX1("io_write_int");
+		return ERR_PROTOCOL;
+	}
+
+	return 0;
+}
+
 static void
 batch_apply_flags(struct sess *sess, struct batchhdr *hdr, struct opts *opts)
 {
@@ -117,6 +139,27 @@ batch_apply_flags(struct sess *sess, struct batchhdr *hdr, struct opts *opts)
 	}
 }
 
+static void
+batch_translate_flags(struct sess *sess, struct batchhdr *hdr)
+{
+	const struct batchflag	*bflag;
+	int			*field;
+
+	hdr->flags = 0;
+	for (size_t bit = 0; bit < nitems(batchflags); bit++) {
+		bflag = &batchflags[bit];
+		/* XXX Negotiated protocol */
+		if (bflag->protocol > 0 && bflag->protocol > sess->lver)
+			break;
+
+		assert(bflag->offset >= 0 &&
+		    bflag->offset < sizeof(*sess->opts));
+		field = (int *)(((uintptr_t)sess->opts) + bflag->offset);
+		if (*field != 0)
+			hdr->flags |= (1 << bit);
+	}
+}
+
 int
 rsync_batch(struct cleanup_ctx *cleanup_ctx, struct opts *opts,
     const struct fargs *f)
@@ -129,6 +172,7 @@ rsync_batch(struct cleanup_ctx *cleanup_ctx, struct opts *opts,
 	sess.opts = opts;
 	sess.mode = FARGS_RECEIVER;
 	sess.lver = RSYNC_PROTOCOL;
+	sess.wbatch_fd = -1;
 
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
@@ -172,4 +216,56 @@ out:
 
 	close(batch_fd);
 	return rc;
+}
+
+int
+batch_open(struct sess *sess)
+{
+	struct batchhdr hdr = { 0 };
+	int batch_fd, rc;
+
+	assert(sess->opts->write_batch != NULL);
+	assert(sess->wbatch_fd == -1);
+
+	batch_fd = open(sess->opts->write_batch,
+	    O_WRONLY | O_TRUNC | O_CREAT, 0600);
+	if (batch_fd == -1) {
+		ERR("%s: open", sess->opts->write_batch);
+		return ERR_IPC;
+	}
+
+	batch_translate_flags(sess, &hdr);
+	hdr.seed = sess->seed;
+
+	/*
+	 * The client records the batch file, but the batch file is written from
+	 * the perspective of the sender and we need to use the appropriate
+	 * version as such.
+	 *
+	 * XXX This should likely just be the negotiated protocol.
+	 */
+	hdr.rver = sess->lver;
+
+	rc = write_batch_header(sess, batch_fd, &hdr);
+	if (rc != 0)
+		goto out;
+
+	rc = 0;
+	sess->wbatch_fd = batch_fd;
+out:
+	if (rc != 0)
+		close(batch_fd);
+	return rc;
+}
+
+void
+batch_close(struct sess *sess, int rc)
+{
+
+	if (sess->wbatch_fd == -1)
+		return;
+
+	/* XXX Unlink if we failed? */
+	close(sess->wbatch_fd);
+	sess->wbatch_fd = -1;
 }

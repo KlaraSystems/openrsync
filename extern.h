@@ -354,6 +354,7 @@ struct	opts {
 	char            *filesfrom_path;        /* --files-from */
 	int		 whole_file;		/* --whole-file */
 	const char	*read_batch;		/* --read-batch */
+	const char	*write_batch;		/* --write-batch */
 	char		*temp_dir;		/* --temp-dir */
 #if 0
 	char		*syncfile;		/* --sync-file */
@@ -491,6 +492,7 @@ struct	sess {
 	char             **filesfrom; /* Contents of files-from */
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
 	int		   filesfrom_fd; /* --files-from */
+	int		   wbatch_fd; /* --write-batch */
 	struct dlrename    *dlrename; /* Deferred renames for --delay-update */
 	struct role	  *role; /* Role context */
 	mode_t		   chmod_dir_AND;
@@ -617,6 +619,9 @@ int	flist_add_del(struct sess *, const char *, size_t, struct flist **,
 const char	 *alt_base_mode(int);
 char		**fargs_cmdline(struct sess *, const struct fargs *, size_t *);
 
+int	batch_open(struct sess *);
+void	batch_close(struct sess *, int);
+
 void	cleanup_hold(struct cleanup_ctx *);
 void	cleanup_release(struct cleanup_ctx *);
 void	cleanup_init(struct cleanup_ctx *);
@@ -652,6 +657,8 @@ int	io_write_line(struct sess *, int, const char *);
 int	io_write_long(struct sess *, int, int64_t);
 int	io_write_ulong(struct sess *, int, uint64_t);
 int	io_write_vstring(struct sess *, int, char *, size_t);
+
+int	io_data_written(struct sess *, int, const void *, size_t);
 
 int	io_lowbuffer_alloc(struct sess *, void **, size_t *, size_t *, size_t);
 void	io_lowbuffer_int(struct sess *, void *, size_t *, size_t, int32_t);

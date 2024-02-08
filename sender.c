@@ -795,14 +795,18 @@ rsync_sender(struct sess *sess, int fdin,
 				ERR("write");
 				goto out;
 			}
+
+			if (!io_data_written(sess, fdout,
+			    wbuf + wbufpos, ssz)) {
+				ERRX1("io_data_written");
+				goto out;
+			}
+
 			wbufpos += ssz;
 			if (wbufpos == wbufsz)
 				wbufpos = wbufsz = 0;
 			pfd[1].revents &= ~POLLOUT;
 
-			/* This is usually in io.c... */
-
-			sess->total_write += ssz;
 			if (sess->opts->bwlimit) {
 				gettimeofday(&tv, NULL);
 				now = tv.tv_sec + (double)tv.tv_usec / 

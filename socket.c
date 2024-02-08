@@ -835,6 +835,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	sess.lver = sess.protocol = sess.opts->protocol;
 	sess.opts = opts;
 	sess.mode = f->mode;
+	sess.wbatch_fd = -1;
 
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
@@ -943,6 +944,12 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		sess.protocol = sess.rver;
 	}
 
+	if (sess.opts->write_batch != NULL && (rc = batch_open(&sess)) != 0) {
+		ERRX1("batch_open");
+		rc = 2;
+		goto out;
+	}
+
 	sess.mplex_reads = 1;
 	LOG2("read multiplexing enabled");
 
@@ -980,6 +987,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
 	}
 out:
+	batch_close(&sess, rc);
 	free(args);
 	return rc;
 }
