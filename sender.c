@@ -553,6 +553,8 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			    fl[up->cur->idx].path,
 			    (intmax_t)up->stat.total / 1024,
 			    100.0 * up->stat.dirty / up->stat.total);
+		sess->total_files_xfer++;
+		sess->total_xfer_size += fl[up->cur->idx].st.size;
 		send_up_reset(up);
 		return 1;
 	case BLKSTAT_PHASE:
@@ -880,10 +882,10 @@ rsync_sender(struct sess *sess, int fdin,
 	struct send_up	    up;
 	struct stat	    st;
 	void		   *wbuf = NULL;
-	size_t		    wbufpos = 0, wbufsz = 0, wbufmax = 0;
+	size_t		    wbufpos = 0, wbufsz = 0, wbufmax = 0, flist_bytes = 0;
 	ssize_t		    ssz;
 	int		    markers = 0, shutdown = 0;
-	struct timeval	    tv;
+	struct timeval	    tv, fb_before, fb_after, fx_before, fx_after;
 	double		    now, rate, sleeptime;
 	int		    max_phase = sess->protocol >= 29 ? 2 : 1;
 
@@ -959,16 +961,23 @@ rsync_sender(struct sess *sess, int fdin,
 	 * This will also remove all invalid files.
 	 */
 
+	gettimeofday(&fb_before, NULL);
 	if (!flist_gen(sess, argc, argv, &fl)) {
 		ERRX1("flist_gen");
 		goto out;
 	}
+	gettimeofday(&fb_after, NULL);
+	timersub(&fb_after, &fb_before, &tv);
+	sess->flist_build = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+	sess->total_files = fl.sz;
 
 	/*
 	 * Then the file list in any mode.
 	 * Finally, the IO error (always zero for us).
 	 */
 
+	gettimeofday(&fx_after, NULL);
+	flist_bytes = sess->total_write;
 	if (!flist_send(sess, fdin, fdout, fl.flp, fl.sz)) {
 		ERRX1("flist_send");
 		goto out;
@@ -976,6 +985,10 @@ rsync_sender(struct sess *sess, int fdin,
 		ERRX1("io_write_int");
 		goto out;
 	}
+	gettimeofday(&fx_after, NULL);
+	timersub(&fx_after, &fx_before, &tv);
+	sess->flist_xfer = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
+	sess->flist_size = sess->total_write - flist_bytes;
 
 	/* Exit if we're the server with zero files. */
 

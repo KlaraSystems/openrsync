@@ -100,8 +100,8 @@ sess_stats_send(struct sess *sess, int fd)
 	tw = sess->total_write;
 	tr = sess->total_read;
 	ts = sess->total_size;
-	fb = 0;
-	fx = 0;
+	fb = sess->flist_build;
+	fx = sess->flist_xfer;
 
 	/*
 	 * The client-sender doesn't need to send stats, unless we're writing a
@@ -140,6 +140,10 @@ sess_stats_send(struct sess *sess, int fd)
 
 	if (verbose > 0)
 		stats_log(sess, tr, tw, ts, fb, fx);
+
+	if (sess->opts->stats)
+		stats_output(sess);
+
 	return 1;
 }
 
@@ -180,5 +184,9 @@ sess_stats_recv(struct sess *sess, int fd)
 
 	if (verbose > 0)
 		stats_log(sess, tr, tw, ts, fb, fx);
+
+	if (sess->opts->stats)
+		stats_output(sess);
+
 	return 1;
 }

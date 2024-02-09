@@ -894,6 +894,8 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 			break;
 		}
 	}
+	p->total += sz;
+	sess->total_matched += sz;
 
 	return TOKEN_NEXT;
 }
@@ -945,6 +947,7 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 		}
 	}
 	p->total += sz;
+	sess->total_matched += sz;
 	LOG4("%s: copied %zu B", p->fname, sz);
 	MD4_Update(&p->ctx, buf, sz);
 	/* Fast-track more reads as they arrive. */
@@ -1047,6 +1050,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			MD4_Update(&p->ctx, dbuf, dsz);
 			p->total += dsz;
 			p->downloaded += bufsz;
+			sess->total_unmatched += dsz;
 			dectx.next_out = (Bytef *)dbuf;
 			dectx.avail_out = MAX_CHUNK_BUF;
 		}
@@ -1067,6 +1071,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		}
 		p->total += dsz;
 		p->downloaded += bufsz;
+		sess->total_unmatched += dsz;
 		free(buf);
 		free(dbuf);
 		assert(dectx.avail_in == 0);
@@ -1155,6 +1160,7 @@ protocol_token_raw(struct sess *sess, struct download *p)
 		}
 		p->total += sz;
 		p->downloaded += sz;
+		sess->total_unmatched += sz;
 		LOG4("%s: received %zu B block", p->fname, sz);
 		MD4_Update(&p->ctx, buf, sz);
 		free(buf);
@@ -1567,6 +1573,8 @@ again:
 	 * erroneously clean it up later.
 	 */
 	f->flstate = (f->flstate & ~FLIST_REDO) | FLIST_COMPLETE;
+	sess->total_files_xfer++;
+	sess->total_xfer_size += f->st.size;
 
 	/* We can still get here with a DRY_XFER in some cases. */
 	if (sess->opts->dry_run)

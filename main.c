@@ -688,6 +688,7 @@ enum {
 	OP_BLOCKING_IO,
 	OP_MODWIN,
 	OP_MAX_DELETE,
+	OP_STATS,
 };
 
 static const struct option	 lopts[] = {
@@ -786,6 +787,7 @@ static const struct option	 lopts[] = {
     { "specials",	no_argument,	&opts.specials,		1 },
     { "no-specials",	no_argument,	&opts.specials,		0 },
     { "sparse",		no_argument,	NULL,			'S' },
+    { "stats",		no_argument,	NULL,			OP_STATS },
     { "suffix",		required_argument,	NULL,		OP_BACKUP_SUFFIX },
     { "super",		no_argument,	&opts.supermode,	SMODE_ON },
     { "no-super",	no_argument,	&opts.supermode,	SMODE_OFF },
@@ -1343,6 +1345,9 @@ basedir:
 				}
 				opts.protocol = tmpint;
 			}
+			break;
+		case OP_STATS:
+			opts.stats++;
 			break;
 		case OP_SOCKOPTS:
 			opts.sockopts = optarg;

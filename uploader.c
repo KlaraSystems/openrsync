@@ -1939,6 +1939,9 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	}
 	assert(pos == u->bufsz);
 
+	sess->total_files_xfer++;
+	sess->total_xfer_size += u->fl[u->idx].st.size;
+
 nowrite:
 	/* Reenable the output poller and clean up. */
 

@@ -384,6 +384,7 @@ struct	opts {
 	int		 remove_source;		/* --remove-source-files */
 	int		 supermode;		/* --{no-,}super */
 	int		 bit8;		        /* -8 --8-bit-output */
+	int		 stats;			/* --stats */
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */
