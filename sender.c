@@ -675,7 +675,7 @@ rsync_sender(struct sess *sess, int fdin,
 				ERRX1("io_read_flush");
 				goto out;
 			} else if (sess->mplex_read_remain == 0 && !shutdown) {
-				c = io_read_check(fdin);
+				c = io_read_check(sess, fdin);
 				if (c < 0) {
 					ERRX1("io_read_check");
 					goto out;
@@ -727,7 +727,7 @@ rsync_sender(struct sess *sess, int fdin,
 				ERRX1("send_dl_enqueue");
 				goto out;
 			}
-			c = io_read_check(fdin);
+			c = io_read_check(sess, fdin);
 			if (c < 0) {
 				ERRX1("io_read_check");
 				goto out;
