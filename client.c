@@ -126,13 +126,19 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		}
 	}
 
-#if 0
-	/* Probably the EOF. */
-	if (io_read_check(&sess, fd))
-		WARNX("data remains in read pipe");
-#endif
-
-	rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
+	/*
+	 * Make sure we flush out any remaining log messages or whatnot before
+	 * we leave.  This is especially important with higher verbosity levels
+	 * as smb rsync will be a lot more chatty with non-data messages over
+	 * the wire.  If there's still data-tagged messages in after a flush,
+	 * then.
+	 */
+	if (!io_read_close(&sess, fd)) {
+		ERRX1("data remains in read pipe");
+		rc = ERR_IPC;
+	} else {
+		rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
+	}
 out:
 	return rc;
 }
