@@ -46,15 +46,12 @@ stats_log(struct sess *sess,
 	    "%s sent, %s read, %s file size",
 	    (char*)&rbuf, (char*)&wbuf, (char*)&sbuf);
 
-#if 0
 	LOG3("File list generation time: %.3f seconds, "
 	    "transfer time: %.3f seconds",
 	    (double)sess->flist_build / 1000,
 	    (double)sess->flist_xfer / 1000);
-#endif
 }
 
-#if 0
 static void
 stats_output(struct sess *sess)
 {
@@ -84,7 +81,6 @@ stats_output(struct sess *sess)
 	LOG0("Total received: %s", (char*)&tbuf);
 
 }
-#endif
 
 /*
  * At the end of transmission, we write our statistics if we're the
@@ -142,7 +138,7 @@ sess_stats_send(struct sess *sess, int fd)
 		}
 	}
 
-	if (verbose > 0)
+	if (verbose > 0 || sess->opts->stats)
 		stats_log(sess, tr, tw, ts, fb, fx);
 
 	if (sess->opts->stats)
@@ -186,7 +182,7 @@ sess_stats_recv(struct sess *sess, int fd)
 		}
 	}
 
-	if (verbose > 0)
+	if (verbose > 0 || sess->opts->stats)
 		stats_log(sess, tr, tw, ts, fb, fx);
 
 	if (sess->opts->stats)

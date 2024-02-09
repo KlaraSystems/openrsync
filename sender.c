@@ -989,7 +989,7 @@ rsync_sender(struct sess *sess, int fdin,
 	 * Finally, the IO error (always zero for us).
 	 */
 
-	gettimeofday(&fx_after, NULL);
+	gettimeofday(&fx_before, NULL);
 	flist_bytes = sess->total_write;
 	if (!flist_send(sess, fdin, fdout, fl.flp, fl.sz)) {
 		ERRX1("flist_send");
