@@ -331,7 +331,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 {
 	struct role	 receiver;
 	struct flist	*fl = NULL, *dfl = NULL;
-	size_t		 i, flsz = 0, dflsz = 0, length;
+	size_t		 i, flsz = 0, dflsz = 0, length, flist_bytes = 0;
 	char		*tofree;
 	int		 rc = 0, dfd = -1, tfd = -1, phase = 0, c;
 	int32_t		 ioerror;
@@ -435,6 +435,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * These we're going to be touching on our local system.
 	 */
 
+	flist_bytes = sess->total_read;
 	if (!flist_recv(sess, fdin, fdout, &fl, &flsz)) {
 		ERRX1("flist_recv");
 		goto out;
@@ -446,6 +447,8 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		goto out;
 	}
 	build_for_hardlinks(hl, fl, flsz); /* Size is same */
+	sess->total_files = flsz;
+	sess->flist_size = sess->total_read - flist_bytes;
 	hls.n = flsz;
 	hls.infos = hl;
 		

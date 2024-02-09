@@ -621,7 +621,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			}
 		}
 
-		if (S_ISREG(f->st.mode))
+		if (S_ISREG(f->st.mode) || S_ISLNK(f->st.mode))
 			sess->total_size += f->st.size;
 
 		/*
@@ -1247,7 +1247,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			(intmax_t)ff->st.mtime, ff->st.mode,
 			major(ff->st.rdev), minor(ff->st.rdev));
 
-		if (S_ISREG(ff->st.mode))
+		if (S_ISREG(ff->st.mode) || S_ISLNK(ff->st.mode))
 			sess->total_size += ff->st.size;
 
 		/*

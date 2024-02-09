@@ -292,6 +292,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 			sz = st->offs - last;
 			st->dirty += sz;
 			st->total += sz;
+			sess->total_unmatched += sz;
 			LOG4("%s: flushing %jd B before %zu B block %zu",
 			    path, (intmax_t)sz,
 			    blk->len, blk->idx);
@@ -308,6 +309,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 			assert(st->curtok != 0);
 			st->curst = sz ? BLKSTAT_DATA : BLKSTAT_TOK;
 			st->total += blk->len;
+			sess->total_matched += blk->len;
 			st->offs += blk->len;
 			st->hint = blk->idx + 1;
 			return;
@@ -322,6 +324,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 
 		st->total += sz;
 		st->dirty += sz;
+		sess->total_unmatched += sz;
 		st->curpos = last;
 		st->curlen = st->curpos + sz;
 		st->curtok = 0;
@@ -332,6 +335,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 		st->curtok = 0;
 		st->curst = st->mapsz ? BLKSTAT_DATA : BLKSTAT_TOK;
 		st->dirty = st->total = st->mapsz;
+		sess->total_unmatched += st->mapsz;
 
 		LOG4("%s: flushing whole file %zu B",
 		    path, st->mapsz);
