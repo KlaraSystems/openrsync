@@ -20,6 +20,7 @@
 #include <sys/wait.h>
 
 #include <assert.h>
+#include <ctype.h>
 #if HAVE_ERR
 # include <err.h>
 #endif
@@ -32,12 +33,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #if HAVE_SCAN_SCALED
 # include <util.h>
 #endif
-#include <ctype.h>
-#include <time.h>
 
 #include "extern.h"
 
