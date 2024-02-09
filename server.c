@@ -127,7 +127,7 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		 * argument of the command line.
 		 * Let's make it a requirement until I figure out when
 		 * that differs.
-		 * rsync [flags] "." <source> <...>
+		 / rsync [flags] "." <source> <...>
 		 */
 
 		if (strcmp(argv[0], ".")) {
@@ -170,20 +170,12 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		}
 	}
 
-#if 0
-	/* Probably the EOF. */
-	if (io_read_check(&sess, fdin))
-		WARNX("data remains in read pipe");
-#endif
-
-	/* Burn time until we get signalled to exit with SIGUSR2. */
-#if 0
-	for (;;) {
-		usleep(1000 * 100);
+	if (io_read_check(&sess, fdin)) {
+		ERRX1("data remains in read pipe");
+		rc = ERR_IPC;
+	} else {
+		rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
 	}
-#endif
-
-	rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
 out:
 	return rc;
 }

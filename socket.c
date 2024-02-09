@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <netdb.h>
 #include <poll.h>
 #include <resolv.h>
@@ -963,13 +964,16 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 
 	}
 
-#if 0
-	/* Probably the EOF. */
-	if (io_read_check(&sess, sd))
+	/*
+	 * See the commentary in the client at the same point; the short version
+	 * is that we don't want to miss any log messages.
+	 */
+	if (!io_read_close(&sess, sd)) {
 		WARNX("data remains in read pipe");
-#endif
-
-	rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
+		rc = ERR_IPC;
+	} else {
+		rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
+	}
 out:
 	free(args);
 	return rc;

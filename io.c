@@ -15,6 +15,7 @@
  */
 #include "config.h"
 
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #if HAVE_SYS_QUEUE
 #include <sys/queue.h>
@@ -62,6 +63,58 @@ io_read_check(const struct sess *sess, int fd)
 		return -1;
 	}
 	return (pfd.revents & POLLIN);
+}
+
+/*
+ * Close out the read-side of the pipe.  This procedure is most important for
+ * client side, to make sure that we're not losing any log messages that the
+ * server tries to send on its way out.  The server could also have multiplexed
+ * reads, though, with at least --remove-source-files.
+ *
+ * Returns 1 if we can cleanly close the pipe, 0 if we cannot.
+ */
+int
+io_read_close(struct sess *sess, int fd)
+{
+	struct pollfd	 pfd;
+	int		 nbrecv, rc;
+
+	pfd.fd = fd;
+	pfd.events = POLLIN;
+
+	while ((rc = poll(&pfd, 1, INFTIM)) || errno == EINTR) {
+		if (rc == -1)
+			continue;
+
+		/*
+		 * FIONREAD == 0 on POLLIN to check for EOF of a socket, instead
+		 * of relying on a non-portable POLLRDHUP or whatnot.
+		 */
+		if ((pfd.revents & POLLIN) == 0)
+			nbrecv = -1;
+		else if (ioctl(fd, FIONREAD, &nbrecv) == -1)
+			break;
+
+		if (nbrecv == 0 || (pfd.revents & POLLHUP) != 0) {
+			close(fd);
+			return 1;
+		}
+
+		/*
+		 * Flush out anything remaining in the pipe.  If they were log
+		 * messages, that's not necessarily a problem; we'll write those
+		 * out to make sure they don't get lost.  If it contained actual
+		 * data, we seem to have violated the protocol somewhere.
+		 *
+		 * We'll keep going as long as we're only getting out-of-band
+		 * messages.
+		 */
+		if (!io_read_flush(sess, fd) || sess->mplex_read_remain)
+			break;
+	}
+
+	close(fd);
+	return 0;
 }
 
 /*
