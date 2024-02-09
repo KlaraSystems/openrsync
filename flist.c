@@ -1432,7 +1432,6 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 
 	ERRX1("flist_gen_dirent");
 	flist_free(fl->flp, max);
-	free(fl->flp);
 	fl->flp = NULL;
 	return 0;
 }
@@ -1506,7 +1505,6 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	return 1;
 out:
 	flist_free(fl->flp, argc);
-	free(fl->flp);
 	fl->flp = NULL;
 	return 0;
 }
@@ -1710,7 +1708,6 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 
 	ERRX1("flist_dedupe");
 	flist_free(fl->flp, fl->sz);
-	free(fl->flp);
 	fl->flp = NULL;
 	return 0;
 }
