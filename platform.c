@@ -59,9 +59,11 @@ apple_open_xattrs(const struct sess *sess, const struct flist *f, int oflags)
 	tmpfile[idx++] = '\0';
 
 	error = copyfile(path, tmpfile, NULL, copyflags);
+	serrno = errno;
 	free(path);
 
 	if (error != 0) {
+		errno = serrno;
 		ERR("copyfile");
 		return -1;
 	}
@@ -114,6 +116,7 @@ platform_flist_modify(const struct sess *sess, struct fl *fl)
 	for (size_t i = 0; i < insz; i++) {
 		struct flist *packed;
 		const char *base;
+		char *ppath;
 		int stripdir;
 
 		f = &fl->flp[i];
@@ -130,17 +133,19 @@ platform_flist_modify(const struct sess *sess, struct fl *fl)
 			goto hooksent;
 
 		stripdir = f->wpath - f->path;
-		packed = fl_new(fl);
-		memcpy(packed, f, sizeof(*f));
 
 		/* Setup the different bits */
-		if (asprintf(&packed->path, "%.*s._%s",
+		if (asprintf(&ppath, "%.*s._%s",
 		    (int)(base - f->path), f->path, basename(f->path)) == -1) {
 			ERR("asprintf --extended-attributes path");
 			return 0;
 		}
 
-		packed->wpath = packed->path + stripdir;
+		packed = fl_new(fl);
+		memcpy(packed, f, sizeof(*f));
+
+		packed->path = ppath;
+		packed->wpath = ppath + stripdir;
 		packed->link = NULL;
 		packed->open = apple_open_xattrs;
 		packed->sent = apple_flist_sent;
@@ -252,7 +257,7 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 {
 	char newname[PATH_MAX];
 	const char *base;
-	int error, ffd, tfd, serr;
+	int error, ffd, tfd, serrno;
 
 	/*
 	 * We'll redo our base name calculation just to preserve the parts of
@@ -288,7 +293,7 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 
 	error = fcopyfile(ffd, tfd, NULL,
 	    COPYFILE_UNPACK | COPYFILE_ACL | COPYFILE_XATTR);
-	serr = errno;
+	serrno = errno;
 
 	close(tfd);
 	close(ffd);
@@ -299,7 +304,7 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 	 */
 	if (error != 0) {
 		ERRX1("%s: copyfile extended attributes from %s: %s",
-		    newname, fname, strerror(serr));
+		    newname, fname, strerror(serrno));
 		return 0;
 	}
 
