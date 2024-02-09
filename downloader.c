@@ -676,9 +676,9 @@ delayed_renames(struct sess *sess)
 		curr = &dlr->entries[i];
 		LOG3("mv '%s' -> '%s'", curr->from, curr->to);
 		if (sess->opts->hard_links)
-			hl_p = find_hl(dlr->entries[i].file, dlr->hl);
-		if (!platform_move_file(sess, dlr->entries[i].file,
-		    dlr->fromfd, dlr->entries[i].from, dlr->tofd, dlr->entries[i].to, 1)) {
+			hl_p = find_hl(curr->file, dlr->hl);
+		if (!platform_move_file(sess, curr->file,
+		    dlr->fromfd, curr->from, dlr->tofd, curr->to, 1)) {
 			status = FLIST_FAILED;
 		}
 		if (hl_p != NULL) {
