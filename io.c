@@ -47,9 +47,12 @@ static SLIST_HEAD(, io_tag_handler) io_tag_handlers =
  * Returns <0 on failure, 0 if there's no data, >0 if there is.
  */
 int
-io_read_check(int fd)
+io_read_check(const struct sess *sess, int fd)
 {
 	struct pollfd	pfd;
+
+	if (sess->mplex_read_remain)
+		return 1;
 
 	pfd.fd = fd;
 	pfd.events = POLLIN;

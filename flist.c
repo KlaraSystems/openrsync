@@ -445,7 +445,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		 */
 
 		if (sess->mplex_reads &&
-		    io_read_check(fdin) &&
+		    io_read_check(sess, fdin) &&
 		    !io_read_flush(sess, fdin)) {
 			ERRX1("io_read_flush");
 			goto out;

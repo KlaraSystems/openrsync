@@ -600,7 +600,7 @@ int	io_register_handler(enum iotag, io_tag_handler_fn *, void *);
 int	io_read_line(struct sess *, int, char *, size_t *);
 int	io_read_buf(struct sess *, int, void *, size_t);
 int	io_read_byte(struct sess *, int, uint8_t *);
-int	io_read_check(int);
+int	io_read_check(const struct sess *, int);
 int	io_read_flush(struct sess *, int);
 int	io_read_ushort(struct sess *, int, uint32_t *);
 int	io_read_short(struct sess *, int, int32_t *);

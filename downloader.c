@@ -1106,7 +1106,7 @@ again:
 
 		/* Fast-track more reads as they arrive. */
 
-		if ((c = io_read_check(p->fdin)) < 0) {
+		if ((c = io_read_check(sess, p->fdin)) < 0) {
 			ERRX1("io_read_check");
 			goto out;
 		} else if (c > 0)
@@ -1155,7 +1155,7 @@ again:
 
 		/* Fast-track more reads as they arrive. */
 
-		if ((c = io_read_check(p->fdin)) < 0) {
+		if ((c = io_read_check(sess, p->fdin)) < 0) {
 			ERRX1("io_read_check");
 			goto out;
 		} else if (c > 0)
