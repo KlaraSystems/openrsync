@@ -34,6 +34,14 @@
 #define _MAXBSIZE (64 * 1024)
 
 /*
+ * We're using AT_RESOLVE_BENEATH in a couple of places just for some additional
+ * safety on platforms that support it, so it's not a hard requirement.
+ */
+#ifndef AT_RESOLVE_BENEATH
+#define	AT_RESOLVE_BENEATH	0
+#endif
+
+/*
  * Return true if all bytes in buffer are zero.
  * A buffer of zero length is also considered a zero buffer.
  */
