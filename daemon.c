@@ -388,6 +388,38 @@ daemon_write_motd(struct sess *sess, const char *motd_file, int outfd)
 }
 
 static int
+daemon_operation_allowed(struct sess *sess, const struct opts *opts,
+    const char *module)
+{
+	struct daemon_role *role;
+	int deny;
+
+	role = (void *)sess->role;
+	if (!opts->sender) {
+		/* Client wants to send files, check read only. */
+		if (cfg_param_bool(role->dcfg, module, "read only",
+		    &deny) != 0) {
+			ERRX("%s: 'read only' invalid", module);
+			return 0;
+		}
+	} else {
+		/* Client wants to receive files, check write only. */
+		if (cfg_param_bool(role->dcfg, module, "write only",
+		    &deny) != 0) {
+			ERRX("%s: 'write only' invalid", module);
+			return 0;
+		}
+	}
+
+	if (deny) {
+		daemon_client_error(sess, "module '%s' is %s-protected",
+		    module, opts->sender ? "read" : "write");
+	}
+
+	return !deny;
+}
+
+static int
 rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
     size_t slen)
 {
@@ -517,6 +549,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	argc--;
 	argv++;
 
+	if (!daemon_operation_allowed(sess, client_opts, module))
+		goto fail;	/* Error already logged. */
+
 	/* Generate a seed. */
 	if (client_opts->checksum_seed == 0) {
 #if HAVE_ARC4RANDOM
@@ -548,7 +583,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	cleanup_set_session(cleanup_ctx, sess);
 	cleanup_release(cleanup_ctx);
 
-	if (client_opts->sender) {
+	if (sess->opts->sender) {
 		if (!rsync_sender(sess, fd, fd, argc, argv)) {
 			ERR("rsync_sender");
 			goto fail;

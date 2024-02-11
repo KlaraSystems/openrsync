@@ -66,6 +66,8 @@ static struct rsync_daemon_param {
 	/** Module parameters **/
 	PARAM_DFLT("use chroot",	"usechroot",	"true"),
 	PARAM("path",		NULL),
+	PARAM_DFLT("read only",		"readonly",	"true"),
+	PARAM_DFLT("write only",	"writeonly",	"false"),
 
 	/* Not implemented module options */
 	PARAM("comment",	NULL),
@@ -79,8 +81,6 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
 	PARAM_DFLT("max verbosity",	"maxverbosity",	"1"),
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
-	PARAM_DFLT("read only",		"readonly",	"true"),
-	PARAM_DFLT("write only",	"writeonly",	"false"),
 	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("uid",		NULL,		"-2"),
 	PARAM_DFLT("gid",		NULL,		"-2"),
