@@ -102,8 +102,6 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		goto out;
 	}
 
-	sess.mplex_writes = 1;
-
 	if (sess.rver < RSYNC_PROTOCOL_MIN) {
 		ERRX("remote protocol %d is older than our minimum supported "
 		    "%d: exiting", sess.rver, RSYNC_PROTOCOL_MIN);
@@ -118,6 +116,12 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	LOG2("server detected client version %d, server version %d, "
 	    "negotiated protocol version %d, seed %d",
 	    sess.rver, sess.lver, sess.protocol, sess.seed);
+
+	sess.mplex_writes = 1;
+
+	assert(sess.opts->whole_file != -1);
+	LOG2("Delta transmission %s for this transfer",
+	    sess.opts->whole_file ? "disabled" : "enabled");
 
 	if (sess.opts->sender) {
 		LOG2("server starting sender");

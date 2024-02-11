@@ -1433,8 +1433,13 @@ main(int argc, char *argv[])
 	 * host by the parent.
 	 */
 
-	if (opts.server)
+	if (opts.server) {
+		if (opts.whole_file < 0) {
+			/* Simplify all future checking of this value */
+			opts.whole_file = 0;
+		}
 		exit(rsync_server(cleanup_ctx, &opts, (size_t)argc, argv));
+	}
 
 	/*
 	 * Now we know that we're the client on the local machine
@@ -1472,6 +1477,17 @@ main(int argc, char *argv[])
 				exit(2);
 			}
 		}
+	}
+
+	/*
+	 * For local transfers, enable whole_file by default
+	 * if the user did not specifically ask for --no-whole-file.
+	 */
+	if (fargs->host == NULL && !fargs->remote && opts.whole_file < 0) {
+		opts.whole_file = 1;
+	} else if (opts.whole_file < 0) {
+		/* Simplify all future checking of this value */
+		opts.whole_file = 0;
 	}
 
 	/*
@@ -1530,17 +1546,6 @@ main(int argc, char *argv[])
 		cleanup_release(cleanup_ctx);
 
 		args = fargs_cmdline(&sess, fargs, NULL);
-
-		/*
-		 * For local transfers, enable whole_file by default
-		 * if the user did not specifically ask for --no-whole-file.
-		 */
-		if (fargs->host == NULL && opts.whole_file < 0) {
-			opts.whole_file = 1;
-		} else if (opts.whole_file < 0) {
-			/* Simplify all future checking of this value */
-			opts.whole_file = 0;
-		}
 
 		for (i = 0; args[i] != NULL; i++)
 			LOG2("exec[%d] = %s", i, args[i]);

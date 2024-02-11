@@ -93,6 +93,10 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	else
 		sess.mplex_reads = 1;
 
+	assert(sess.opts->whole_file != -1);
+	LOG2("Delta transmission %s for this transfer",
+	    sess.opts->whole_file ? "disabled" : "enabled");
+
 	/*
 	 * Now we need to get our list of files.
 	 * Senders (and locals) send; receivers receive.
