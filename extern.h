@@ -663,6 +663,8 @@ void	 cfg_free(struct daemon_cfg *);
 int	 cfg_is_valid_module(struct daemon_cfg *, const char *);
 int	 cfg_param_bool(struct daemon_cfg *, const char *, const char *,
 	    int *);
+int	 cfg_param_int(struct daemon_cfg *, const char *, const char *,
+	    int *);
 int	 cfg_param_long(struct daemon_cfg *, const char *, const char *,
 	    long *);
 int	 cfg_param_str(struct daemon_cfg *, const char *, const char *,

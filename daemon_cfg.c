@@ -24,6 +24,7 @@
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,6 +69,7 @@ static struct rsync_daemon_param {
 	PARAM("path",		NULL),
 	PARAM_DFLT("read only",		"readonly",	"true"),
 	PARAM_DFLT("write only",	"writeonly",	"false"),
+	PARAM_DFLT("timeout",	NULL,	"0"),
 
 	/* Not implemented module options */
 	PARAM("comment",	NULL),
@@ -102,7 +104,6 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
 	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),
 
-	PARAM_DFLT("timeout",	NULL,	"0"),
 	PARAM("refuse options",	"refuseoptions"),
 	PARAM("dont compress",	"dontcompress"),
 	PARAM("pre-xfer exec",	"pre-xferexec"),
@@ -766,6 +767,23 @@ cfg_param_long(struct daemon_cfg *dcfg, const char *which_mod, const char *key,
 	}
 
 	*val = lval;
+	return 0;
+}
+
+int
+cfg_param_int(struct daemon_cfg *dcfg, const char *which_mod, const char *key,
+    int *val)
+{
+	long lval;
+
+	if (cfg_param_long(dcfg, which_mod, key, &lval) == -1)
+		return -1;
+	if (lval > INT_MAX || lval < INT_MIN) {
+		errno = ERANGE;
+		return -1;
+	}
+
+	*val = (int)lval;
 	return 0;
 }
 
