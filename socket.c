@@ -949,6 +949,10 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	    "negotiated protocol version %d, seed %d",
 	    sess.lver, sess.rver, sess.protocol, sess.seed);
 
+	assert(sess.opts->whole_file != -1);
+	LOG2("Delta transmission %s for this transfer",
+	    sess.opts->whole_file ? "disabled" : "enabled");
+
 	if (f->mode == FARGS_RECEIVER) {
 		LOG2("client starting receiver: %s", f->host);
 		if (!rsync_receiver(&sess, cleanup_ctx, sd, sd, f->sink)) {
