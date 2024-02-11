@@ -528,9 +528,14 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	/*
 	 * Reset some state; our default poll_timeout is no longer valid, and
-	 * we need to reset getopt_long(3).
+	 * we need to reset getopt_long(3).  poll_timeout after this point will
+	 * not be overwritten by the client unless the client wants a little bit
+	 * longer.
 	 */
 	poll_timeout = 0;
+	if (cfg_param_int(role->dcfg, module, "timeout", &poll_timeout) != 0)
+		WARN("%s: bad value for 'timeout'", module);
+
 	optreset = 1;
 	optind = 1;
 	client_opts = rsync_getopt(argc, argv, &daemon_reject, sess);

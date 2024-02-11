@@ -876,6 +876,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 	int		 implied_recursive = 0;
 	int		 opts_F = 0, opts_no_relative = 0, opts_no_dirs = 0;
 	int		 opts_only_batch = 0;
+	int		 opts_timeout = -1;
 
 	/*
 	 * In the case of the daemon, we're re-entering and opts may be dirty
@@ -1109,7 +1110,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.rsync_path = optarg;
 			break;
 		case OP_TIMEOUT:
-			poll_timeout = strtonum(optarg, 0, 60*60, &errstr);
+			opts_timeout = strtonum(optarg, 0, 60*60, &errstr);
 			if (errstr != NULL)
 				errx(ERR_SYNTAX, "timeout is %s: %s",
 				    errstr, optarg);
@@ -1479,6 +1480,17 @@ basedir:
 		poll_contimeout = -1;
 	else
 		poll_contimeout *= 1000;
+
+	/*
+	 * Mostly for the daemon's benefit, but harmless for the other modes of
+	 * operation; only allow options to increase the timeout we started out
+	 * with.  For most purposes this allows the full effective range of
+	 * timeout values [0, INT_MAX], but the daemon may establish a timeout
+	 * floor to avoid clients requesting infinite timeout if configured to
+	 * do so.
+	 */
+	if (opts_timeout > poll_timeout)
+		poll_timeout = opts_timeout;
 
 	/* by default and for --timeout=0 disable poll_timeout */
 	if (poll_timeout == 0)
