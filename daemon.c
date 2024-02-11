@@ -26,6 +26,8 @@
 #include <getopt.h>
 #include <limits.h>
 #include <paths.h>
+#include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,6 +92,8 @@ struct daemon_role {
 	struct daemon_cfg	*dcfg;		/* (f) daemon config */
 	const char		*pid_file;	/* (c) daemon pidfile path */
 	FILE			*pidfp;		/* (f) daemon pidfile */
+	int			 client;
+	bool			 client_control;
 };
 
 static void
@@ -100,6 +104,34 @@ daemon_usage(int exitcode)
 	    "\t[--log-file=logfile] [--port=portnumber] [--sockopts=sockopts]\n",
 	    getprogname());
 	exit(exitcode);
+}
+
+static void
+daemon_client_error(struct sess *sess, const char *fmt, ...)
+{
+	struct daemon_role *role;
+	char *msg;
+	va_list ap;
+
+	role = (void *)sess->role;
+
+	if (!role->client_control) {
+		va_start(ap, fmt);
+		if (vasprintf(&msg, fmt, ap) != -1) {
+			if (!io_write_buf(sess, role->client, "@ERROR ",
+			    sizeof("@ERROR ") - 1) ||
+			    !io_write_line(sess, role->client, msg)) {
+				/* XXX Log the additional error. */
+			}
+			free(msg);
+		}
+		va_end(ap);
+	}
+
+	/*
+	 * We may want to log this to the log file as well, but for now we'll
+	 * settle on just making the client aware.
+	 */
 }
 
 static int
@@ -119,12 +151,12 @@ daemon_read_hello(struct sess *sess, int fd, char **module)
 
 	for (size_t linecnt = 0; linecnt < 2; linecnt++) {
 		linesz = sizeof(buf);
-		if (!io_read_line(sess, fd, buf, &linesz)) {
-			/* XXX Log error */
+		if (!io_read_line(sess, fd, buf, &linesz) || linesz == 0) {
+			daemon_client_error(sess,
+			    "protocol violation: expected version and module information");
 			return -1;
-		} else if (linesz == 0 || linesz == sizeof(buf)) {
-			/* XXX Log error */
-			fprintf(stderr, "linesz %zu\n", linesz);
+		} else if (linesz == sizeof(buf)) {
+			daemon_client_error(sess, "line buffer overrun");
 			errno = EINVAL;
 			return -1;
 		}
@@ -136,7 +168,9 @@ daemon_read_hello(struct sess *sess, int fd, char **module)
 			line = buf;
 			if (strncmp(line, proto_prefix,
 			    sizeof(proto_prefix) - 1) != 0) {
-				/* XXX Protocol violation. */
+				daemon_client_error(sess,
+				    "protocol violation: expected version line, got '%s'",
+				    line);
 				errno = EINVAL;
 				return -1;
 			}
@@ -153,7 +187,9 @@ daemon_read_hello(struct sess *sess, int fd, char **module)
 			} else if (sscanf(line, "%d", &major) == 1) {
 				sess->rver = major;
 			} else {
-				/* XXX Protocol violation */
+				daemon_client_error(sess,
+				   "protocol violation: malformed version line, got '%s'",
+				    line);
 				errno = EINVAL;
 				return -1;
 			}
@@ -205,7 +241,7 @@ daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 	argvsz = OPT_ALLOC_SLOTS;
 	argv = recallocarray(argv, 0, OPT_ALLOC_SLOTS, sizeof(*argv));
 	if (argv == NULL) {
-		/* XXX Error */
+		daemon_client_error(sess, "daemon out of memory");
 		return -1;
 	}
 
@@ -215,12 +251,12 @@ daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 	for (;;) {
 		linesz = sizeof(buf);
 		if (!io_read_line(sess, fd, buf, &linesz)) {
-			/* XXX ERROR */
+			daemon_client_error(sess,
+			    "protocol violation: expected option line");
 			errno = EINVAL;
 			return -1;
 		} else if (linesz == sizeof(buf)) {
-			/* XXX Log error */
-			fprintf(stderr, "linesz %zu\n", linesz);
+			daemon_client_error(sess, "line buffer overrun");
 			errno = EINVAL;
 			return -1;
 		} else if (linesz == 0) {
@@ -228,11 +264,9 @@ daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 		}
 
 		if (argc == INT_MAX) {
-			/*
-			 * XXX Something hinky; don't allow it because we cannot
-			 * exceed an int's worth.  Do we want to limit byte size
-			 * as well? Possibly.
-			 */
+			/* XXX Do we want to limit byte size as well? */
+			daemon_client_error(sess,
+			    "protection error: too many arguments sent");
 			goto fail;
 		}
 
@@ -246,7 +280,8 @@ daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 			argv = recallocarray(pargv, argvsz, nextsz,
 			    sizeof(*argv));
 			if (argv == NULL) {
-				/* XXX Error */
+				daemon_client_error(sess,
+				    "daemon out of memory");
 				argv = pargv;
 				goto fail;
 			}
@@ -254,7 +289,7 @@ daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 
 		argv[argc] = strdup(buf);
 		if (argv[argc] == NULL) {
-			/* XXX Maybe try to log it? */
+			daemon_client_error(sess, "daemon out of memory");
 			goto fail;
 		}
 
@@ -276,7 +311,8 @@ daemon_reject(struct sess *sess, int opt, const struct option *lopt)
 {
 
 	if (lopt != NULL && strcmp(lopt->name, "daemon") == 0) {
-		/* XXX Log it... this is sketchy. */
+		daemon_client_error(sess,
+		    "protection error: --daemon sent as client option");
 		return 0;
 	}
 
@@ -362,6 +398,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	int argc, flags, rc, use_chroot;
 
 	role = (void *)sess->role;
+	role->client = fd;
 
 	/* XXX These should perhaps log an error, but they are not fatal. */
 	(void)rsync_setsockopts(fd, "SO_KEEPALIVE");
@@ -380,11 +417,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	cleanup_init(cleanup_ctx);
 
-	if ((flags = fcntl(fd, F_GETFL, 0)) == -1) {
-		/* XXX Log */
-		goto fail;
-	} else if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-		/* XXX Log */
+	if ((flags = fcntl(fd, F_GETFL, 0)) == -1 ||
+	    fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+		daemon_client_error(sess, "failed to set non-blocking");
 		goto fail;
 	}
 
@@ -393,13 +428,14 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		return ERR_IPC;
 
 	/* saddr == NULL only for inetd driven invocations. */
-	if (daemon_read_hello(sess, fd, &module) < 0) {
-		/* XXX Error */
-		goto fail;
-	}
+	if (daemon_read_hello(sess, fd, &module) < 0)
+		goto fail;	/* Error already logged. */
 
+	/* XXX PROTOCOL_MIN, etc. */
 	if (sess->rver < sess->lver) {
-		/* XXX Error */
+		daemon_client_error(sess,
+		    "could not negotiate a protocol; client requested %d (supported range: %d to %d)",
+		    sess->rver, sess->lver, sess->lver);
 		goto fail;
 	}
 
@@ -413,15 +449,14 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 
 	if (!cfg_is_valid_module(role->dcfg, module)) {
-		/* XXX Send error */
-		fprintf(stderr, "not a valid module %s\n", module);
+		daemon_client_error(sess, "%s is not a valid module", module);
 		goto fail;
 	}
 
 	if (cfg_param_bool(role->dcfg, module, "use chroot",
 	    &use_chroot) != 0) {
-		/* XXX Badly formed, log it and pretend it's unset. */
-		fprintf(stderr, "badly formed\n");
+		/* Log it and pretend it's unset. */
+		WARN("%s: 'use chroot' malformed", module);
 	} else if (use_chroot && !cfg_has_param(role->dcfg, module,
 	    "use chroot")) {
 		/*
@@ -444,26 +479,21 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 			goto fail;
 		}
 
-		/* XXX Log the EPERM fallback because unset. */
+		WARN("%s: attempt to chroot failed, falling back to 'no' since it is not explicitly set",
+		    module);
 		use_chroot = 0;
 	}
+
+	role->client_control = true;
 
 	if (!io_write_line(sess, fd, "@RSYNCD: OK")) {
 		ERRX1("io_write_line");
 		goto fail;
 	}
 
-	if (daemon_read_options(sess, fd, &argc, &argv) < 0) {
-		/* XXX Error */
-		goto fail;
-	}
+	if (daemon_read_options(sess, fd, &argc, &argv) < 0)
+		goto fail;	/* Error already logged. */
 
-#if 1
-	fprintf(stderr, "Got %d arguments.\n", argc);
-	for (int i = 0; i < argc; i++) {
-		fprintf(stderr, "argv[%d] = %s\n", i, argv[i]);
-	}
-#endif
 	/*
 	 * Reset some state; our default poll_timeout is no longer valid, and
 	 * we need to reset getopt_long(3).
@@ -479,7 +509,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	argv += optind;
 
 	if (strcmp(argv[0], ".") != 0) {
-		/* XXX Must be a hard stop before file listing. */
+		daemon_client_error(sess,
+		    "protocol violation: expected hard stop before file list");
 		goto fail;
 	}
 
@@ -499,7 +530,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	/* Seed send-off completes the handshake. */
 	if (!io_write_int(sess, fd, sess->seed)) {
-		/* XXX Log */
+		ERR("io_write_int");
 		goto fail;
 	}
 
@@ -519,12 +550,12 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	if (client_opts->sender) {
 		if (!rsync_sender(sess, fd, fd, argc, argv)) {
-			/* XXX Log it */
+			ERR("rsync_sender");
 			goto fail;
 		}
 	} else {
 		if (!rsync_receiver(sess, cleanup_ctx, fd, fd, argv[0])) {
-			/* XXX Log it */
+			ERR("rsync_receiver");
 			goto fail;
 		}
 	}
@@ -582,6 +613,7 @@ daemon_do_pidfile(struct sess *sess, struct daemon_cfg *dcfg)
 	}
 
 	if (fcntl(fileno(pidfp), F_SETLK, &pidlock)) {
+		fclose(pidfp);
 		if (errno == EAGAIN)
 			ERRX("%s: failed to obtain lock (is another rsyncd running?)", pidfile);
 		else
@@ -614,6 +646,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	sess.role = (void *)&role;
 
 	role.cfg_file = "/etc/rsyncd.conf";
+	role.client = -1;
 	/* Log to syslog by default. */
 	logfile = NULL;
 

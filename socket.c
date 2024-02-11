@@ -687,7 +687,7 @@ rsync_listen(struct sess *sess, rsync_client_handler *handler)
 	/*
 	 * We'll bind up to two sockets; one ipv4, one ipv6.
 	 */
-	assert(sess->opts->port != NULL);
+	assert(opts->port != NULL);
 
 	pfd[0].fd = pfd[1].fd = -1;
 	pfd[0].events = pfd[1].events = POLLIN;
@@ -727,7 +727,7 @@ rsync_listen(struct sess *sess, rsync_client_handler *handler)
 		 * inet_listen() will produce a more appropriate error; just
 		 * return.
 		 */
-		if (inet_listen(sess->opts, cursock, cursrc) != 0) {
+		if (inet_listen(opts, cursock, cursrc) != 0) {
 			for (size_t j = 0; j < i; j++)
 				close(pfd[j].fd);
 			return ERR_IPC;
