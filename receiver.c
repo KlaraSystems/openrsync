@@ -155,7 +155,7 @@ rsync_set_metadata(struct sess *sess, int newfile,
 
 int
 rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
-	const struct flist *f, const char *path)
+	struct flist *f, const char *path)
 {
 	uid_t		 uid = (uid_t)-1;
 	gid_t		 gid = (gid_t)-1;
@@ -200,6 +200,28 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 		gid = f->st.gid;
 
 	mode = f->st.mode;
+
+	if (sess->itemize) {
+		struct stat st;
+		/*
+		 * For itemize we actually need to know whether these
+		 * will change, so we need a stat(2).
+		 */
+		if (fstatat(rootfd, path, &st, AT_SYMLINK_NOFOLLOW) == -1) {
+			ERR("%s: fstatat for itemize", path);
+			/* Let code below deal with error abort or not or what */
+		} else {
+			if (uid != (uid_t)-1 && uid != st.st_uid)
+				f->iflags |= IFLAG_OWNER;
+			if (gid != (gid_t)-1 && gid != st.st_gid)
+				f->iflags |= IFLAG_GROUP;
+			if (newfile || sess->opts->preserve_perms)
+				if (mode != st.st_mode)
+					f->iflags |= IFLAG_PERMS;
+		}
+
+	}
+
 	if (uid != (uid_t)-1 || gid != (gid_t)-1) {
 		if (fchownat(rootfd, path, uid, gid, AT_SYMLINK_NOFOLLOW) == -1) {
 			if (errno != EPERM) {

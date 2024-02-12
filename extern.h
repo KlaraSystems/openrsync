@@ -652,7 +652,7 @@ struct	sess {
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
 	int		   filesfrom_fd; /* --files-from */
 	int		   wbatch_fd; /* --write-batch */
-	struct dlrename    *dlrename; /* Deferred renames for --delay-update */
+	struct dlrename   *dlrename; /* Deferred renames for --delay-update */
 	struct role	  *role; /* Role context */
 	mode_t		   chmod_dir_AND;
 	mode_t		   chmod_dir_OR;
@@ -903,7 +903,7 @@ int	rsync_downloader(struct download *, struct sess *, int *, size_t,
 	    const struct hardlinks *);
 int	rsync_set_metadata(struct sess *, int, int, const struct flist *,
 	    const char *);
-int	rsync_set_metadata_at(struct sess *, int, int, const struct flist *,
+int	rsync_set_metadata_at(struct sess *, int, int, struct flist *,
 	    const char *);
 int	rsync_uploader(struct upload *, int *, struct sess *, int *,
 		       const struct hardlinks *);

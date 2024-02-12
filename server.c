@@ -68,6 +68,13 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	sess.mode = sess.opts->sender ? FARGS_SENDER : FARGS_RECEIVER;
 	sess.wbatch_fd = -1;
 
+	int printflags = output(&sess, NULL, 0);
+	if (printflags & 1)
+		sess.itemize = 1;
+	if (printflags & 2)
+		sess.lateprint = 1;
+	LOG4("Printing(%d): itemize %d late %d", getpid(), sess.itemize, sess.lateprint);
+
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
 

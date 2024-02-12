@@ -792,7 +792,10 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 	if (iflags == IFLAG_NEW) {
 		/* Keep alive packet, do nothing */
 		return 1;
-	} else if ((iflags & IFLAG_TRANSFER) == 0) {
+	}
+	/* Maybe later if (!sess->lateprint) */
+	output(sess, &fl[idx], 1);
+	if ((iflags & IFLAG_TRANSFER) == 0) {
 		/* We can't return early due to the state machine */
 	} else if (S_ISDIR(fl[idx].st.mode)) {
 		ERRX("blocks requested for "
@@ -843,6 +846,31 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 			s->dlstate = SDL_DONE;
 		*mdl = s;
 	}
+
+	return 1;
+}
+
+static int
+got_info(void *cookie, const void *data, size_t datasz)
+{
+	struct success_ctx *sctx = cookie;
+	size_t pos = 0;
+	int32_t idx;
+	struct flist *fl;
+
+	io_unbuffer_int(data, &pos, datasz, &idx);
+	if (pos != datasz) {
+		ERRX("bad info payload size %zu", datasz);
+		return 0;
+	}
+
+	if (idx < 0 || (size_t)idx >= sctx->fl->sz) {
+		ERRX("info idx %d out of range", idx);
+		return 0;
+	}
+
+	fl = &sctx->fl->flp[idx];
+	output(sctx->sess, fl, 1);
 
 	return 1;
 }
@@ -967,6 +995,16 @@ sender_finalize(struct sess *sess, const struct fl *fl, struct iobuf *rbuf,
 	}
 
 	return 0;
+}
+
+static int
+file_deleted(void *cookie, const void *data, size_t datasz)
+{
+	struct success_ctx *sctx = cookie;
+
+	if (sctx->sess->itemize)
+		fprintf(stderr, "*deleting %.*s\n", (int)datasz, (char *)data);
+	return 1;
 }
 
 struct fl *flg = NULL;
@@ -1126,12 +1164,24 @@ rsync_sender(struct sess *sess, int fdin,
 	} else if (!sess->opts->server)
 		LOG1("Transfer starting: %zu files", fl.sz);
 
+	sctx.sess = sess;
+	sctx.fl = &fl;
+	if (!io_register_handler(IT_INFO, &got_info, &sctx)) {
+		ERRX("Failed to install IT_INFO handler; exiting");
+		rc = 1;
+		goto out;
+	}
 	if (sess->opts->remove_source) {
-		sctx.sess = sess;
-		sctx.fl = &fl;
-
 		if (!io_register_handler(IT_SUCCESS, &file_success, &sctx)) {
 			ERRX("Failed to install remove-source-files handler; exiting");
+			rc = 1;
+			goto out;
+		}
+	}
+
+	if (sess->itemize) {
+		if (!io_register_handler(IT_DELETED, &file_deleted, &sctx)) {
+			ERRX("Failed to install delete handler; exiting");
 			rc = 1;
 			goto out;
 		}

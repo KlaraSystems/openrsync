@@ -689,6 +689,8 @@ enum {
 	OP_WRITE_BATCH,
 	OP_ONLY_WRITE_BATCH,
 	OP_OUTFORMAT,
+	OP_LOGFORMAT,
+	OP_ITEMIZE,
 	OP_BIT8,
 	OP_HELP,
 	OP_BLOCKING_IO,
@@ -699,7 +701,7 @@ enum {
 	OP_EXECUTABILITY,
 };
 
-const char rsync_shopts[] = "0468B:CDEFHIKLOPRSVWabcde:f:ghklnopqrtuvxyz";
+const char rsync_shopts[] = "0468B:CDEFHIKLOPRSVWabcde:f:ghiklnopqrtuvxyz";
 const struct option	 rsync_lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
@@ -834,6 +836,8 @@ const struct option	 rsync_lopts[] = {
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
     { "from0",		no_argument,	NULL,			'0' },
     { "out-format",	required_argument,	NULL,		OP_OUTFORMAT },
+    { "log-format",	required_argument,	NULL,		OP_LOGFORMAT },
+    { "itemize-changes", no_argument,	NULL,			OP_ITEMIZE },
     { "delay-updates",	no_argument,	&opts.dlupdates,	1 },
     { "modify-window",	required_argument,	NULL,		OP_MODWIN },
     { "8-bit-output",	no_argument,	NULL,			OP_BIT8 },
@@ -844,7 +848,7 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-0468BCDEFHIKLOPRSTWVabcdghklnopqrtuvxyz] [-e program] [-f filter]\n"
+	    " [-0468BCDEFHIKLOPRSTWVabcdghiklnopqrtuvxyz] [-e program] [-f filter]\n"
 	    "\t[--8-bit-output] [--address=sourceaddr]\n"
 	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--cache | --no-cache]\n"
 	    "\t[--compare-dest=dir] [--contimeout] [--copy-dest=dir] [--copy-unsafe-links]\n"
@@ -856,7 +860,8 @@ usage(int exitcode)
 #endif
 	    "\t[--existing] [--force] [--ignore-errors]\n"
 	    "\t[--ignore-existing] [--ignore-non-existing] [--include]\n"
-	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
+	    "\t[--include-from=file] [--inplace] [--itemize] [--keep-dirlinks]\n"
+	    "\t[--link-dest=dir] [--log-format=fmt]\n"
 	    "\t[--max-delete=NUM] [--max-size=SIZE] [--min-size=SIZE]\n"
 	    "\t[--modify-window=sec] [--no-motd] [--numeric-ids]\n"
 	    "\t[--out-format=FMT] [--partial] [--password-file=pwfile] [--port=portnumber]\n"
@@ -1278,7 +1283,14 @@ basedir:
 		        opts.modwin = atoi(optarg);
 			break;
 		case OP_OUTFORMAT:
-		        opts.outformat = optarg;
+		case OP_LOGFORMAT:
+			free(opts.outformat);
+		        opts.outformat = strdup(optarg);
+			break;
+		case 'i':
+		case OP_ITEMIZE:
+			free(opts.outformat);
+		        opts.outformat = strdup("%i %n%L");
 			break;
 		case OP_APPEND:
 			opts.append++;
@@ -1622,7 +1634,6 @@ main(int argc, char *argv[])
 	struct sess	 sess;
 	struct fargs	*fargs;
 	char		**args;
-	int              printflags;
 
 	/* Global pledge. */
 
@@ -1651,19 +1662,6 @@ main(int argc, char *argv[])
 	 */
 	if (opts.read_batch == NULL && argc < 2)
 		usage(ERR_SYNTAX);
-
-	/*
-	  * Determine whether we:
-	  * - need to itemize
-	  * - need to do output late
-	  */
-	sess.opts = &opts;
-	printflags = output(&sess, NULL, 0);
-	if (printflags & 1)
-		sess.itemize = 1;
-	if (printflags & 2)
-		sess.lateprint = 1;
-	LOG3("Printing(%d): itemize %d late %d", getpid(), sess.itemize, sess.lateprint);
 
 	/*
 	 * Signals blocked until we understand what session we'll be using.
@@ -1854,7 +1852,11 @@ main(int argc, char *argv[])
 	}
 
 	free(opts.filesfrom_host);
+	opts.filesfrom_host = NULL;
 	free(opts.filesfrom_path);
+	opts.filesfrom_path = NULL;
+	free(opts.outformat);
+	opts.outformat = NULL;
 
 	exit(rc);
 }
