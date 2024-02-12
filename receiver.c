@@ -80,12 +80,12 @@ rsync_set_metadata(struct sess *sess, int newfile,
 	mode_t		 mode;
 	struct timespec	 ts[2];
 	struct stat      st;
-	bool		 preserve_executability;
+	bool		 pres_exec;
 
-	preserve_executability = !newfile && S_ISREG(f->st.mode) &&
+	pres_exec = !newfile && S_ISREG(f->st.mode) &&
 	    (sess->opts->preserve_executability && !sess->opts->preserve_perms);
 
-	if (preserve_executability) {
+	if (pres_exec) {
 		if (fstat(fd, &st) == -1)
 			if (errno == ENOENT)
 				return 1;
@@ -141,7 +141,7 @@ rsync_set_metadata(struct sess *sess, int newfile,
 			return 0;
 		}
 		LOG4("%s: updated permissions", f->path);
-	} else if (preserve_executability) {
+	} else if (pres_exec) {
 		mode = preserve_executability_check(mode, st.st_mode);
 		if (mode != 0) {
 			if (fchmod(fd, mode) == -1) {
@@ -164,12 +164,12 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	mode_t		 mode;
 	struct timespec	 ts[2];
 	struct stat      st;
-	bool		 preserve_executability;
+	bool		 pres_exec;
 
-	preserve_executability = !newfile && S_ISREG(f->st.mode) &&
+	pres_exec = !newfile && S_ISREG(f->st.mode) &&
 	    (sess->opts->preserve_executability && !sess->opts->preserve_perms);
 
-	if (preserve_executability || sess->opts->ign_non_exist) {
+	if (pres_exec || sess->opts->ign_non_exist) {
 		if (fstatat(rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW) == -1)
 			if (errno == ENOENT)
 				return 1;
@@ -225,7 +225,7 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 			return 0;
 		}
 		LOG4("%s: updated permissions", f->path);
-	} else if (preserve_executability) {
+	} else if (pres_exec) {
 		mode = preserve_executability_check(mode, st.st_mode);
 		if (mode != 0) {
 			if (fchmodat(rootfd, path, mode, AT_SYMLINK_NOFOLLOW) == -1) {
