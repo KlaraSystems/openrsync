@@ -92,6 +92,7 @@ struct daemon_role {
 	struct daemon_cfg	*dcfg;		/* (f) daemon config */
 	const char		*pid_file;	/* (c) daemon pidfile path */
 	FILE			*pidfp;		/* (f) daemon pidfile */
+	int			 lockfd;
 	int			 client;
 	bool			 client_control;
 };
@@ -387,6 +388,99 @@ daemon_write_motd(struct sess *sess, const char *motd_file, int outfd)
 	return retval;
 }
 
+/* Compatible with smb rsync, just in case. */
+#define	CONNLOCK_START(conn)	((conn) * 4)
+#define	CONNLOCK_SIZE(conn)	(4)
+
+static int
+daemon_rangelock(struct sess *sess, const char *module, const char *lockf,
+    int max)
+{
+	struct flock rlock = {
+		.l_start = 0,
+		.l_len = 0,
+		.l_type = F_WRLCK,
+		.l_whence = SEEK_SET,
+	};
+	struct daemon_role *role;
+	int fd, rc;
+
+	role = (void *)sess->role;
+	fd = open(lockf, O_WRONLY | O_CREAT, 0644);
+	if (fd == -1) {
+		daemon_client_error(sess, "%s: failed to open the lock file",
+		    module);
+		return 0;
+	}
+
+	/*
+	 * We naturally can't guarantee a specific slot, so search the entire
+	 * space until we find an open one.
+	 */
+	for (int i = 0; i < max; i++) {
+		rlock.l_start = CONNLOCK_START(i);
+		rlock.l_start = CONNLOCK_SIZE(i);
+
+		rc = fcntl(fd, F_SETLK, &rlock);
+		if (rc == -1 && errno != EAGAIN) {
+			/*
+			 * We won't alert the client on these, apparently.
+			 */
+			ERR("%s: lock fcntl", lockf);
+			break;
+		} else if (rc == -1) {
+			continue;
+		}
+
+		/* Success! Stash the fd. */
+		role->lockfd = fd;
+		return 1;
+	}
+
+	daemon_client_error(sess, "%s: too many connections (%d max)", module,
+	    max);
+	close(fd);
+	return 0;
+}
+
+/*
+ * Return value of this one is reversed, as we're describing whether the
+ * connection is being limited from happening or not.
+ */
+static int
+daemon_connection_limited(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+	const char *lockf;
+	int max, rc;
+
+	role = (void *)sess->role;
+	if (cfg_param_int(role->dcfg, module, "max connections", &max) != 0) {
+		ERRX("%s: 'max connections' invalid", module);
+		return 1;
+	}
+
+	if (max < 0) {
+		/* Disabled */
+		daemon_client_error(sess,
+		    "module '%s' is currently disabled", module);
+		return 1;
+	} else if (max == 0) {
+		/* Unlimited allowed */
+		return 0;
+	}
+
+	rc = cfg_param_str(role->dcfg, module, "lock file", &lockf);
+	assert(rc == 0);
+
+	if (*lockf == '\0') {
+		ERR("%s: 'lock file' is empty with 'max connections' in place", module);
+		return 1;
+	}
+
+	return !daemon_rangelock(sess, module, lockf, max);
+}
+
 static int
 daemon_operation_allowed(struct sess *sess, const struct opts *opts,
     const char *module)
@@ -447,6 +541,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	role = (void *)sess->role;
 	role->client = fd;
+	assert(role->lockfd == -1);
 
 	/* XXX These should perhaps log an error, but they are not fatal. */
 	(void)rsync_setsockopts(fd, "SO_KEEPALIVE");
@@ -500,6 +595,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		daemon_client_error(sess, "%s is not a valid module", module);
 		goto fail;
 	}
+
+	if (daemon_connection_limited(sess, module))
+		goto fail;
 
 	if (cfg_param_bool(role->dcfg, module, "use chroot",
 	    &use_chroot) != 0) {
@@ -619,6 +717,11 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		}
 	}
 
+	if (role->lockfd != -1) {
+		close(role->lockfd);
+		role->lockfd = -1;
+	}
+
 	for (int i = 0; i < argc; i++)
 		free(argv[i]);
 	free(argv);
@@ -629,6 +732,10 @@ fail:
 	free(module);
 	cfg_free(role->dcfg);
 	role->dcfg = NULL;
+	if (role->lockfd != -1) {
+		close(role->lockfd);
+		role->lockfd = -1;
+	}
 
 	for (int i = 0; i < argc; i++)
 		free(argv[i]);
@@ -706,6 +813,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 
 	role.cfg_file = "/etc/rsyncd.conf";
 	role.client = -1;
+	role.lockfd = -1;
 	/* Log to syslog by default. */
 	logfile = NULL;
 
