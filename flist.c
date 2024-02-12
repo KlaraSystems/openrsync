@@ -419,7 +419,7 @@ int
 flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
     size_t flsz)
 {
-	size_t		 i, sz, gidsz = 0, uidsz = 0;
+	size_t		 i, sz, gidsz = 0, uidsz = 0, sendidsz;
 	uint16_t	 flag;
 	const struct flist *f;
 	const char	*fn;
@@ -646,17 +646,27 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 
 	/* Conditionally write identifier lists. */
 
-	if (sess->opts->preserve_uids && !sess->opts->numeric_ids) {
-		LOG2("sending uid list: %zu", uidsz);
-		if (!idents_send(sess, fdout, uids, uidsz)) {
+	if (sess->opts->preserve_uids && sess->opts->numeric_ids != NIDS_FULL) {
+		/* Account for "stealth" --numeric-ids, don't always send it. */
+		if (!sess->opts->numeric_ids)
+			sendidsz = uidsz;
+		else
+			sendidsz = 0;
+		LOG2("sending uid list: %zu", sendidsz);
+		if (!idents_send(sess, fdout, uids, sendidsz)) {
 			ERRX1("idents_send");
 			goto out;
 		}
 	}
 
-	if (sess->opts->preserve_gids && !sess->opts->numeric_ids) {
-		LOG2("sending gid list: %zu", gidsz);
-		if (!idents_send(sess, fdout, gids, gidsz)) {
+	if (sess->opts->preserve_gids && sess->opts->numeric_ids != NIDS_FULL) {
+		/* Account for "stealth" --numeric-ids, don't always send it. */
+		if (!sess->opts->numeric_ids)
+			sendidsz = gidsz;
+		else
+			sendidsz = 0;
+		LOG2("sending gid list: %zu", sendidsz);
+		if (!idents_send(sess, fdout, gids, sendidsz)) {
 			ERRX1("idents_send");
 			goto out;
 		}
@@ -1265,7 +1275,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 
 	/* Conditionally read the user/group list. */
 
-	if (sess->opts->preserve_uids && !sess->opts->numeric_ids) {
+	if (sess->opts->preserve_uids && sess->opts->numeric_ids != NIDS_FULL) {
 		if (!idents_recv(sess, fdin, &uids, &uidsz)) {
 			ERRX1("idents_recv");
 			goto out;
@@ -1273,7 +1283,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		LOG2("received uid list: %zu", uidsz);
 	}
 
-	if (sess->opts->preserve_gids && !sess->opts->numeric_ids) {
+	if (sess->opts->preserve_gids && sess->opts->numeric_ids != NIDS_FULL) {
 		if (!idents_recv(sess, fdin, &gids, &gidsz)) {
 			ERRX1("idents_recv");
 			goto out;

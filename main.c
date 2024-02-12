@@ -650,6 +650,7 @@ enum {
 	OP_LINK_DEST,
 	OP_MAX_SIZE,
 	OP_MIN_SIZE,
+	OP_NUMERIC_IDS,
 	OP_SPARSE,
 
 	OP_SOCKOPTS,
@@ -757,7 +758,7 @@ static const struct option	 lopts[] = {
     { "no-motd",	no_argument,	&opts.no_motd,		1 },
     { "no-links",	no_argument,	&opts.preserve_links,	0 },
     { "no-l",		no_argument,	&opts.preserve_links,	0 },
-    { "numeric-ids",	no_argument,	&opts.numeric_ids,	1 },
+    { "numeric-ids",	no_argument,	NULL,			OP_NUMERIC_IDS },
     { "omit-dir-times",	no_argument,	NULL,			'O' },
     { "owner",		no_argument,	NULL,			'o' },
     { "no-owner",	no_argument,	&opts.preserve_uids,	0 },
@@ -1220,6 +1221,9 @@ basedir:
 			if (scan_scaled(optarg, &tmpint) == -1)
 				err(1, "bad min-size");
 			opts.min_size = tmpint;
+			break;
+		case OP_NUMERIC_IDS:
+			opts.numeric_ids = NIDS_FULL;
 			break;
 		case OP_NO_D:
 			opts.devices = 0;

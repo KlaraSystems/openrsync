@@ -231,3 +231,51 @@ daemon_rangelock(struct sess *sess, const char *module, const char *lockf,
 	close(fd);
 	return 0;
 }
+
+int
+daemon_set_numeric_ids(struct sess *sess, struct opts *opts,
+    const char *module, int use_chroot)
+{
+	struct daemon_role *role;
+	int bnids;
+
+	role = (void *)sess->role;
+
+	/* If the client requested --numeric-ids, we'll just leave it be. */
+	if (opts->numeric_ids != NIDS_OFF)
+		return 1;
+
+	/*
+	 * If the parameter's not been specified, then its default depends on
+	 * whether we're chrooted or not.  Note that `use_chroot` may be 0, 1,
+	 * or 2, but the distinction between 1 and 2 (must chroot, try chroot)
+	 * does not mattter because the caller shouldn't pass a try chroot if
+	 * the chroot failed.
+	 */
+	if (!cfg_has_param(role->dcfg, module, "numeric ids")) {
+		/*
+		 * The client isn't aware that we're running with --numeric-ids,
+		 * so we had to make this a tri-state to support a mode where we
+		 * still send an empty list.
+		 */
+		if (use_chroot)
+			opts->numeric_ids = NIDS_STEALTH;
+		else
+			opts->numeric_ids = NIDS_OFF;
+		return 1;
+	}
+
+	/*
+	 * Otherwise, we'll defer to a config-set value of numeric ids to
+	 * determine if we're doing it or not.
+	 */
+	if (cfg_param_bool(role->dcfg, module, "numeric ids", &bnids) != 0) {
+		ERR("%s: 'numeric ids' invalid", module);
+		return 0;
+	}
+
+	if (bnids)
+		opts->numeric_ids = NIDS_STEALTH;
+
+	return 1;
+}

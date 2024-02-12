@@ -68,6 +68,8 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
 	PARAM_DFLT("max connections",	"maxconnections",	"0"),
 	PARAM_DFLT("max verbosity",	"maxverbosity",	"1"),
+	/* numeric ids default is based on chroot. */
+	PARAM("numeric ids",	"numericids"),
 	PARAM("path",		NULL),
 	PARAM_DFLT("read only",		"readonly",	"true"),
 	PARAM_DFLT("timeout",	NULL,	"0"),
@@ -76,8 +78,6 @@ static struct rsync_daemon_param {
 
 	/* Not implemented module options */
 	PARAM("comment",	NULL),
-	/* default enabled for chroot */
-	PARAM("numeric ids",	"numericids"),
 	/* default disabled when chroot */
 	PARAM("munge symlinks",	"mungesymlinks"),
 	PARAM("log file",	"logfile"),
