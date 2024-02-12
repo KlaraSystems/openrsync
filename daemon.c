@@ -90,6 +90,64 @@ daemon_usage(int exitcode)
 }
 
 static int
+daemon_list_module(struct daemon_cfg *dcfg, const char *module, void *cookie)
+{
+	struct sess *sess;
+	struct daemon_role *role;
+	char *buf;
+	const char *comment;
+	int fd, list, rc;
+
+	sess = cookie;
+	role = (void *)sess->role;
+	fd = role->client;
+
+	if (cfg_param_bool(dcfg, module, "list", &list) != 0) {
+		ERRX("%s: 'list' is not valid", module);
+		return 0;
+	}
+
+	if (!list)
+		return 1;
+
+	if (!cfg_has_param(dcfg, module, "comment")) {
+		if (!io_write_line(sess, fd, module)) {
+			ERR("io_write_line");
+			return 0;
+		}
+
+		return 1;
+	}
+
+	rc = cfg_param_str(dcfg, module, "comment", &comment);
+	assert(rc == 0);
+
+	if (asprintf(&buf, "%-15s%s", module, comment) == -1) {
+		ERR("asprintf");
+		return 0;
+	}
+
+
+	if (!io_write_line(sess, fd, buf)) {
+		free(buf);
+		ERR("io_write_line");
+		return 0;
+	}
+
+	free(buf);
+	return 1;
+}
+
+static int
+daemon_list(struct sess *sess)
+{
+	struct daemon_role *role;
+
+	role = (void *)sess->role;
+	return cfg_foreach_module(role->dcfg, daemon_list_module, sess);
+}
+
+static int
 daemon_read_hello(struct sess *sess, int fd, char **module)
 {
 	char buf[BUFSIZ];
@@ -106,7 +164,14 @@ daemon_read_hello(struct sess *sess, int fd, char **module)
 
 	for (size_t linecnt = 0; linecnt < 2; linecnt++) {
 		linesz = sizeof(buf);
-		if (!io_read_line(sess, fd, buf, &linesz) || linesz == 0) {
+		if (!io_read_line(sess, fd, buf, &linesz) ||
+		    (linesz == 0 && linecnt == 0)) {
+			/*
+			 * An empty line is an error, unless we already have our
+			 * version information.  If we only receive version
+			 * information, it's implied that the client just wants
+			 * a listing.
+			 */
 			daemon_client_error(sess,
 			    "protocol violation: expected version and module information");
 			return -1;
@@ -161,7 +226,12 @@ daemon_read_hello(struct sess *sess, int fd, char **module)
 				return -1;
 			}
 		} else {
-			*module = strdup(buf);
+			if (linesz == 0) {
+				*module = strdup("#list");
+			} else {
+				*module = strdup(buf);
+			}
+
 			if (*module == NULL) {
 				ERR("strdup");
 				return -1;
@@ -371,7 +441,28 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (!rc)
 		goto fail;
 
-	if (!cfg_is_valid_module(role->dcfg, module)) {
+	if (module[0] == '#') {
+		/*
+		 * This is actually a command, but the only command we know of
+		 * at the moment is #list.  If we grow more, we can perhaps make
+		 * this table-based instead of inlined.
+		 */
+		if (strcmp(module + 1, "list") != 0) {
+			daemon_client_error(sess, "%s is not a known command",
+			    module);
+			goto fail;
+		}
+
+		if (!daemon_list(sess))
+			goto fail;
+
+		if (!io_write_line(sess, fd, "@RSYNCD: EXIT")) {
+			ERR("io_write_line");
+			goto fail;
+		}
+
+		goto done;
+	} else if (!cfg_is_valid_module(role->dcfg, module)) {
 		daemon_client_error(sess, "%s is not a valid module", module);
 		goto fail;
 	}
@@ -500,6 +591,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		}
 	}
 
+done:
 	if (role->lockfd != -1) {
 		close(role->lockfd);
 		role->lockfd = -1;

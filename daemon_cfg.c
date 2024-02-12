@@ -65,6 +65,8 @@ static struct rsync_daemon_param {
 	PARAM("socket options",	"socketoptions"),
 
 	/** Module parameters **/
+	PARAM("comment",	NULL),
+	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
 	PARAM_DFLT("max connections",	"maxconnections",	"0"),
 	PARAM_DFLT("max verbosity",	"maxverbosity",	"1"),
@@ -77,13 +79,11 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("write only",	"writeonly",	"false"),
 
 	/* Not implemented module options */
-	PARAM("comment",	NULL),
 	/* default disabled when chroot */
 	PARAM("munge symlinks",	"mungesymlinks"),
 	PARAM("log file",	"logfile"),
 
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
-	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("uid",		NULL,		"-2"),
 	PARAM_DFLT("gid",		NULL,		"-2"),
 	PARAM("filter",		NULL),
@@ -689,6 +689,26 @@ cfg_param_resolve(struct daemon_cfg *dcfg, const char *which_mod,
 		*odparam = dparam;
 	*ocparam = cparam;
 	return 0;
+}
+
+int
+cfg_foreach_module(struct daemon_cfg *dcfg, cfg_module_iter *moditer,
+    void *cookie)
+{
+	struct daemon_cfg_module *module;
+	int rc;
+
+	rc = 1;
+	STAILQ_FOREACH(module, &dcfg->modules, entry) {
+		if (strcmp(module->name, "global") == 0)
+			continue;
+
+		rc = moditer(dcfg, module->name, cookie);
+		if (!rc)
+			break;
+	}
+
+	return rc;
 }
 
 int
