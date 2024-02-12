@@ -17,6 +17,7 @@
 
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
@@ -28,6 +29,7 @@
 #include <netdb.h>
 #include <poll.h>
 #include <resolv.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -675,10 +677,21 @@ out:
 	return rc;
 }
 
+static void
+listener_reap(int signal __attribute__((unused)))
+{
+	int status;
+
+	while (waitpid(0, &status, WNOHANG) > 0) {
+		continue;
+	}
+}
+
 int
 rsync_listen(struct sess *sess, rsync_client_handler *handler)
 {
 	struct pollfd	  pfd[2];	/* IPv4 and/or IPv6 */
+	struct sigaction  sigact;
 	const struct opts *opts = sess->opts;
 	struct source	 *bsrc = NULL;
 	size_t		  bsrcsz = 0, i;
@@ -732,6 +745,14 @@ rsync_listen(struct sess *sess, rsync_client_handler *handler)
 				close(pfd[j].fd);
 			return ERR_IPC;
 		}
+	}
+
+	sigact.sa_handler = listener_reap;
+	sigact.sa_flags = SA_NOCLDSTOP;
+	sigemptyset(&sigact.sa_mask);
+	if (sigaction(SIGCHLD, &sigact, NULL) != 0) {
+		ERR("sigaction");
+		return ERR_IPC;
 	}
 
 	for (;;) {
