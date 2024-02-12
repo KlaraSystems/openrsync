@@ -666,7 +666,9 @@ void	rsync_errx1(const char *, ...)
 /* Opaque */
 struct daemon_cfg	*cfg_parse(const struct sess *, const char *,
 	    int module);
+typedef int cfg_module_iter(struct daemon_cfg *, const char *, void *);
 void	 cfg_free(struct daemon_cfg *);
+int	 cfg_foreach_module(struct daemon_cfg *, cfg_module_iter *, void *);
 int	 cfg_is_valid_module(struct daemon_cfg *, const char *);
 int	 cfg_param_bool(struct daemon_cfg *, const char *, const char *,
 	    int *);
