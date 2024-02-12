@@ -420,6 +420,22 @@ daemon_operation_allowed(struct sess *sess, const struct opts *opts,
 }
 
 static int
+daemon_limit_verbosity(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+	int max;
+
+	role = (void *)sess->role;
+	if (cfg_param_int(role->dcfg, module, "max verbosity", &max) != 0) {
+		ERRX("%s: 'max verbosity' invalid", module);
+		return 0;
+	}
+
+	verbose = MINIMUM(verbose, max);
+	return 1;
+}
+
+static int
 rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
     size_t slen)
 {
@@ -556,6 +572,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	if (!daemon_operation_allowed(sess, client_opts, module))
 		goto fail;	/* Error already logged. */
+
+	if (!daemon_limit_verbosity(sess, module))
+		goto fail;
 
 	/* Generate a seed. */
 	if (client_opts->checksum_seed == 0) {
