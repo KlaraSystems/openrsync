@@ -478,6 +478,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (client_opts->filesfrom_path != NULL)
 		daemon_normalize_paths(module, 1, &client_opts->filesfrom_path);
 
+	if (!daemon_set_numeric_ids(sess, client_opts, module, use_chroot))
+		goto fail;
+
 	sess->opts = client_opts;
 	sess->mplex_writes = 1;
 	/* XXX LOG2("write multiplexing enabled"); */

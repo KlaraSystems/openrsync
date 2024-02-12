@@ -245,6 +245,13 @@ enum	delmode {
 	DMODE_AFTER,
 };
 
+/* --numeric-ids mode */
+enum	nidsmode {
+	NIDS_OFF,	/* No numeric IDs */
+	NIDS_STEALTH,	/* Numeric IDs, client side is unaware */
+	NIDS_FULL,	/* Numeric IDs, both sides know */
+};
+
 /*
  * Super modes; we can either force an attempt of super-user activities, write
  * them into xattrs (fake), or we can disable super-user activities altogether.
@@ -373,7 +380,7 @@ struct	opts {
 	int		 specials;		/* --specials */
 	int		 no_cache;		/* --no-cache */
 	int		 no_motd;		/* --no-motd */
-	int		 numeric_ids;		/* --numeric-ids */
+	enum nidsmode	 numeric_ids;		/* --numeric-ids */
 	int		 one_file_system;	/* -x */
 	int		 omit_dir_times;	/* -O */
 	int		 ignore_times;		/* -I --ignore-times */
