@@ -343,6 +343,16 @@ and
 .Em rules
 from
 .Em file .
+.It Fl E , -executability
+Preserve the executability of regular files (i.e., a file is "executable" if
+at least one 'x' mode bit is enabled in its permissions).
+If the source file is executable, then for each 'r' mode bit enabled in the
+destination file's permissions, the corresponding 'x' mode bit will be enabled.
+If the source file is not executable then all ugo 'x' mode bits of the destination
+file will be disabled.
+This option has no effect if
+.Fl -perms
+is also specified.
 .It Fl 0 , -from0
 Use a null (\&'\e0\&') character, rather than a newline to separate filenames read from:
 .Fl -exclude-from ,
