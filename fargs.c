@@ -310,6 +310,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--force");
 	if (sess->opts->ignore_errors)
 		addargs(&args, "--ignore-errors");
+	if (sess->opts->preserve_executability)
+		addargs(&args, "--executability");
 
 #ifdef __APPLE__
 	if (sess->opts->no_cache == 0) {

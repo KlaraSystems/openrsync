@@ -45,6 +45,32 @@ enum	pfdt {
 	PFD__MAX
 };
 
+/*
+ * Returns the new destination file mode if the application of the
+ * executability option rules would result in it differing from
+ * dstmode.  Returns 0 otherwise.
+ */
+static mode_t
+preserve_executability_check(const mode_t srcmode, const mode_t dstmode)
+{
+	const mode_t xmask = S_IXUSR | S_IXGRP | S_IXOTH;
+	bool xsrc = srcmode & xmask;
+	bool xdst = dstmode & xmask;
+	mode_t mode = 0;
+
+	if (xsrc != xdst) {
+		if (xsrc) {
+			mode_t rmask = dstmode & (S_IRUSR | S_IRGRP | S_IROTH);
+
+			mode = dstmode | (rmask >> 2);
+		} else {
+			mode = dstmode & ~xmask;
+		}
+	}
+
+	return mode;
+}
+
 int
 rsync_set_metadata(struct sess *sess, int newfile,
 	int fd, const struct flist *f, const char *path)
@@ -53,6 +79,17 @@ rsync_set_metadata(struct sess *sess, int newfile,
 	gid_t		 gid = (gid_t)-1;
 	mode_t		 mode;
 	struct timespec	 ts[2];
+	struct stat      st;
+	bool		 preserve_executability;
+
+	preserve_executability = !newfile && S_ISREG(f->st.mode) &&
+	    (sess->opts->preserve_executability && !sess->opts->preserve_perms);
+
+	if (preserve_executability) {
+		if (fstat(fd, &st) == -1)
+			if (errno == ENOENT)
+				return 1;
+	}
 
 	/* Conditionally adjust file modification time. */
 
@@ -104,6 +141,15 @@ rsync_set_metadata(struct sess *sess, int newfile,
 			return 0;
 		}
 		LOG4("%s: updated permissions", f->path);
+	} else if (preserve_executability) {
+		mode = preserve_executability_check(mode, st.st_mode);
+		if (mode != 0) {
+			if (fchmod(fd, mode) == -1) {
+				ERR("%s: fchmod", path);
+				return 0;
+			}
+			LOG4("%s: updated permissions", f->path);
+		}
 	}
 
 	return 1;
@@ -118,11 +164,16 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	mode_t		 mode;
 	struct timespec	 ts[2];
 	struct stat      st;
+	bool		 preserve_executability;
 
-	if (sess->opts->ign_non_exist)
+	preserve_executability = !newfile && S_ISREG(f->st.mode) &&
+	    (sess->opts->preserve_executability && !sess->opts->preserve_perms);
+
+	if (preserve_executability || sess->opts->ign_non_exist) {
 		if (fstatat(rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW) == -1)
 			if (errno == ENOENT)
 				return 1;
+	}
 
 	/* Conditionally adjust file modification time. */
 
@@ -174,6 +225,15 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 			return 0;
 		}
 		LOG4("%s: updated permissions", f->path);
+	} else if (preserve_executability) {
+		mode = preserve_executability_check(mode, st.st_mode);
+		if (mode != 0) {
+			if (fchmodat(rootfd, path, mode, AT_SYMLINK_NOFOLLOW) == -1) {
+				ERR("%s: fchmodat", path);
+				return 0;
+			}
+			LOG4("%s: updated permissions", f->path);
+		}
 	}
 
 	return 1;

@@ -360,6 +360,7 @@ struct	opts {
 	int		 preserve_executability;	/* --executability */
 	int		 modwin;		/* --modify-windows=sec */
 	int		 fuzzy_basis;		/* -y */
+	int		 preserve_executability;	/* --executability */
 };
 
 enum rule_type {

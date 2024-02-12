@@ -670,6 +670,7 @@ static const struct option	 lopts[] = {
     { "dry-run",	no_argument,	NULL,			'n' },
     { "exclude",	required_argument, NULL,		OP_EXCLUDE },
     { "exclude-from",	required_argument, NULL,		OP_EXCLUDE_FROM },
+    { "executability",	no_argument,	NULL,			'E' },
     { "existing",	no_argument, NULL,			OP_IGNORE_NON_EXISTING },
     { "filter",		required_argument, NULL,		'f' },
     { "force",		no_argument,	NULL,			OP_FORCE },
@@ -816,7 +817,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 #endif
 	opts.protocol = RSYNC_PROTOCOL;
 
-	while ((c = getopt_long(argc, argv, "046B:CDEFHIKLOPRSVWabcde:f:ghklnoprtuvxy", lopts,
+	while ((c = getopt_long(argc, argv, "046B:CDEFHIKLOPRSVWabcde:f:ghklnoprtuvxyz", lopts,
 	    &lidx)) != -1) {
 		/* Give the filter a shot to reject the option. */
 		if (filter != NULL) {
@@ -873,6 +874,9 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 		case 'D':
 			opts.devices = 1;
 			opts.specials = 1;
+			break;
+		case 'E':
+			opts.preserve_executability = 1;
 			break;
 		case 'F': {
 			const char *new_rule = NULL;
