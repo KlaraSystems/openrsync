@@ -77,7 +77,7 @@ static struct rsync_daemon_param {
 	/* Not implemented module options */
 	PARAM("comment",	NULL),
 	/* default enabled for chroot */
-	PARAM("numeric ids",	"numericds"),
+	PARAM("numeric ids",	"numericids"),
 	/* default disabled when chroot */
 	PARAM("munge symlinks",	"mungesymlinks"),
 	PARAM("log file",	"logfile"),
