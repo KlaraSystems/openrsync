@@ -1101,8 +1101,13 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		}
 
 		if (!sess->opts->ignore_times) {
-			if (st->st_mtime == f->st.mtime)
+			if (labs(f->st.mtime - st->st_mtime) <=
+				sess->opts->modwin) {
+				if (f->st.mtime != st->st_mtime)
+					LOG3("%s: fits time modify window",
+						f->path);
 				return 0;
+			}
 			return 1;
 		}
 	}

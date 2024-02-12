@@ -632,6 +632,9 @@ enum {
 	OP_FORCE,
 	OP_PROTOCOL,
 	OP_IGNORE_ERRORS,
+	OP_OUTFORMAT,
+	OP_BIT8,
+	OP_MODWIN,
 };
 
 static const struct option	 lopts[] = {
@@ -755,6 +758,8 @@ static const struct option	 lopts[] = {
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
     { "from0",		no_argument,	NULL,			'0' },
     { "delay-updates",	no_argument,	&opts.dlupdates,	1 },
+    { "8-bit-output",	no_argument,	NULL,			OP_BIT8 },
+    { "modify-window",	required_argument,	NULL,		OP_MODWIN },
     { NULL,		0,		NULL,			0 }
 };
 
@@ -771,8 +776,8 @@ usage(int exitcode)
 	    "\t[--existing] [--force] [--ignore-errors]\n"
 	    "\t[--ignore-existing] [--ignore-non-existing] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
-	    "\t[--max-size=SIZE] [--min-size=SIZE] [--no-motd] [--numeric-ids]\n"
-	    "\t[--partial] [--port=portnumber] [--progress] [--protocol]\n"
+	    "\t[--max-size=SIZE] [--min-size=SIZE] [--modify-window=sec ] [--no-motd] [--numeric-ids]\n"
+	    "\t[--out-format=FMT] [--partial] [--port=portnumber] [--progress] [--protocol]\n"
 	    "\t[--remove-source-files] [--rsync-path=program] [--safe-links] [--size-only]\n"
 	    "\t[--sockopts=sockopts] [--specials] [--suffix] [--super] [--timeout=seconds]\n"
 	    "\tsource ... directory\n",
@@ -1148,6 +1153,12 @@ basedir:
 			break;
 		case OP_FILESFROM:
 			opts.filesfrom = optarg;
+			break;
+		case OP_OUTFORMAT:
+		        opts.outformat = optarg;
+			break;
+		case OP_MODWIN:
+		        opts.modwin = atoi(optarg);
 			break;
 		case OP_APPEND:
 			opts.append++;
