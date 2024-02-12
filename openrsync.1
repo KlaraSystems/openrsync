@@ -55,6 +55,7 @@
 .Op Fl -link-dest Ns = Ns Ar directory
 .Op Fl -max-size Ns = Ns size
 .Op Fl -min-size Ns = Ns size
+.Op Fl -modify-window Ns = Ns sec
 .Op Fl -no-motd
 .Op Fl -numeric-ids
 .Op Fl -partial
@@ -509,6 +510,11 @@ bytes.
 See
 .Fl -max-size
 on the definition of size.
+.It Fl -modify-window Ar sec
+When comparing file modification times for the purpose of speeding up
+transfers consider offsets of up to
+.Ar sec
+seconds the same.
 .It Fl n , -dry-run
 Do not actually modify the destination.
 Mainly useful in combination with
