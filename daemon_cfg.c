@@ -65,6 +65,8 @@ static struct rsync_daemon_param {
 	PARAM("socket options",	"socketoptions"),
 
 	/** Module parameters **/
+	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
+	PARAM_DFLT("max connections",	"maxconnections",	"0"),
 	PARAM_DFLT("max verbosity",	"maxverbosity",	"1"),
 	PARAM("path",		NULL),
 	PARAM_DFLT("read only",		"readonly",	"true"),
@@ -80,9 +82,7 @@ static struct rsync_daemon_param {
 	PARAM("munge symlinks",	"mungesymlinks"),
 	PARAM("log file",	"logfile"),
 
-	PARAM_DFLT("max connections",	"maxconnections",	"0"),
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
-	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
 	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("uid",		NULL,		"-2"),
 	PARAM_DFLT("gid",		NULL,		"-2"),
