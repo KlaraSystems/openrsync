@@ -586,8 +586,106 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		break;
 	}
 	case 'i': {
-		/* TODO itemize string */
+		/* itemize string YXcstpogz */
+		char buf[10];
+		int32_t ifl;
+
 		*rval |= 1;
+		if (do_print) {
+			ifl = fl->iflags;
+			if (ifl & IFLAG_DELETED) {
+				/*
+				 * TODO - this is not filled in by
+				 * mainline code yet.  Never gets here.
+				 */
+				strncpy(buf, "*deleted", sizeof(buf));
+				break;
+			}
+			bzero(buf, sizeof(buf));
+
+			/* TODO: finish buf[0].  This is very approximate */
+			if (ifl & IFLAG_HLINK_FOLLOWS)
+				buf[0] = 'h';
+			if (S_ISDIR(fl->st.mode))
+				buf[0] = 'c';
+			if (S_ISLNK(fl->st.mode))
+				buf[0] = 'c';
+			if (buf[0] == '\0' ) {
+				if (sess->mode == FARGS_SENDER)
+					buf[0] = '>';
+				else
+					buf[0] = '<';
+			}
+
+			if (S_ISDIR(fl->st.mode))
+				buf[1] = 'd';
+			if (S_ISLNK(fl->st.mode))
+				buf[1] = 'L';
+			if (S_ISSOCK(fl->st.mode) || S_ISFIFO(fl->st.mode))
+				buf[1] = 'S';
+			if (S_ISBLK(fl->st.mode) || S_ISCHR(fl->st.mode))
+				buf[1] = 'D';
+			if (buf[1] == '\0')
+				buf[1] = 'f';
+
+			if (ifl & IFLAG_CHECKSUM)
+				buf[2] = 'c';
+			else
+				buf[2] = '.';
+
+			if (ifl & IFLAG_SIZE)
+				buf[3] = 's';
+			else
+				buf[3] = '.';
+
+			buf[4] = '.';
+			if (ifl & IFLAG_TIME) {
+				if (!sess->opts->preserve_times ||
+				    S_ISLNK(fl->st.mode)) {
+					buf[4] = 'T';
+				} else {
+					buf[4] = 't';
+				}
+			}
+
+			if (ifl & IFLAG_PERMS)
+				buf[5] = 'p';
+			else
+				buf[5] = '.';
+
+			if (ifl & IFLAG_OWNER)
+				buf[6] = 'o';
+			else
+				buf[6] = '.';
+
+			if (ifl & IFLAG_GROUP)
+				buf[7] = 'g';
+			else
+				buf[7] = '.';
+
+			buf[8] = '.';
+
+			if (ifl & IFLAG_MISSING_DATA || ifl & IFLAG_NEW) {
+				char c;
+
+				if (ifl & IFLAG_NEW)
+					c = '+';
+				else
+					c = '?';
+				buf[2] = c; buf[3] = c; buf[4] = c;
+				buf[5] = c; buf[6] = c; buf[7] = c;
+				buf[8] = c;
+			} else {
+				if (buf[0] == '.' || buf[0] == 'h' ||
+				    (buf[0] == 'c' && buf[1] == 'f')) {
+					/* TODO: that weird space-filling */
+				}
+			}
+
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			fprintf(sess->opts->outfile, widthstring, buf);
+		}
 		break;
 	}
 	case 'l': {
@@ -629,22 +727,31 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		break;
 	}
 	case 'L': {
-		/* TODO: hardlinks */
 		char buf[8192];
 
+		/*
+		 * We set *rval |= 2
+		 * for "late print" here.  Theoretically late print is
+		 * only needed when hardlink printing is requested.
+		 * But with just the format string we can't tell
+		 * whether there will ever be hardlinks.
+		 */
+		*rval |= 2;
+
 		if (do_print) {
-			if (fl->link != NULL) {
-				snprintf(buf, sizeof(buf), "-> %s", fl->link);
+			if (fl->iflags & IFLAG_HLINK_FOLLOWS) {
+				snprintf(buf, sizeof(buf), " => %s", fl->link);
+				widthstring[l + 1] = 's';
+				widthstring[l + 2] = '\0';
+				print_7_or_8_bit(sess, widthstring, buf);
+			} else if (fl->link != NULL) {
+				snprintf(buf, sizeof(buf), " -> %s", fl->link);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
 				print_7_or_8_bit(sess, widthstring, buf);
 			}
+
 		}
-#if 0
-		/* TODO */
-		if (hardlinkstuff)
-			*rval |= 2;
-#endif
 		break;
 	}
 	case 'm': {
@@ -682,8 +789,11 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		break;
 	}
 	case 'o': {
-		/* the operation, which is "send", "recv", or "del." (the
-		   latter includes the trailing period) */
+		/*
+		 * TODO:
+		 * "the operation, which is "send", "recv", or "del." (the
+		 * latter includes the trailing period)"
+		 */
 		break;
 	}
 	case 'p': {
@@ -707,7 +817,8 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 
 		if (do_print) {
 			time(&now);
-			strftime(buf, sizeof(buf), "%Y/%m/%d-%H:%M:%S", localtime(&now));
+			strftime(buf, sizeof(buf), "%Y/%m/%d-%H:%M:%S",
+			    localtime(&now));
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
 			fprintf(sess->opts->outfile, widthstring, buf);
@@ -768,7 +879,7 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 					fmt = printf_doformat(fmt, &rval, sess,
 					    fl, do_print);
 					if (fmt == NULL || *fmt == '\0')
-						return rval;
+						goto out;
 					end = 0;
 				}
 				start = fmt;
@@ -782,6 +893,8 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 		if (do_print)
 			fwrite(start, 1, fmt - start, sess->opts->outfile);
 	}
+
+	out:
 	if (do_print)
 		fputc('\n', sess->opts->outfile);
 

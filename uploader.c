@@ -231,6 +231,18 @@ init_blk(struct blk *p, const struct blkset *set, off_t offs,
 }
 
 /*
+ * Tell the other side to run output from log-format/itemize.
+ * return 0 on success, non-0 otherwise.
+ */
+static int
+output_rem(struct sess *sess, struct flist *f, int idx, int fdout)
+{
+	if (!io_write_int_tagged(sess, fdout, idx, IT_INFO))
+		return 1;
+	return 0;
+}
+
+/*
  * Handle a symbolic link.
  * If we encounter directories existing in the symbolic link's place,
  * then try to unlink the directory.
@@ -266,11 +278,19 @@ pre_symlink(struct upload *p, struct sess *sess)
 
 	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
-
-	if (rc == -1 && errno != ENOENT) {
-		ERR("%s: fstatat", f->path);
-		return -1;
+	if (rc == -1) {
+		if (errno != ENOENT) {
+			ERR("%s: fstatat", f->path);
+			return -1;
+		} else
+			f->iflags |= IFLAG_NEW;
 	}
+
+	output_rem(sess, f, p->idx, p->fdout);
+
+	if (!sess->opts->ignore_times)
+		if (st.st_mtime != f->st.mtime)
+			f->iflags |= IFLAG_TIME;
 
 	if (rc != -1 && (sess->opts->inplace || !S_ISLNK(st.st_mode))) {
 		if (force_delete_applicable(p, sess, st.st_mode))
@@ -395,11 +415,15 @@ pre_dev(struct upload *p, struct sess *sess)
 	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
 
-	if (rc == -1 && errno != ENOENT) {
-		ERR("%s: fstatat", f->path);
-		return -1;
+	if (rc == -1) {
+		if (errno != ENOENT) {
+			ERR("%s: fstatat", f->path);
+			return -1;
+		} else
+			f->iflags |= IFLAG_NEW;
 	}
 
+	output_rem(sess, f, p->idx, p->fdout);
 
 	if (rc != -1 && !(S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
 		if (force_delete_applicable(p, sess, st.st_mode))
@@ -505,10 +529,15 @@ pre_fifo(struct upload *p, struct sess *sess)
 	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
 
-	if (rc == -1 && errno != ENOENT) {
-		ERR("%s: fstatat", f->path);
-		return -1;
+	if (rc == -1) {
+		if (errno != ENOENT) {
+			ERR("%s: fstatat", f->path);
+			return -1;
+		} else
+			f->iflags |= IFLAG_NEW;
 	}
+
+	output_rem(sess, f, p->idx, p->fdout);
 
 	if (rc != -1 && !S_ISFIFO(st.st_mode)) {
 		if (force_delete_applicable(p, sess, st.st_mode))
@@ -575,7 +604,7 @@ static int
 pre_sock(struct upload *p, struct sess *sess)
 {
 	struct stat		 st;
-	const struct flist	*f;
+	struct flist		*f;
 	int			 rc, newsock = 0;
 	char			*temp = NULL;
 
@@ -600,10 +629,16 @@ pre_sock(struct upload *p, struct sess *sess)
 	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
 
-	if (rc == -1 && errno != ENOENT) {
-		ERR("%s: fstatat", f->path);
-		return -1;
+	if (rc == -1) {
+		if (errno != ENOENT) {
+			ERR("%s: fstatat", f->path);
+			return -1;
+		} else
+			f->iflags |= IFLAG_NEW;
 	}
+
+	output_rem(sess, f, p->idx, p->fdout);
+
 	if (rc != -1 && !S_ISSOCK(st.st_mode)) {
 		if (S_ISDIR(st.st_mode) &&
 		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
@@ -663,7 +698,7 @@ pre_sock(struct upload *p, struct sess *sess)
 static int
 pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 {
-	const struct flist *cf, *f;
+	struct flist *cf, *f;
 	char *dirpath, *parg[2];
 	FTS *fts;
 	FTSENT *ent, *perish_ent = NULL;
@@ -896,7 +931,7 @@ pre_dir(struct upload *p, struct sess *sess)
 {
 	struct stat	 st;
 	int		 rc;
-	const struct flist *f;
+	struct flist    *f;
 
 	f = &p->fl[p->idx];
 	assert(S_ISDIR(f->st.mode));
@@ -914,10 +949,16 @@ pre_dir(struct upload *p, struct sess *sess)
 	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
 
-	if (rc == -1 && errno != ENOENT) {
-		ERR("%s: fstatat", f->path);
-		return -1;
+	if (rc == -1) {
+		if (errno != ENOENT) {
+			ERR("%s: fstatat", f->path);
+			return -1;
+		} else
+			f->iflags |= IFLAG_NEW;
 	}
+
+	output_rem(sess, f, p->idx, p->fdout);
+
 	if (rc != -1 && !S_ISDIR(st.st_mode)) {
 		if (sess->opts->keep_dirlinks &&
 			keep_dirlinks_applies(&st, f, p->rootfd)) {
@@ -977,7 +1018,7 @@ static int
 post_dir(struct sess *sess, const struct upload *u, size_t idx)
 {
 	struct stat	 st;
-	const struct flist *f;
+	struct flist *f;
 
 	f = &u->fl[idx];
 	assert(S_ISDIR(f->st.mode));
@@ -1018,11 +1059,13 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
  * The stat pointer st is only valid for 0, 1, 2, and 4 returns.
  */
 static int
-check_file(int rootfd, const struct flist *f, struct stat *st,
+check_file(int rootfd, struct flist *f, struct stat *st,
     struct sess *sess, const struct hardlinks *const hl,
     bool is_partialdir)
 {
 	const char *path = f->path;
+	int rc = -1;
+	unsigned char md[sizeof(f->md)];
 
 	if (is_partialdir)
 		path = download_partial_filepath(f);
@@ -1031,8 +1074,10 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 			if (sess->opts->ign_non_exist) {
 				LOG1("Skip non existing '%s'", f->path);
 				return 0;
-			} else
+			} else {
+				f->iflags |= IFLAG_NEW;
 				return 3;
+			}
 		}
 
 		ERR("%s: fstatat", f->path);
@@ -1046,10 +1091,14 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		 * already exist.  They need to be replaced by a hardlink.
 		 */
 		if (find_hl(f, hl)) {
-			if (st->st_nlink == 1)
+			if (st->st_nlink == 1) {
+				f->iflags |= IFLAG_NEW;
 				return 3;
-		} else if (st->st_nlink > 1)
+			}
+		} else if (st->st_nlink > 1) {
+			f->iflags |= IFLAG_NEW;
 			return 3;
+		}
 		/*
 		 * This covers the situation where two separate identical,
 		 * files are sent but they already exist as hardlink in
@@ -1087,20 +1136,34 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 		return 2;
 	}
 
+	if (sess->itemize) {
+		/*
+		 * This could be rolled into the if tree below, but
+		 * would make it uglier.
+		 */
+		if (st->st_size != f->st.size)
+			f->iflags |= IFLAG_SIZE;
+		if (!sess->opts->ignore_times)
+			if (st->st_mtime != f->st.mtime)
+				f->iflags |= IFLAG_TIME;
+		if (f->st.size != 0 && sess->opts->checksum) {
+			rc = hash_file_by_path(rootfd, f->path, f->st.size, md);
+			if (!(rc == 0 && memcmp(md, f->md, sizeof(md)) == 0))
+				f->iflags |= IFLAG_CHECKSUM;
+		}
+
+	}
+
 	/* quick check if file is the same */
 	if (st->st_size == f->st.size) {
 		if (sess->opts->size_only)
 			return 0;
 
 		if (sess->opts->checksum) {
-			unsigned char md[sizeof(f->md)];
-			int rc;
-
-			rc = hash_file_by_path(rootfd, f->path, f->st.size, md);
-
+			if (rc == -1)
+				rc = hash_file_by_path(rootfd, f->path, f->st.size, md);
 			if (rc == 0 && memcmp(md, f->md, sizeof(md)) == 0)
 				return 0;
-
 			return 2;
 		}
 
@@ -1131,7 +1194,7 @@ check_file(int rootfd, const struct flist *f, struct stat *st,
 static int
 pre_file_check_altdir(struct sess *sess, const struct upload *p,
     const char **matchdir, struct stat *st, const char *root,
-    const struct flist *f, const struct hardlinks *const hl, int rc,
+    struct flist *f, const struct hardlinks *const hl, int rc,
     int basemode, int *savedfd, bool is_partialdir)
 {
 	int dfd, x;
@@ -1706,8 +1769,6 @@ rsync_uploader(struct upload *u, int *fileinfd,
 				c = pre_sock(u, sess);
 			else
 				c = 0;
-			if (!sess->lateprint)
-				output(sess, &u->fl[u->idx], 1);
 
 			if (c < 0)
 				return -1;

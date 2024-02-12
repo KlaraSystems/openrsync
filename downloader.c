@@ -1737,8 +1737,6 @@ again:
 		ERRX1("rsync_set_metadata");
 		goto out;
 	}
-	if (sess->lateprint)
-		output(sess, f, 1);
 	/* 
 	 * Finally, rename the temporary to the real file, unless
 	 * --delay-updates is in effect, in which case it is going to
@@ -1856,6 +1854,8 @@ again:
 				if (errno != ENOENT)
 					ERRX1("unlink");
 
+			if (sess->itemize)
+				f->iflags |= IFLAG_HLINK_FOLLOWS;
 			if (linkat(p->rootfd, hl_p->path, p->rootfd, f->path,
 			    0) == -1) {
 				LOG0("While hard linking '%s' to '%s' ",

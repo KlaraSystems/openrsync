@@ -47,6 +47,7 @@
 #if HAVE_SCAN_SCALED
 # include <util.h>
 #endif
+#include <sys/param.h>
 
 #include "extern.h"
 #include "daemon.h"
