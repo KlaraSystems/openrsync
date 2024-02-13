@@ -490,6 +490,13 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	assert(rc == 0);
 
 	/*
+	 * Resolve UIDs/GIDs before we enter our chroot, just in case they're
+	 * not strictly numeric.
+	 */
+	if (!daemon_chuser_setup(sess, module))
+		goto fail;
+
+	/*
 	 * We don't currently support the /./ chroot syntax of rsync 3.x.
 	 */
 	chdir(module_path);
@@ -505,6 +512,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	}
 
 	role->client_control = true;
+
+	if (!daemon_chuser(sess, module))
+		goto fail;
 
 	if (!io_write_line(sess, fd, "@RSYNCD: OK")) {
 		ERRX1("io_write_line");

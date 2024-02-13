@@ -34,10 +34,15 @@ struct daemon_role {
 	const char		*pid_file;	/* (c) daemon pidfile path */
 	FILE			*pidfp;		/* (f) daemon pidfile */
 	int			 lockfd;
+	id_t			 uid;		/* setuid if root */
+	id_t			 gid;		/* setgid if root */
 	int			 client;
 	bool			 client_control;
+	bool			 do_setid;	/* do setuid/setgid */
 };
 
+int	daemon_chuser_setup(struct sess *, const char *);
+int	daemon_chuser(struct sess *, const char *);
 void	daemon_client_error(struct sess *, const char *, ...);
 int	daemon_connection_limited(struct sess *, const char *);
 int	daemon_limit_verbosity(struct sess *, const char *);

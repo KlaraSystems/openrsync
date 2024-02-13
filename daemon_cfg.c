@@ -66,6 +66,7 @@ static struct rsync_daemon_param {
 
 	/** Module parameters **/
 	PARAM("comment",	NULL),
+	PARAM_DFLT("gid",		NULL,		"-2"),
 	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
 	PARAM("log file",	"logfile"),
@@ -77,6 +78,7 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("read only",		"readonly",	"true"),
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
 	PARAM_DFLT("timeout",	NULL,	"0"),
+	PARAM_DFLT("uid",		NULL,		"-2"),
 	PARAM_DFLT("use chroot",	"usechroot",	"true"),
 	PARAM_DFLT("write only",	"writeonly",	"false"),
 
@@ -84,8 +86,6 @@ static struct rsync_daemon_param {
 	/* default disabled when chroot */
 	PARAM("munge symlinks",	"mungesymlinks"),
 
-	PARAM_DFLT("uid",		NULL,		"-2"),
-	PARAM_DFLT("gid",		NULL,		"-2"),
 	PARAM("filter",		NULL),
 	PARAM("exclude",	NULL),
 	PARAM("exclude from",	"excludefrom"),
