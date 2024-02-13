@@ -19,7 +19,10 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <grp.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <pwd.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,12 +30,103 @@
 
 #include "daemon.h"
 
+_Static_assert(sizeof(id_t) <= INT_MAX, "{u,g}id_t larger than expected");
 
 static int daemon_rangelock(struct sess *, const char *, const char *, int);
 
 /* Compatible with smb rsync, just in case. */
 #define	CONNLOCK_START(conn)	((conn) * 4)
 #define	CONNLOCK_SIZE(conn)	(4)
+
+static int
+daemon_chuser_resolve_name(const char *name, bool is_gid, id_t *oid)
+{
+	struct passwd *pwd;
+	struct group *grp;
+	char *endp;
+	long long rid;
+
+	if (is_gid) {
+		grp = getgrnam(name);
+		if (grp != NULL) {
+			*oid = grp->gr_gid;
+			return 1;
+		}
+	} else {
+		pwd = getpwnam(name);
+		if (pwd != NULL) {
+			*oid = pwd->pw_uid;
+			return 1;
+		}
+	}
+
+	errno = 0;
+	rid = strtoll(name, &endp, 10);
+	if (errno != 0 || *endp != '\0')
+		return 0;
+
+	if (rid < INT_MIN || rid > INT_MAX)
+		return 0;
+
+	*oid = (id_t)rid;
+	return 1;
+}
+
+int
+daemon_chuser_setup(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+	const char *gidstr, *uidstr;
+	int rc;
+
+	role = (void *)sess->role;
+	role->do_setid = geteuid() == 0;
+
+	/* If we aren't root, nothing to do. */
+	if (!role->do_setid)
+		return 1;
+
+	rc = cfg_param_str(role->dcfg, module, "uid", &uidstr);
+	assert(rc == 0);
+	if (!daemon_chuser_resolve_name(uidstr, false, &role->uid)) {
+		daemon_client_error(sess, "%s: uid '%s' invalid",
+		    module, uidstr);
+		return 0;
+	}
+
+	rc = cfg_param_str(role->dcfg, module, "gid", &gidstr);
+	assert(rc == 0);
+	if (!daemon_chuser_resolve_name(gidstr, true, &role->gid)) {
+		daemon_client_error(sess, "%s: gid '%s' invalid",
+		    module, gidstr);
+		return 0;
+	}
+
+	return 1;
+}
+
+int
+daemon_chuser(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+
+	role = (void *)sess->role;
+
+	if (!role->do_setid)
+		return 1;
+	if (role->gid != 0 && setgid((gid_t)role->gid) == -1) {
+		daemon_client_error(sess, "%s: setgid to '%d' failed",
+		    module, role->gid);
+		return 0;
+	}
+	if (role->uid != 0 && setuid((uid_t)role->uid) == -1) {
+		daemon_client_error(sess, "%s: setuid to '%d' failed",
+		    module, role->uid);
+		return 0;
+	}
+
+	return 1;
+}
 
 void
 daemon_client_error(struct sess *sess, const char *fmt, ...)
