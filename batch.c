@@ -198,7 +198,7 @@ rsync_batch(struct cleanup_ctx *cleanup_ctx, struct opts *opts,
 		goto out;
 	}
 
-	batch_apply_flags(&sess, &hdr, sess.opts);
+	batch_apply_flags(&sess, &hdr, opts);
 
 	sess.rver = hdr.rver;
 	if (sess.rver < sess.lver) {
