@@ -380,6 +380,36 @@ daemon_write_motd(struct sess *sess, const char *motd_file, int outfd)
 }
 
 static int
+daemon_extract_addr(struct sess *sess, struct sockaddr_storage *saddr,
+    size_t slen)
+{
+	sa_family_t family = saddr->ss_family;
+	struct daemon_role *role;
+	void *addr;
+
+	role = (void *)sess->role;
+	assert(family == AF_INET || family == AF_INET6);
+	if (family == AF_INET) {
+		struct sockaddr_in *sin = (void *)saddr;
+
+		addr = &sin->sin_addr;
+	} else {
+		struct sockaddr_in6 *sin6 = (void *)saddr;
+
+		addr = &sin6->sin6_addr;
+	}
+
+	if (inet_ntop(family, addr, &role->client_addr[0],
+	    sizeof(role->client_addr)) == NULL) {
+		ERR("inet_ntop");
+		return 0;
+	}
+
+	return 1;
+}
+
+
+static int
 rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
     size_t slen)
 {
@@ -389,24 +419,29 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	char **argv, *module, *motd_file;
 	int argc, flags, rc, use_chroot;
 
+	module = NULL;
+	argc = 0;
+	argv = NULL;
+
 	role = (void *)sess->role;
 	role->client = fd;
 	assert(role->lockfd == -1);
-
-	/* XXX These should perhaps log an error, but they are not fatal. */
-	(void)rsync_setsockopts(fd, "SO_KEEPALIVE");
-	(void)rsync_setsockopts(fd, sess->opts->sockopts);
 
 	motd_file = role->motd_file;
 	role->motd_file = NULL;
 
 	fclose(role->pidfp);
 	cfg_free(role->dcfg);
+	role->dcfg = NULL;
+
+	/* XXX These should perhaps log an error, but they are not fatal. */
+	(void)rsync_setsockopts(fd, "SO_KEEPALIVE");
+	(void)rsync_setsockopts(fd, sess->opts->sockopts);
+
+	if (!daemon_extract_addr(sess, saddr, slen))
+		goto fail;
 
 	sess->lver = RSYNC_PROTOCOL;
-	module = NULL;
-	argc = 0;
-	argv = NULL;
 
 	cleanup_init(cleanup_ctx);
 
@@ -466,6 +501,10 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		daemon_client_error(sess, "%s is not a valid module", module);
 		goto fail;
 	}
+
+	if (!daemon_fill_hostinfo(sess, module,
+	    (const struct sockaddr *)saddr, slen))
+		goto fail;
 
 	if (daemon_connection_limited(sess, module))
 		goto fail;

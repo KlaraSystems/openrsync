@@ -195,6 +195,31 @@ daemon_connection_limited(struct sess *sess, const char *module)
 }
 
 int
+daemon_fill_hostinfo(struct sess *sess, const char *module,
+    const struct sockaddr *addr, size_t slen)
+{
+	struct daemon_role *role;
+
+	role = (void *)sess->role;
+
+	/*
+	 * Nothing left to do here, nothing configured that needs reverse dns.
+	 */
+	if (!cfg_has_param(role->dcfg, module, "hosts allow") &&
+	    !cfg_has_param(role->dcfg, module, "hosts deny"))
+		return 1;
+
+	if (getnameinfo(addr, slen, &role->client_host[0],
+	    sizeof(role->client_host), NULL, 0, 0) != 0) {
+		daemon_client_error(sess, "%s: reverse dns lookup failed: %s",
+		    module, strerror(errno));
+		return 0;
+	}
+
+	return 1;
+}
+
+int
 daemon_limit_verbosity(struct sess *sess, const char *module)
 {
 	struct daemon_role *role;

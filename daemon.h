@@ -16,6 +16,12 @@
 #ifndef DAEMON_H
 #define	DAEMON_H
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+#include <netdb.h>
 #include <stdbool.h>
 
 #include "extern.h"
@@ -28,6 +34,8 @@
  */
 struct daemon_role {
 	struct role		 role;
+	char			 client_host[NI_MAXHOST]; /* hostname */
+	char			 client_addr[INET6_ADDRSTRLEN]; /* addr */
 	const char		*cfg_file;	/* (c) daemon config file */
 	char			*motd_file;	/* (f) client motd */
 	struct daemon_cfg	*dcfg;		/* (f) daemon config */
@@ -45,6 +53,8 @@ int	daemon_chuser_setup(struct sess *, const char *);
 int	daemon_chuser(struct sess *, const char *);
 void	daemon_client_error(struct sess *, const char *, ...);
 int	daemon_connection_limited(struct sess *, const char *);
+int	daemon_fill_hostinfo(struct sess *, const char *,
+	    const struct sockaddr *, size_t);
 int	daemon_limit_verbosity(struct sess *, const char *);
 void	daemon_normalize_paths(const char *, int, char *[]);
 int	daemon_open_logfile(const char *, bool);
