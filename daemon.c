@@ -750,23 +750,8 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	argc -= optind;
 	argv += optind;
 
-	if (logfile != NULL && *logfile == '\0')
-		logfile = NULL;
-	if (logfile != NULL) {
-		FILE *fp;
-
-		fp = fopen(logfile, "a");
-		if (fp == NULL)
-			err(ERR_IPC, "fopen");
-
-		/*
-		 * Logging infrastructure will take the FILE and close it if we
-		 * switch away later.
-		 */
-		rsync_set_logfile(fp);
-	} else {
-		rsync_set_logfile(NULL);
-	}
+	if (!daemon_open_logfile(logfile, true))
+		return ERR_IPC;
 
 	/*
 	 * The reference rsync doesn't seem to complain about extra non-option
