@@ -751,6 +751,7 @@ static const struct option	 lopts[] = {
     { "relative",	no_argument,	NULL,			'R' },
     { "no-R",		no_argument,	NULL,			OP_NO_RELATIVE },
     { "no-relative",	no_argument,	NULL,			OP_NO_RELATIVE },
+    { "remove-sent-files",	no_argument,	&opts.remove_source,	1 },
     { "remove-source-files",	no_argument,	&opts.remove_source,	1 },
     { "version",	no_argument,	NULL,			'V' },
     { "dirs",		no_argument,	NULL,			'd' },
