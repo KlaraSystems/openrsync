@@ -967,7 +967,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.checksum = 1;
 			break;
 		case 'd':
-			opts.dirs = 1;
+			opts.dirs = DIRMODE_REQUESTED;
 			break;
 		case 'e':
 			opts.ssh_prog = optarg;
@@ -1434,7 +1434,7 @@ basedir:
 		if (!opts_no_relative)
 			opts.relative = 1;
 		if (!opts_no_dirs)
-			opts.dirs = 1;
+			opts.dirs = DIRMODE_IMPLIED;
 		if (implied_recursive)
 			opts.recursive = 0;
 	}

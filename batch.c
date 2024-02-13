@@ -135,10 +135,9 @@ batch_apply_flags(struct sess *sess, struct batchhdr *hdr, struct opts *opts)
 	/* XXX Negotiated protocol */
 	if (sess->lver < 29) {
 		if (opts->recursive) {
-			/* XXX Implied */
-			opts->dirs = 1;
-		} else {
-			/* XXX Should turn off implied --dirs */
+			opts->dirs = DIRMODE_IMPLIED;
+		} else if (opts->dirs == DIRMODE_IMPLIED) {
+			opts->dirs = DIRMODE_OFF;
 		}
 	}
 }

@@ -95,6 +95,12 @@ enum basemode {
 	BASE_MODE_LINK,		/* Hardlink into rootfd */
 };
 
+enum dirmode {
+	DIRMODE_OFF = 0,	/* No --dirs */
+	DIRMODE_IMPLIED,	/* Implied --dirs */
+	DIRMODE_REQUESTED,	/* --dirs */
+};
+
 enum dryrun {
 	DRY_DISABLED = 0,	/* Full run */
 	DRY_XFER,		/* Xfer only */
@@ -335,7 +341,7 @@ struct	opts {
 	int		 ign_exist;		/* --ignore-existing */
 	int		 ign_non_exist;		/* --ignore-nonexisting */
 	int		 relative;		/* --relative */
-	int		 dirs;			/* -d --dirs */
+	enum dirmode	 dirs;			/* -d --dirs */
 	int		 dlupdates;             /* --delay-updates */
 	int		 hard_links;		/* -H --hard-links */
 	int		 remove_source;		/* --remove-source-files */
