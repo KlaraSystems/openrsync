@@ -307,3 +307,47 @@ daemon_set_numeric_ids(struct sess *sess, struct opts *opts,
 
 	return 1;
 }
+
+int
+daemon_setup_logfile(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+	const char *logfile;
+	int rc;
+	bool syslog = false;
+
+	role = (void *)sess->role;
+	logfile = NULL;
+	if (cfg_has_param(role->dcfg, module, "log file")) {
+		rc = cfg_param_str(role->dcfg, module, "log file", &logfile);
+		assert(rc == 0);
+	}
+
+	if (logfile == NULL || *logfile == '\0')
+		return 1;
+
+	if (!daemon_open_logfile(logfile, false)) {
+		/* Just fallback to syslog on error. */
+		if (!daemon_open_logfile(NULL, false))
+			return 0;
+
+		syslog = true;
+	}
+
+	/* Setup syslog facility, if we ended up with syslog. */
+	if (syslog) {
+		const char *facility;
+
+		rc = cfg_param_str(role->dcfg, module, "syslog facility",
+		    &facility);
+		assert(rc == 0);
+
+		if (rsync_set_logfacility(facility) != 0) {
+			ERRX1("%s: 'syslog facility' does not exist: %s",
+			    module, facility);
+			return 0;
+		}
+	}
+
+	return 1;
+}

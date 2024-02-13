@@ -470,6 +470,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (daemon_connection_limited(sess, module))
 		goto fail;
 
+	if (!daemon_setup_logfile(sess, module))
+		goto fail;
+
 	if (cfg_param_bool(role->dcfg, module, "use chroot",
 	    &use_chroot) != 0) {
 		/* Log it and pretend it's unset. */

@@ -46,5 +46,6 @@ int	daemon_open_logfile(const char *, bool);
 int	daemon_operation_allowed(struct sess *, const struct opts *,
 	    const char *);
 int	daemon_set_numeric_ids(struct sess *, struct opts *, const char *, int);
+int	daemon_setup_logfile(struct sess *, const char *);
 
 #endif /* !DAEMON_H */
