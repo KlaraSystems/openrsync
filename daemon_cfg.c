@@ -68,12 +68,14 @@ static struct rsync_daemon_param {
 	PARAM("comment",	NULL),
 	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
+	PARAM("log file",	"logfile"),
 	PARAM_DFLT("max connections",	"maxconnections",	"0"),
 	PARAM_DFLT("max verbosity",	"maxverbosity",	"1"),
 	/* numeric ids default is based on chroot. */
 	PARAM("numeric ids",	"numericids"),
 	PARAM("path",		NULL),
 	PARAM_DFLT("read only",		"readonly",	"true"),
+	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
 	PARAM_DFLT("timeout",	NULL,	"0"),
 	PARAM_DFLT("use chroot",	"usechroot",	"true"),
 	PARAM_DFLT("write only",	"writeonly",	"false"),
@@ -81,9 +83,7 @@ static struct rsync_daemon_param {
 	/* Not implemented module options */
 	/* default disabled when chroot */
 	PARAM("munge symlinks",	"mungesymlinks"),
-	PARAM("log file",	"logfile"),
 
-	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
 	PARAM_DFLT("uid",		NULL,		"-2"),
 	PARAM_DFLT("gid",		NULL,		"-2"),
 	PARAM("filter",		NULL),
