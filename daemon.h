@@ -42,6 +42,7 @@ void	daemon_client_error(struct sess *, const char *, ...);
 int	daemon_connection_limited(struct sess *, const char *);
 int	daemon_limit_verbosity(struct sess *, const char *);
 void	daemon_normalize_paths(const char *, int, char *[]);
+int	daemon_open_logfile(const char *, bool);
 int	daemon_operation_allowed(struct sess *, const struct opts *,
 	    const char *);
 int	daemon_set_numeric_ids(struct sess *, struct opts *, const char *, int);

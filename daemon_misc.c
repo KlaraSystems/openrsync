@@ -150,6 +150,34 @@ daemon_normalize_paths(const char *module, int argc, char *argv[])
 }
 
 int
+daemon_open_logfile(const char *logfile, bool printerr)
+{
+
+	if (logfile != NULL && *logfile == '\0')
+		logfile = NULL;
+	if (logfile != NULL) {
+		FILE *fp;
+
+		fp = fopen(logfile, "a");
+		if (fp == NULL) {
+			if (printerr)
+				ERR("%s: fopen", logfile);
+			return 0;
+		}
+
+		/*
+		 * Logging infrastructure will take the FILE and close it if we
+		 * switch away later.
+		 */
+		rsync_set_logfile(fp);
+	} else {
+		rsync_set_logfile(NULL);
+	}
+
+	return 1;
+}
+
+int
 daemon_operation_allowed(struct sess *sess, const struct opts *opts,
     const char *module)
 {
