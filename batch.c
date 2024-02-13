@@ -117,8 +117,7 @@ batch_apply_flags(struct sess *sess, struct batchhdr *hdr, struct opts *opts)
 
 	for (size_t bit = 0; bit < nitems(batchflags); bit++) {
 		bflag = &batchflags[bit];
-		/* XXX Negotiated protocol */
-		if (bflag->protocol > 0 && bflag->protocol > sess->lver)
+		if (bflag->protocol > 0 && bflag->protocol > sess->protocol)
 			break;
 
 		assert(bflag->offset >= 0 && bflag->offset < sizeof(*opts));
@@ -132,8 +131,7 @@ batch_apply_flags(struct sess *sess, struct batchhdr *hdr, struct opts *opts)
 		*field = value;
 	}
 
-	/* XXX Negotiated protocol */
-	if (sess->lver < 29) {
+	if (sess->protocol < 29) {
 		if (opts->recursive) {
 			opts->dirs = DIRMODE_IMPLIED;
 		} else if (opts->dirs == DIRMODE_IMPLIED) {
@@ -151,8 +149,7 @@ batch_translate_flags(struct sess *sess, struct batchhdr *hdr)
 	hdr->flags = 0;
 	for (size_t bit = 0; bit < nitems(batchflags); bit++) {
 		bflag = &batchflags[bit];
-		/* XXX Negotiated protocol */
-		if (bflag->protocol > 0 && bflag->protocol > sess->lver)
+		if (bflag->protocol > 0 && bflag->protocol > sess->protocol)
 			break;
 
 		assert(bflag->offset >= 0 &&
@@ -174,15 +171,15 @@ rsync_batch(struct cleanup_ctx *cleanup_ctx, struct opts *opts,
 	memset(&sess, 0, sizeof(struct sess));
 	sess.opts = opts;
 	sess.mode = FARGS_RECEIVER;
-	sess.lver = RSYNC_PROTOCOL;
+	sess.lver = sess.protocol = RSYNC_PROTOCOL;
 	sess.wbatch_fd = -1;
 
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
 
-	batch_fd = open(opts->read_batch, O_RDONLY);
+	batch_fd = open(sess.opts->read_batch, O_RDONLY);
 	if (batch_fd == -1) {
-		ERR("%s: open", opts->read_batch);
+		ERR("%s: open", sess.opts->read_batch);
 		return ERR_IPC;
 	}
 
@@ -192,18 +189,22 @@ rsync_batch(struct cleanup_ctx *cleanup_ctx, struct opts *opts,
 
 	rc = ERR_IPC;
 	if (hdr.rver < RSYNC_PROTOCOL_MIN) {
-		ERRX("batch protocol %d is older than we support (%d)",
-		    hdr.rver, RSYNC_PROTOCOL_MIN);
+		ERRX("batch protocol %d is older than our minimum supported "
+		    "%d: exiting", hdr.rver, RSYNC_PROTOCOL_MIN);
 		goto out;
 	} else if (hdr.rver > sess.lver) {
-		ERRX("batch protocol %d is newer than we support (%d)",
-		    hdr.rver, sess.lver);
+		ERRX("batch protocol %d is newer than our maximum supported "
+		    "%d: exiting", hdr.rver, sess.lver);
 		goto out;
 	}
 
-	batch_apply_flags(&sess, &hdr, opts);
+	batch_apply_flags(&sess, &hdr, sess.opts);
 
 	sess.rver = hdr.rver;
+	if (sess.rver < sess.lver) {
+		sess.protocol = sess.rver;
+	}
+
 	sess.seed = hdr.seed;
 
 	LOG2("batch detected client version %d, batch version %d, seed %d\n",
@@ -244,10 +245,8 @@ batch_open(struct sess *sess)
 	 * The client records the batch file, but the batch file is written from
 	 * the perspective of the sender and we need to use the appropriate
 	 * version as such.
-	 *
-	 * XXX This should likely just be the negotiated protocol.
 	 */
-	hdr.rver = sess->lver;
+	hdr.rver = sess->protocol;
 
 	rc = write_batch_header(sess, batch_fd, &hdr);
 	if (rc != 0)
@@ -332,8 +331,7 @@ batch_close(struct sess *sess, const struct fargs *f, int rc)
 	free(args);
 
 	if (*rules != NULL) {
-		/* XXX Negotiated protocol */
-		if (sess->lver < 29)
+		if (sess->protocol < 29)
 			fprintf(fp, "--exclude-from=- ");
 		else
 			fprintf(fp, "--filter=\". -\"");
