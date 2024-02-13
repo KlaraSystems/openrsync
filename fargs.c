@@ -324,6 +324,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--executability");
 	if (sess->opts->quiet)
 		addargs(&args, "-q");
+	if (sess->opts->max_delete)
+		addargs(&args, "--max-delete=%ld", sess->opts->max_delete);
 
 #ifdef __APPLE__
 	if (sess->opts->no_cache == 0) {

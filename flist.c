@@ -2289,6 +2289,7 @@ flist_add_del(struct sess *sess, const char *path, size_t stripdir,
 int
 flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 {
+	size_t	 flsz_orig = flsz;
 	size_t	 i;
 	int	 flag;
 	char buf[PATH_MAX];
@@ -2302,11 +2303,22 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 	if (sess->total_errors > 0 && !sess->opts->ignore_errors)
 		return 1;
 
-	for (i = 0; i < flsz; i++) {
+	if (sess->opts->max_delete > 0) {
+		if (sess->total_deleted >= sess->opts->max_delete)
+			return 1;
+
+		if (sess->total_deleted + flsz > (size_t)sess->opts->max_delete) {
+			flsz = sess->opts->max_delete - sess->total_deleted;
+			sess->err_del_limit = true;
+		}
+	}
+
+	for (i = flsz_orig; i-- > (flsz_orig - flsz); /**/) {
 		LOG1("%s: deleting", fl[i].wpath);
 		if (sess->opts->dry_run)
 			continue;
 		assert(root != -1);
+		sess->total_deleted++;
 		flag = S_ISDIR(fl[i].st.mode) ? AT_REMOVEDIR : 0;
 		if (sess->opts->backup) {
 			if (sess->opts->backup_dir != NULL) {
@@ -2314,7 +2326,7 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 				    sess->opts->backup_dir);
 				if (snprintf(buf, sizeof(buf), "%s/%s%s",
 				    sess->opts->backup_dir, fl[i].wpath,
-				    sess->opts->backup_suffix) >
+				    sess->opts->backup_suffix) >=
 				    (int)sizeof(buf)) {
 					ERR("%s: backup-dir: compound backup "
 					    "path too long: %s/%s%s > %d",
@@ -2323,39 +2335,49 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 					    fl[i].wpath,
 					    sess->opts->backup_suffix,
 					    (int)sizeof(buf));
-					return 0;
+					sess->total_errors++;
+					continue;
 				}
 				if (backup_to_dir(sess, root, &fl[i], buf,
 				    fl[i].st.mode) == -1) {
 					ERR("%s: backup_to_dir: %s",
 					    fl[i].wpath, buf);
-					return 0;
+					sess->total_errors++;
+					continue;
 				}
 			} else if (!S_ISDIR(fl[i].st.mode)) {
 				LOG3("%s: doing backup", fl[i].wpath);
 				if (snprintf(buf, sizeof(buf), "%s%s",
-				    fl[i].wpath, sess->opts->backup_suffix) >
+				    fl[i].wpath, sess->opts->backup_suffix) >=
 				    (int)sizeof(buf)) {
 					ERR("%s: backup: compound backup path "
 					    "too long: %s%s > %d", fl[i].wpath,
 					    fl[i].wpath,
 					    sess->opts->backup_suffix,
 					    (int)sizeof(buf));
-					return 0;
+					sess->total_errors++;
+					continue;
 				}
 				if (move_file(root, fl[i].wpath,
 				    root, buf, 1) == -1) {
 					ERR("%s: move_file: %s", fl[i].wpath,
 					    buf);
-					return 0;
+					sess->total_errors++;
+					continue;
 				}
 			}
 		}
 		if (unlinkat(root, fl[i].wpath, flag) == -1 &&
 		    errno != ENOENT) {
 			ERR("%s: unlinkat", fl[i].wpath);
-			return 0;
+			sess->total_errors++;
+			continue;
 		}
+	}
+
+	if (flsz < flsz_orig) {
+		LOG0("Deletions stopped due to --max-delete limit (%zu skipped)",
+		     flsz_orig - flsz);
 	}
 
 	return 1;
