@@ -687,6 +687,7 @@ enum {
 	OP_HELP,
 	OP_BLOCKING_IO,
 	OP_MODWIN,
+	OP_MAX_DELETE,
 };
 
 static const struct option	 lopts[] = {
@@ -748,6 +749,7 @@ static const struct option	 lopts[] = {
     { "ipv6",		no_argument,	NULL,			'6' },
     { "keep-dirlinks",	no_argument,	NULL,			'K' },
     { "links",		no_argument,	NULL,			'l' },
+    { "max-delete",	required_argument, NULL,		OP_MAX_DELETE },
     { "max-size",	required_argument, NULL,		OP_MAX_SIZE },
     { "min-size",	required_argument, NULL,		OP_MIN_SIZE },
     { "motd",		no_argument,	&opts.no_motd,		0 },
@@ -838,7 +840,8 @@ usage(int exitcode)
 	    "\t[--existing] [--force] [--ignore-errors]\n"
 	    "\t[--ignore-existing] [--ignore-non-existing] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
-	    "\t[--max-size=SIZE] [--min-size=SIZE] [--modify-window=sec] [--no-motd] [--numeric-ids]\n"
+	    "\t[--max-delete=NUM] [--max-size=SIZE] [--min-size=SIZE]\n"
+	    "\t[--modify-window=sec] [--no-motd] [--numeric-ids]\n"
 	    "\t[--out-format=FMT] [--partial] [--password-file=pwfile] [--port=portnumber]\n"
 	    "\t[--progress] [--protocol] [--read-batch=file]\n"
 	    "\t[--remove-source-files] [--rsync-path=program] [--safe-links] [--size-only]\n"
@@ -1362,6 +1365,25 @@ basedir:
 				break;
 			}
 			opts.human_readable++;
+			break;
+		case OP_MAX_DELETE:
+			if (*optarg != '\0') {
+				char *endptr;
+
+				errno = 0;
+				tmpint = strtoll(optarg, &endptr, 0);
+				if (*endptr != '\0')
+					errx(1, "--max-delete=%s: invalid numeric value",
+					     optarg);
+				if (tmpint < INT_MIN)
+					errx(1, "--max-delete=%s: must be no less than %d",
+					     optarg, INT_MIN);
+				if (tmpint > INT_MAX)
+					errx(1, "--max-delete=%s: must be no greater than %d",
+					     optarg, INT_MAX);
+
+				opts.max_delete = tmpint;
+			}
 			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",

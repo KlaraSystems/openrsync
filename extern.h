@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <fts.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "md4.h"
 
@@ -140,6 +141,7 @@ enum dryrun {
 #define ERR_WAITPID	21
 #define ERR_NOMEM	22
 #define ERR_PARTIAL	23
+#define ERR_DEL_LIMIT	25
 
 /*
  * Use this for --timeout.
@@ -391,6 +393,7 @@ struct	opts {
 	int		 fuzzy_basis;		/* -y */
 	int		 quiet;			/* -q, --quiet */
 	int		 modwin;		/* --modify-windows=sec */
+	long		 max_delete;		/* --max-delete */
 };
 
 enum rule_type {
@@ -527,6 +530,8 @@ struct	sess {
 	mode_t		   chmod_file_X;
 	double             start_time; /* Time of first transfer */
 	uint64_t           total_errors; /* Total non-fatal errors */
+	long		   total_deleted; /* Total files deleted */
+	bool		   err_del_limit; /* --max-delete limit exceeded */
 	int		   protocol; /* negotiated protocol version */
 };
 

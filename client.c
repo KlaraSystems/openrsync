@@ -144,11 +144,18 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	 * the wire.  If there's still data-tagged messages in after a flush,
 	 * then.
 	 */
+	rc = 0;
+
 	if (!io_read_close(&sess, fd)) {
 		ERRX1("data remains in read pipe");
 		rc = ERR_IPC;
 	} else {
 		rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
+	} else if (sess.err_del_limit) {
+		assert(sess.total_deleted >= sess.opts->max_delete);
+		rc = ERR_DEL_LIMIT;
+	} else if (sess.total_errors > 0) {
+		rc = ERR_PARTIAL;
 	}
 out:
 	batch_close(&sess, f, rc);
