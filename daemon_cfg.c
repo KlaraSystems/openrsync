@@ -65,6 +65,7 @@ static struct rsync_daemon_param {
 	PARAM("socket options",	"socketoptions"),
 
 	/** Module parameters **/
+	PARAM("auth users",	"authusers"),
 	PARAM("comment",	NULL),
 	PARAM_DFLT("gid",		NULL,		"-2"),
 	PARAM("hosts allow",	"hostsallow"),
@@ -78,6 +79,8 @@ static struct rsync_daemon_param {
 	PARAM("numeric ids",	"numericids"),
 	PARAM("path",		NULL),
 	PARAM_DFLT("read only",		"readonly",	"true"),
+	PARAM("secrets file",	"secretsfile"),
+	PARAM_DFLT("strict modes",	"strictmodes",	"true"),
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
 	PARAM_DFLT("timeout",	NULL,	"0"),
 	PARAM_DFLT("uid",		NULL,		"-2"),
@@ -95,10 +98,7 @@ static struct rsync_daemon_param {
 	PARAM("include from",	"includefrom"),
 	PARAM("incoming chmod",	"incomingchmod"),
 	PARAM("outgoing chmod",	"outgoingchmod"),
-	PARAM("auth users",	"authusers"),
-	PARAM("secrets file",	"secretsfile"),
 
-	PARAM_DFLT("strict modes",	"strictmodes",	"true"),
 	PARAM_DFLT("ignore errors",	"ignoreerrors",	"false"),
 	PARAM_DFLT("ignore nonreadable",	"ignorenonreadable",	"false"),
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),

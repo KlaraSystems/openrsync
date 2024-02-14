@@ -85,9 +85,16 @@
 #define	SIGNIFICANT_IFLAGS	\
 	(~(IFLAG_BASIS_FOLLOWS | ITEM_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE))
 
-/* Some daemon values */
+/*
+ * Defaults from the reference rsync; the max password size is specifically for
+ * password files, and not otherwise strictly enforced.
+ */
+#define	RSYNCD_DEFAULT_USER	"nobody"
+#define	RSYNCD_MAX_PASSWORDSZ	511
 /* In future versions, this may be higher to support flexible digest choices. */
 #define	RSYNCD_CHALLENGE_RESPONSESZ	(MD4_DIGEST_LENGTH * 16)
+/* Maximum auth response size. */
+#define	RSYNCD_MAXAUTHSZ	2048
 
 /*
  * Maximum amount of file data sent over the wire at once.

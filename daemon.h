@@ -61,7 +61,7 @@ int	daemon_limit_verbosity(struct sess *, const char *);
 void	daemon_normalize_paths(const char *, int, char *[]);
 int	daemon_open_logfile(const char *, bool);
 int	daemon_operation_allowed(struct sess *, const struct opts *,
-	    const char *);
+	    const char *, int);
 int	daemon_set_numeric_ids(struct sess *, struct opts *, const char *, int);
 int	daemon_setup_logfile(struct sess *, const char *);
 
