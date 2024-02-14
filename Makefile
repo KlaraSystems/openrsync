@@ -29,7 +29,18 @@ OBJS	   = batch.o \
 	     strmode.o \
 	     symlinks.o \
 	     uploader.o
-ALLOBJS	   = $(OBJS) \
+
+ZLIBOBJS      = zlib/adler32.o \
+		zlib/compress.o \
+		zlib/crc32.o \
+		zlib/deflate.o \
+		zlib/inffast.o \
+		zlib/inflate.o \
+		zlib/inftrees.o \
+		zlib/trees.o \
+		zlib/zutil.o
+
+ALLOBJS	   = $(OBJS) $(ZLIBOBJS) \
 	     main.o
 AFLS	   = afl/test-blk_recv \
 	     afl/test-flist_recv
