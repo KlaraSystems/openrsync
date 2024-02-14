@@ -209,7 +209,7 @@ download_partial_path(struct sess *sess, const struct flist *f,
 
 	assert(dirlen > 0);
 
-	if (snprintf(path, pathsz, "%.*s/%s", dirlen, dir,
+	if ((size_t)snprintf(path, pathsz, "%.*s/%s", dirlen, dir,
 	    sess->opts->partial_dir) > pathsz) {
 		ERR("%s: partial-dir: path too long: %.*s/%s > %lu",
 		    dir, dirlen, dir, sess->opts->partial_dir, pathsz);
@@ -611,7 +611,7 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far, bool finished
 	}
 	if (now - sess->last_time < 0.1 && !finished)
 		return;
-	fprintf(stderr, " %14lu", so_far);
+	fprintf(stderr, " %14llu", (long long unsigned)so_far);
 	fprintf(stderr, " %3.0f%%", (double)so_far / 
 	    (double)total_bytes * 100.0);
 	rate = (double)so_far / (now - sess->last_time);
@@ -1271,7 +1271,7 @@ again:
 
 	/* 
 	 * Finally, rename the temporary to the real file, unless 
-	 * --delay-updates is in effect, in which case it is doing to
+	 * --delay-updates is in effect, in which case it is going to
 	 * the .~tmp~ subdirectory for now and is renamed later in
 	 * a batch with all the other new or changed files.
 	 */

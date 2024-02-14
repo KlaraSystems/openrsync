@@ -221,8 +221,10 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 
 	if (newfile || sess->opts->preserve_perms) {
 		if (fchmodat(rootfd, path, mode, AT_SYMLINK_NOFOLLOW) == -1) {
-			ERR("%s: fchmodat", path);
-			return 0;
+			if (!(S_ISLNK(f->st.mode) && errno == EOPNOTSUPP)) {
+				ERR("%s: fchmodat (1) %d", path, errno);
+				return 0;
+			}
 		}
 		LOG4("%s: updated permissions", f->path);
 	} else if (pres_exec) {

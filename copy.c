@@ -64,7 +64,7 @@ iszerobuf(const void *b, size_t len)
 static int
 count_dir_depth(const char *path, int dirdepth, int strict)
 {
-	char *dp;
+	const char *dp;
 
 	/* Blank or absolute symlinks are always unsafe */
 	if (path == NULL || *path == '\0')
