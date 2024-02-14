@@ -220,6 +220,7 @@ enum	smode {
  * See struct opts.
  */
 struct	fargs {
+	char	  *user; /* username or NULL if unspecified or local */
 	char	  *host; /* hostname or NULL if local */
 	char	 **sources; /* transfer source */
 	size_t	   sourcesz; /* number of sources */

@@ -664,11 +664,11 @@ rsync_password_hash(const char *password, const char *challenge,
  * Return <0 on failure, 1 on success.
  */
 static int
-protocol_auth(struct sess *sess, int sd, const char *challenge)
+protocol_auth(struct sess *sess, const char *user, int sd,
+    const char *challenge)
 {
 	char password[RSYNCD_MAX_PASSWORDSZ + 1];
 	char response[RSYNCD_CHALLENGE_RESPONSESZ];
-	const char *user;
 	int rc;
 
 	while (isspace(*challenge))
@@ -679,8 +679,8 @@ protocol_auth(struct sess *sess, int sd, const char *challenge)
 		return -1;
 	}
 
-	/* XXX Also check the URI? */
-	user = getenv("USER");
+	if (user == NULL)
+		user = getenv("USER");
 	if (user == NULL)
 		user = getenv("LOGNAME");
 	if (user == NULL)
@@ -727,7 +727,7 @@ protocol_auth(struct sess *sess, int sd, const char *challenge)
  */
 static int
 protocol_line(struct sess *sess, __attribute__((unused)) const char *host,
-    int sd, const char *cp)
+    const char *user, int sd, const char *cp)
 {
 	int	major, minor;
 
@@ -748,7 +748,7 @@ protocol_line(struct sess *sess, __attribute__((unused)) const char *host,
 
 	if (strncmp(cp, "AUTHREQD", sizeof("AUTHREQ") - 1) == 0) {
 		cp += sizeof("AUTHREQD") - 1;
-		return protocol_auth(sess, sd, cp);
+		return protocol_auth(sess, user, sd, cp);
 	}
 
 	/*
@@ -1064,7 +1064,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		if (buf[i - 1] == '\r')
 			buf[i - 1] = '\0';
 
-		if ((c = protocol_line(&sess, f->host, sd, buf)) < 0) {
+		if ((c = protocol_line(&sess, f->host, f->user, sd, buf)) < 0) {
 			ERRX1("protocol_line");
 			goto out;
 		} else if (c > 0)
