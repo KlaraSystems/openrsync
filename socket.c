@@ -56,13 +56,6 @@
 #define	RSYNCD_MAX_PASSWORDSZ	511
 
 /*
- * Defaults from the reference rsync; the max password size is specifically for
- * password files, and not otherwise strictly enforced.
- */
-#define	RSYNCD_DEFAULT_USER	"nobody"
-#define	RSYNCD_MAX_PASSWORDSZ	511
-
-/*
  * Negative values don't make sense for any of the options we support, so we use
  * so_default_value < 0 with so_has_arg == true to indicate an option that
  * requires a value be specified.  so_has_arg == true with so_default_value >= 0

@@ -690,6 +690,8 @@ enum {
 	OP_MODWIN,
 	OP_MAX_DELETE,
 	OP_STATS,
+
+	OP_PASSWORD_FILE,
 };
 
 static const struct option	 lopts[] = {
