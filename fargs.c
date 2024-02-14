@@ -294,6 +294,10 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--ignore-times");
 	if (f->mode == FARGS_SENDER && sess->opts->fuzzy_basis)
 		addargs(&args, "--fuzzy");
+	if (sess->opts->outformat != NULL)
+		addargs(&args, "--out-format=%s", sess->opts->outformat);
+	if (sess->opts->bit8 > 0)
+		addargs(&args, "-8");
 	if (sess->opts->bwlimit >= 1024) {
 		addargs(&args, "--bwlimit=%lld",
 		    (long long)(sess->opts->bwlimit / 1024));

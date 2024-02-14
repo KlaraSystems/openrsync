@@ -1700,6 +1700,8 @@ rsync_uploader(struct upload *u, int *fileinfd,
 				c = pre_sock(u, sess);
 			else
 				c = 0;
+			if (!sess->lateprint)
+				output(sess, &u->fl[u->idx], 1);
 
 			if (c < 0)
 				return -1;

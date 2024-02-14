@@ -252,8 +252,9 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		 * BLKSTAT_DONE instead of having it be here.
 		 */
 
-		if (!sess->opts->server)
-			LOG1("%s", fl[up->cur->idx].wpath);
+		if (!sess->opts->server && verbose > 0 &&
+		    !sess->lateprint && !sess->itemize)
+			print_7_or_8_bit(sess, "%s\n", fl[up->cur->idx].wpath);
 
 		send_iflags(sess, wb, wbsz, wbmax, &pos, fl, up->cur->idx);
 

@@ -1268,7 +1268,8 @@ again:
 		ERRX1("rsync_set_metadata");
 		goto out;
 	}
-
+	if (sess->lateprint)
+		output(sess, f, 1);
 	/* 
 	 * Finally, rename the temporary to the real file, unless 
 	 * --delay-updates is in effect, in which case it is going to

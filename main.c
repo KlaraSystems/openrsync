@@ -35,6 +35,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <locale.h>
 #if HAVE_SCAN_SCALED
 # include <util.h>
 #endif
@@ -636,6 +637,8 @@ enum {
 	OP_BIT8,
 	OP_MODWIN,
 	OP_BLOCKING_IO,
+	OP_OUTFORMAT,
+	OP_BIT8,
 };
 
 static const struct option	 lopts[] = {
@@ -761,9 +764,11 @@ static const struct option	 lopts[] = {
     { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
     { "from0",		no_argument,	NULL,			'0' },
+    { "out-format",	required_argument,	NULL,		OP_OUTFORMAT },
     { "delay-updates",	no_argument,	&opts.dlupdates,	1 },
     { "8-bit-output",	no_argument,	NULL,			OP_BIT8 },
     { "modify-window",	required_argument,	NULL,		OP_MODWIN },
+    { "8-bit-output",	no_argument,	NULL,			OP_BIT8 },
     { NULL,		0,		NULL,			0 }
 };
 
@@ -781,7 +786,7 @@ usage(int exitcode)
 	    "\t[--existing] [--force] [--ignore-errors]\n"
 	    "\t[--ignore-existing] [--ignore-non-existing] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
-	    "\t[--max-size=SIZE] [--min-size=SIZE] [--modify-window=sec ] [--no-motd] [--numeric-ids]\n"
+	    "\t[--max-size=SIZE] [--min-size=SIZE] [--modify-window=sec] [--no-motd] [--numeric-ids]\n"
 	    "\t[--out-format=FMT] [--partial] [--port=portnumber] [--progress] [--protocol]\n"
 	    "\t[--remove-source-files] [--rsync-path=program] [--safe-links] [--size-only]\n"
 	    "\t[--sockopts=sockopts] [--specials] [--suffix] [--super] [--timeout=seconds]\n"
@@ -822,6 +827,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 	lidx = -1;
 	opts.max_size = opts.min_size = -1;
 	opts.whole_file = -1;
+	opts.outfile = stderr;
 #ifdef __APPLE__
 	opts.no_cache = 1;
 #endif
@@ -869,6 +875,9 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			break;
 		case '6':
 			opts.ipf = 6;
+			break;
+		case '8':
+			opts.bit8++;
 			break;
 		case 'B':
 			if (scan_scaled(optarg, &tmpint) == -1)
@@ -1171,6 +1180,9 @@ basedir:
 		case OP_MODWIN:
 		        opts.modwin = atoi(optarg);
 			break;
+		case OP_OUTFORMAT:
+		        opts.outformat = optarg;
+			break;
 		case OP_APPEND:
 			opts.append++;
 			break;
@@ -1269,8 +1281,12 @@ basedir:
 			break;
 		case OP_FORCE:
 			opts.force_delete++;
+			break;
 		case OP_IGNORE_ERRORS:
 			opts.ignore_errors++;
+			break;
+		case OP_BIT8:
+			opts.bit8++;
 			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",
@@ -1430,6 +1446,7 @@ main(int argc, char *argv[])
 	struct sess	 sess;
 	struct fargs	*fargs;
 	char		**args;
+	int              printflags;
 
 	/* Global pledge. */
 
@@ -1438,6 +1455,10 @@ main(int argc, char *argv[])
 		err(ERR_IPC, "pledge");
 
 	rsync_set_logfile(stderr);
+
+	setlocale(LC_ALL, "");
+	setlocale(LC_CTYPE, "");
+	setlocale(LC_NUMERIC, "");
 
 	if (rsync_getopt(argc, argv, NULL, NULL) == NULL) {
 		usage(ERR_SYNTAX);
@@ -1450,6 +1471,19 @@ main(int argc, char *argv[])
 
 	if (argc < 2)
 		usage(ERR_SYNTAX);
+
+	/*
+	  * Determine whether we:
+	  * - need to itemize
+	  * - need to do output late
+	  */
+	sess.opts = &opts;
+	printflags = output(&sess, NULL, 0);
+	if (printflags & 1)
+		sess.itemize = 1;
+	if (printflags & 2)
+		sess.lateprint = 1;
+	LOG3("Printing(%d): itemize %d late %d", getpid(), sess.itemize, sess.lateprint);
 
 	/*
 	 * Signals blocked until we understand what session we'll be using.
