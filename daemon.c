@@ -389,6 +389,8 @@ daemon_extract_addr(struct sess *sess, struct sockaddr_storage *saddr,
 
 	role = (void *)sess->role;
 	assert(family == AF_INET || family == AF_INET6);
+	role->client_sa = (struct sockaddr *)saddr;
+
 	if (family == AF_INET) {
 		struct sockaddr_in *sin = (void *)saddr;
 
@@ -504,6 +506,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	if (!daemon_fill_hostinfo(sess, module,
 	    (const struct sockaddr *)saddr, slen))
+		goto fail;
+
+	if (!daemon_connection_allowed(sess, module))
 		goto fail;
 
 	if (daemon_connection_limited(sess, module))
