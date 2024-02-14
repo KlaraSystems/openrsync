@@ -16,16 +16,22 @@
 #include "config.h"
 
 #include <sys/types.h>
+#include <sys/time.h>
 
 #include <assert.h>
 #if HAVE_ERR
 # include <err.h>
 #endif
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <grp.h>
 #include <limits.h>
 #include <paths.h>
+#if HAVE_B64_NTOP
+#include <resolv.h>
+#endif
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -379,6 +385,330 @@ daemon_write_motd(struct sess *sess, const char *motd_file, int outfd)
 	return retval;
 }
 
+#define	AUTH_CHALLENGE_LENGTH	64	/* Arbitrary */
+
+#if !HAVE_ARC4RANDOM
+static void
+daemon_auth_challenge_random(struct sess *sess, uint8_t *buf, size_t bufsz)
+{
+	struct timeval tv;
+	struct daemon_role *role;
+	uint8_t *addrbuf, *pidbuf, *timebuf;
+	pid_t p;
+
+	role = (void *)sess->role;
+
+	p = getpid();
+	gettimeofday(&tv, NULL);
+
+	addrbuf = (uint8_t *)role->client_sa;
+	pidbuf = (uint8_t *)&p;
+	timebuf = (uint8_t *)&tv;
+
+	for (size_t i = 0; i < bufsz; i++) {
+		uint8_t curbyte = buf[i];
+
+		/*
+		 * A combination of: stack garbage, some more numbers, a bit of
+		 * address bits mixed in as well as the pid and time.  This does
+		 * not need to be perfectly random, it mostly needs to avoid
+		 * replay attacks.
+		 */
+		curbyte ^= random();
+		curbyte ^= addrbuf[i % sizeof(role->client_sa)];
+		curbyte ^= pidbuf[i % sizeof(p)];
+		curbyte ^= timebuf[i % sizeof(tv)];
+
+		buf[i] = curbyte;
+	}
+}
+#endif
+
+static void
+daemon_auth_generate_challenge(struct sess *sess, char *challenge,
+    size_t challengesz)
+{
+	char hashed_buf[AUTH_CHALLENGE_LENGTH + 4];
+	uint8_t buf[128];
+
+#if HAVE_ARC4RANDOM
+	arc4random_buf(buf, sizeof(buf));
+#else
+	daemon_auth_challenge_random(sess, buf, sizeof(buf));
+#endif
+
+	/*
+	 * hashed_buf is sized such that we should get AUTH_CHALLENGE_LENGTH
+	 * worth of base64 characters, so it can (and probably will be)
+	 * truncated but we can ignore that.
+	 */
+	(void)b64_ntop(buf, sizeof(buf), hashed_buf, sizeof(hashed_buf));
+	memcpy(challenge, hashed_buf, MIN(AUTH_CHALLENGE_LENGTH, challengesz));
+}
+
+static int
+user_matches(const char *cfguser, const char *clientuser)
+{
+
+	if (cfguser[0] == '@') {
+		struct group *grp;
+
+		/* System group */
+		cfguser++;
+
+		grp = getgrnam(cfguser);
+		if (grp == NULL)
+			return 0;
+
+		for (char **mem = grp->gr_mem; *mem != NULL; mem++) {
+			if (strcmp(*mem, clientuser) == 0)
+				return 1;
+		}
+
+		return 0;
+	}
+
+	return strcmp(cfguser, clientuser) == 0;
+}
+
+static int
+secret_matches(FILE *secfp, const char *username, const char *group,
+    const char *challenge, const char *response)
+{
+	char checkbuf[RSYNCD_CHALLENGE_RESPONSESZ];
+	char *line;
+	size_t linesz;
+	ssize_t linelen;
+	char *password;
+	int matched;
+
+	line = NULL;
+	linesz = 0;
+	matched = 0;
+	while ((linelen = getline(&line, &linesz, secfp)) > 0) {
+		while (isspace(line[linelen - 1]))
+			line[--linelen] = '\0';
+
+		if (linelen == 0 || line[0] == '#')
+			continue;
+
+		password = strchr(line, ':');
+		if (password == NULL)
+			continue;
+
+		*password = '\0';
+		password++;
+
+		if (strcmp(line, username) != 0 &&
+		    (group == NULL || strcmp(line, group) != 0))
+			continue;
+
+		/* Try to match it; if hashing fails, we'll reject anyways. */
+		if (!rsync_password_hash(password, challenge, checkbuf,
+		    sizeof(checkbuf))) {
+			ERRX1("rsync_password_hash");
+			continue;
+		}
+
+		if (strcmp(checkbuf, response) == 0) {
+			matched = 1;
+			break;
+		}
+
+	}
+
+	if (line != NULL)
+		explicit_bzero(line, linesz);
+	free(line);
+
+	return matched;
+}
+
+static int
+daemon_auth_user(struct sess *sess, const char *module, const char *cfgusers,
+    FILE *secfp, const char *username, const char *challenge,
+    const char *response, int *read_only)
+{
+	const char *delims;
+	char *users, *user, *setting, *strip;
+	int matched;
+	bool is_grp;
+
+	if (username[0] == '#') {
+		daemon_client_error(sess, "%s: bad username", module);
+		return 0;
+	}
+
+	users = strdup(cfgusers);
+	if (users == NULL) {
+		daemon_client_error(sess, "%s: out of memory", module);
+		return 0;	/* Deny */
+	}
+
+	/*
+	 * A comma first character forces us to split on commas so that an entry
+	 * may contain spaces.
+	 */
+	if (users[0] == ',')
+		delims = ",";
+	else
+		delims = ", \t";
+
+	matched = 0;
+	setting = NULL;
+	while ((user = strsep(&users, delims)) != NULL) {
+		/* Trim any leading whitespace. */
+		while (isspace(*user))
+			user++;
+
+		if (*user == '\0')
+			continue;
+
+		/* Trim any trailing whitespace. */
+		strip = &user[strlen(user) - 1];
+		while (isspace(*strip)) {
+			*strip = '\0';
+			strip--;
+			assert(strip > user);
+		}
+
+		setting = strchr(user, ':');
+		if (setting != NULL) {
+			*setting = '\0';
+			setting++;
+		}
+
+		if (!user_matches(user, username))
+			continue;
+
+		/*
+		 * We always stop at first match, but we can match either the
+		 * user or group entry secret if that's the one we hit.
+		 */
+		is_grp = user[0] == '@';
+		if (!secret_matches(secfp, username, is_grp ? user : NULL,
+		    challenge, response))
+			break;
+
+		if (setting != NULL && strcmp(setting, "deny") == 0)
+			break;
+
+		*read_only = -1;
+		matched = 1;
+
+		if (setting == NULL)
+			break;
+		if (strcmp(setting, "ro") == 0)
+			*read_only = 1;
+		else if (strcmp(setting, "rw") == 0)
+			*read_only = 0;
+
+		break;
+	}
+
+	free(users);
+	return matched;
+}
+
+static int
+daemon_auth(struct sess *sess, const char *module, int *read_only)
+{
+	char response[RSYNCD_MAXAUTHSZ];
+	char challenge[AUTH_CHALLENGE_LENGTH + 1];
+	struct daemon_role *role;
+	const char *secretsf, *users;
+	char *hash, *username;
+	FILE *secfp;
+	size_t linesz;
+	int rc, strict;
+
+	role = (void *)sess->role;
+	if (!cfg_has_param(role->dcfg, module, "auth users"))
+		return 1;
+
+	if (!cfg_has_param(role->dcfg, module, "secrets file")) {
+		daemon_client_error(sess, "%s: missing secrets file", module);
+		return 0;
+	}
+
+	rc = cfg_param_str(role->dcfg, module, "secrets file", &secretsf);
+	assert(rc == 0);
+	if (*secretsf == '\0') {
+		daemon_client_error(sess, "%s: missing secrets file", module);
+		return 0;
+	}
+
+	rc = cfg_param_str(role->dcfg, module, "auth users", &users);
+	assert(rc == 0);
+
+	if (cfg_param_bool(role->dcfg, module, "strict modes", &strict) != 0) {
+		daemon_client_error(sess, "%s: 'strict modes' invalid", module);
+		return 0;
+	}
+
+	secfp = fopen(secretsf, "r");
+	if (secfp == NULL) {
+		daemon_client_error(sess, "%s: could not open secrets file",
+		    module);
+		return 0;
+	} else if (strict && !check_file_mode(secretsf, fileno(secfp))) {
+		fclose(secfp);
+		daemon_client_error(sess, "%s: bad permissions on secrets file",
+		    module);
+		return 0;
+	}
+
+	memset(challenge, 0, sizeof(challenge));
+	daemon_auth_generate_challenge(sess, challenge, sizeof(challenge));
+	challenge[AUTH_CHALLENGE_LENGTH] = '\n';
+
+	if (!io_write_buf(sess, role->client, "@RSYNCD: AUTHREQD ",
+	    sizeof("@RSYNCD: AUTHREQD ") - 1)) {
+		fclose(secfp);
+		ERR("io_write_buf");
+		return 0;
+	}
+
+	if (!io_write_buf(sess, role->client, challenge, sizeof(challenge))) {
+		fclose(secfp);
+		ERR("io_write_line");
+		return 0;
+	}
+
+	challenge[AUTH_CHALLENGE_LENGTH] = '\0';
+
+	linesz = sizeof(response);
+	if (!io_read_line(sess, role->client, response, &linesz)) {
+		fclose(secfp);
+		daemon_client_error(sess, "%s: expected auth response",
+		    module);
+		return 0;
+	} else if (linesz == sizeof(response)) {
+		fclose(secfp);
+		daemon_client_error(sess, "%s: line buffer overflow on auth",
+		    module);
+		return 0;
+	}
+
+	username = response;
+	hash = strchr(response, ' ');
+	if (hash == NULL) {
+		fclose(secfp);
+		daemon_client_error(sess, "%s: malformed auth response",
+		    module);
+		return 0;
+	}
+
+	*hash = '\0';
+	hash++;
+
+	rc = daemon_auth_user(sess, module, users, secfp, username, challenge,
+	    hash, read_only);
+	fclose(secfp);
+
+	return rc;
+}
+
 static int
 daemon_extract_addr(struct sess *sess, struct sockaddr_storage *saddr,
     size_t slen)
@@ -419,11 +749,12 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	struct opts *client_opts;
 	const char *module_path;
 	char **argv, *module, *motd_file;
-	int argc, flags, rc, use_chroot;
+	int argc, flags, rc, use_chroot, user_read_only;
 
 	module = NULL;
 	argc = 0;
 	argv = NULL;
+	user_read_only = -1;
 
 	role = (void *)sess->role;
 	role->client = fd;
@@ -514,6 +845,11 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (daemon_connection_limited(sess, module))
 		goto fail;
 
+	if (!daemon_auth(sess, module, &user_read_only)) {
+		daemon_client_error(sess, "%s: authentication failed", module);
+		goto fail;
+	}
+
 	if (!daemon_setup_logfile(sess, module))
 		goto fail;
 
@@ -596,7 +932,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	argc--;
 	argv++;
 
-	if (!daemon_operation_allowed(sess, client_opts, module))
+	if (!daemon_operation_allowed(sess, client_opts, module,
+	    user_read_only))
 		goto fail;	/* Error already logged. */
 
 	if (!daemon_limit_verbosity(sess, module))

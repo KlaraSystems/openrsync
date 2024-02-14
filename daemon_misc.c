@@ -559,7 +559,7 @@ daemon_open_logfile(const char *logfile, bool printerr)
 
 int
 daemon_operation_allowed(struct sess *sess, const struct opts *opts,
-    const char *module)
+    const char *module, int user_read_only)
 {
 	struct daemon_role *role;
 	int deny;
@@ -567,7 +567,9 @@ daemon_operation_allowed(struct sess *sess, const struct opts *opts,
 	role = (void *)sess->role;
 	if (!opts->sender) {
 		/* Client wants to send files, check read only. */
-		if (cfg_param_bool(role->dcfg, module, "read only",
+		if (user_read_only != -1) {
+			deny = user_read_only;
+		} else if (cfg_param_bool(role->dcfg, module, "read only",
 		    &deny) != 0) {
 			ERRX("%s: 'read only' invalid", module);
 			return 0;
