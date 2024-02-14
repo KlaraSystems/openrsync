@@ -161,6 +161,8 @@ path such as "../".
 .It Fl B , -block-size Ns = Ns Ar BLOCKSIZE
 Specify the block size to be used for file transfers.  The upper bound
 is 512M, but it is enforced only if a differential transfer is required.
+.It Fl -blocking-io
+This flag is ignored by openrsync, but is accepted for compatibility.
 .It Fl -bwlimit Ar limit
 Limit transfer speed to
 .Ar limit

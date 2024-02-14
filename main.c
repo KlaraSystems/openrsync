@@ -635,6 +635,7 @@ enum {
 	OP_OUTFORMAT,
 	OP_BIT8,
 	OP_MODWIN,
+	OP_BLOCKING_IO,
 };
 
 static const struct option	 lopts[] = {
@@ -644,6 +645,7 @@ static const struct option	 lopts[] = {
     { "backup",		no_argument,	NULL,			'b' },
     { "backup-dir",	required_argument,	NULL,		OP_BACKUP_DIR },
     { "block-size",	required_argument, NULL,		'B' },
+    { "blocking-io",	no_argument,	NULL,			OP_BLOCKING_IO },
     { "bwlimit",	required_argument, NULL,		OP_BWLIMIT },
     { "cache",		no_argument,	&opts.no_cache,		0 },
     { "no-cache",	no_argument,	&opts.no_cache,		1 },
@@ -1052,6 +1054,9 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			break;
 		case OP_INCLUDE_FROM:
 			parse_file(optarg, RULE_INCLUDE, opts.from0 ? 0 : '\n');
+			break;
+		case OP_BLOCKING_IO:
+			/* We ignore this flag */
 			break;
 		case OP_COMP_DEST:
 			if (opts.alt_base_mode != 0 &&
