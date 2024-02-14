@@ -178,20 +178,37 @@ fargs_normalize_spec(const struct fargs *f, char *spec, size_t hostlen)
 	cp = spec;
 	j = strlen(cp);
 	if (f->remote && strncasecmp(cp, "rsync://", 8) == 0) {
-		/* rsync://host[:port]/path */
-		size_t module_offset = hostlen;
-		cp += 8;
+		/* rsync://[user@]host[:port]/path */
+		char *host_part, *module_part;
+
+		/* cp is the host part */
+		host_part = cp + 8;
+		if ((ccp = strchr(host_part, '@')) != NULL)
+			host_part = ccp + 1;
+
 		/* skip :port */
-		if ((ccp = strchr(cp, ':')) != NULL) {
+		if ((ccp = strchr(host_part, ':')) != NULL) {
 			*ccp = '\0';
-			module_offset += strcspn(ccp + 1, "/") + 1;
+			ccp++;
+		} else {
+			ccp = host_part;
 		}
-		if (strncmp(cp, f->host, hostlen) ||
-		    (cp[hostlen] != '/' && cp[hostlen] != '\0'))
+
+		/*
+		 * ccp is the part just after our hostname, which may include a
+		 * port number.
+		 */
+		module_part = strchr(ccp + 1, '/');
+		if (module_part != NULL)
+			module_part++;
+		else
+			module_part = &ccp[strlen(ccp) - 1];
+
+		if (strncmp(host_part, f->host, hostlen) ||
+		    (host_part[hostlen] != '/' && host_part[hostlen] != '\0'))
 			errx(ERR_SYNTAX, "different remote host: %s", spec);
-		memmove(spec,
-			spec + module_offset + 8 + 1,
-			j - module_offset - 8);
+
+		memmove(spec, module_part, strlen(module_part) + 1);
 	} else if (f->remote && strncmp(cp, "::", 2) == 0) {
 		/* ::path */
 		memmove(spec, spec + 2, j - 1);
@@ -286,10 +303,25 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 
 	if (f->host != NULL) {
 		if (strncasecmp(f->host, "rsync://", 8) == 0) {
-			/* rsync://host[:port]/module[/path] */
+			/* rsync://[user@]host[:port]/module[/path] */
 			f->remote = 1;
-			hostlen = strlen(f->host) - 8 + 1;
-			memmove(f->host, f->host + 8, hostlen);
+			hostlen = strlen(f->host) - 8;
+
+			/* [user@]host --> extract host */
+			if ((cp = strchr(f->host + 8, '@')) != NULL) {
+				f->user = strndup(f->host + 8,
+				    cp - (f->host + 8));
+				if (f->user == NULL)
+					err(ERR_NOMEM, NULL);
+
+				cp++;
+				hostlen = strlen(cp);
+			} else {
+				cp = f->host + 8;
+			}
+
+			memmove(f->host, cp, hostlen + 1 /* NUL */);
+
 			if ((cp = strchr(f->host, '/')) == NULL)
 				errx(ERR_SYNTAX,
 				    "rsync protocol requires a module name");
