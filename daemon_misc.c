@@ -134,21 +134,30 @@ daemon_client_error(struct sess *sess, const char *fmt, ...)
 	struct daemon_role *role;
 	char *msg;
 	va_list ap;
+	int msgsz;
 
 	role = (void *)sess->role;
 
-	if (!role->client_control) {
-		va_start(ap, fmt);
-		if (vasprintf(&msg, fmt, ap) != -1) {
+	va_start(ap, fmt);
+	if ((msgsz = vasprintf(&msg, fmt, ap)) != -1) {
+		if (!sess->mplex_writes) {
 			if (!io_write_buf(sess, role->client, "@ERROR ",
 			    sizeof("@ERROR ") - 1) ||
 			    !io_write_line(sess, role->client, msg)) {
-				/* XXX Log the additional error. */
+				ERR("io_write");
 			}
-			free(msg);
+		} else {
+			if (!io_write_buf_tagged(sess, role->client, msg,
+			    msgsz, IT_ERROR_XFER)) {
+				ERR("io_write");
+			} else if(!io_write_buf_tagged(sess, role->client, "\n",
+			    1, IT_ERROR_XFER)) {
+				ERR("io_write");
+			}
 		}
-		va_end(ap);
+		free(msg);
 	}
+	va_end(ap);
 
 	/*
 	 * We may want to log this to the log file as well, but for now we'll

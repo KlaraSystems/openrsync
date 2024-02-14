@@ -222,7 +222,7 @@ io_data_written(struct sess *sess, int fdout, const void *buf, size_t bsz)
  * Returns zero on failure, non-zero on success (all bytes written to
  * the descriptor).
  */
-static int
+int
 io_write_buf_tagged(struct sess *sess, int fd, const void *buf, size_t sz,
     enum iotag iotag)
 {
