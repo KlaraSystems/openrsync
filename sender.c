@@ -837,7 +837,7 @@ rsync_sender(struct sess *sess, int fdin,
 			    &up, &wbuf, &wbufsz, &wbufmax, fl.flp)) {
 				ERRX1("send_up_fsm");
 				goto out;
-			} else if (phase > max_phase) {
+			} else if (phase > (size_t)max_phase) {
 				break;
 			}
 		}

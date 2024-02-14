@@ -993,7 +993,7 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
 	    (sess->opts->preserve_perms && st.st_mode != f->st.mode)) {
 		rc = fchmodat(u->rootfd, f->path, f->st.mode, 0);
 		if (rc == -1) {
-			ERR("%s: fchmodat", f->path);
+			ERR("%s: fchmodat (2)", f->path);
 			return 0;
 		}
 		LOG4("%s: updated mode", f->path);
