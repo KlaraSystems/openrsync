@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <limits.h>
 
+#include "zlib/zlib.h"
 #include "md4.h"
 
 #include "extern.h"

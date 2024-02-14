@@ -14,7 +14,7 @@
 #define ZUTIL_H
 
 #define ZLIB_INTERNAL
-#include "../rsync.h"
+#include "../extern.h"
 #include "zlib.h"
 
 #if 0
