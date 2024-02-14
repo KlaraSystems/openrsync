@@ -74,6 +74,10 @@
 #define	SIGNIFICANT_IFLAGS	\
 	(~(IFLAG_BASIS_FOLLOWS | ITEM_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE))
 
+/* Some daemon values */
+/* In future versions, this may be higher to support flexible digest choices. */
+#define	RSYNCD_CHALLENGE_RESPONSESZ	(MD4_DIGEST_LENGTH * 16)
+
 /*
  * Maximum amount of file data sent over the wire at once.
  */
@@ -368,6 +372,7 @@ struct	opts {
 	int		 whole_file;		/* --whole-file */
 	const char	*read_batch;		/* --read-batch */
 	const char	*write_batch;		/* --write-batch */
+	const char	*password_file;		/* --password-file */
 	char		*temp_dir;		/* --temp-dir */
 #if 0
 	char		*syncfile;		/* --sync-file */
@@ -634,6 +639,7 @@ char		**fargs_cmdline(struct sess *, const struct fargs *, size_t *);
 
 int	batch_open(struct sess *);
 void	batch_close(struct sess *, const struct fargs *, int);
+int	check_file_mode(const char *, int);
 
 void	cleanup_hold(struct cleanup_ctx *);
 void	cleanup_release(struct cleanup_ctx *);
@@ -725,6 +731,7 @@ int	rsync_setsockopts(int, const char *);
 int	rsync_socket(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
 int	rsync_is_socket(int);
+int	rsync_password_hash(const char *, const char *, char *, size_t);
 int	rsync_server(struct cleanup_ctx *, const struct opts *, size_t,
 	    char *[]);
 int	rsync_downloader(struct download *, struct sess *, int *, int,
