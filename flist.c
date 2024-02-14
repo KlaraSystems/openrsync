@@ -2289,7 +2289,7 @@ flist_add_del(struct sess *sess, const char *path, size_t stripdir,
 int
 flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 {
-	size_t	 flsz_orig = flsz;
+	size_t	 del_limit = flsz;
 	size_t	 i;
 	int	 flag;
 	char buf[PATH_MAX];
@@ -2303,17 +2303,31 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 	if (sess->total_errors > 0 && !sess->opts->ignore_errors)
 		return 1;
 
+	/*
+	 * (max_delete == 0)    Attempt to delete all files in flist.
+	 * (max_delete > 0)     Attempt to delete at most max_delete files.
+	 * (max_delete < 0)     Delete no files.
+	 */
+	if (sess->opts->max_delete < 0)
+		return 1;
 	if (sess->opts->max_delete > 0) {
 		if (sess->total_deleted >= sess->opts->max_delete)
 			return 1;
 
+		/*
+		 * If the number of files deleted so far plus the number to
+		 * be deleted in this pass exceeds max_delete then limit the
+		 * number of files to be deleted to the difference of the two.
+		 */
 		if (sess->total_deleted + flsz > (size_t)sess->opts->max_delete) {
-			flsz = sess->opts->max_delete - sess->total_deleted;
+			del_limit = sess->opts->max_delete - sess->total_deleted;
 			sess->err_del_limit = true;
 		}
 	}
 
-	for (i = flsz_orig; i-- > (flsz_orig - flsz); /**/) {
+	/* Iterate backward through flist to emulate standard rsync behavior */
+
+	for (i = flsz; i-- > (flsz - del_limit); /**/) {
 		LOG1("%s: deleting", fl[i].wpath);
 		if (sess->opts->dry_run)
 			continue;
@@ -2375,9 +2389,9 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 		}
 	}
 
-	if (flsz < flsz_orig) {
+	if (del_limit < flsz) {
 		LOG0("Deletions stopped due to --max-delete limit (%zu skipped)",
-		     flsz_orig - flsz);
+		    flsz - del_limit);
 	}
 
 	return 1;
