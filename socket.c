@@ -832,10 +832,10 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		err(ERR_IPC, "pledge");
 
 	memset(&sess, 0, sizeof(struct sess));
-	sess.lver = sess.protocol = sess.opts->protocol;
 	sess.opts = opts;
 	sess.mode = f->mode;
 	sess.wbatch_fd = -1;
+	sess.lver = sess.protocol = sess.opts->protocol;
 
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
