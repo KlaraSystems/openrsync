@@ -16,13 +16,20 @@
 #include "config.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
+#include <locale.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <time.h>
+#include <unistd.h>
+#include <libutil.h>
+#include <sys/sbuf.h>
+#include <sys/stat.h>
 
 #include "extern.h"
 
@@ -327,4 +334,453 @@ rsync_warn(int level, const char *fmt, ...)
 	   (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "", strerror(er));
 	free(buf);
+}
+
+/*
+ * Cut down printf implementation taken from printf(1) in
+ * FreeBSD 15-current rev 30189156d325fbcc9d1997d791daedc9fa3bed20
+ */
+
+static const char widthchars[] = "'+- 0123456789";
+
+/*
+ * Copies string 2 into string 1, which is quaranteed to be at least
+ * as longly allocated as string 2, omitting "'".  Returns the number
+ * of "'"s.
+ */
+
+static int
+isit_human(char *s1, const char *s2)
+{
+	char *p1;
+	const char *p2;
+	int count = 0;
+
+	for (p1 = s1, p2 = s2; *p2; p2++) {
+		if (*p2 == '\'')
+			count++;
+		else
+			*p1++ = *p2;
+	}
+	*p1 = '\0';
+
+	return count;
+}
+
+void
+print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s)
+{
+	const char *p;
+
+	if (sess->opts->bit8) {
+		fprintf(sess->opts->outfile, fmt, s);
+		return;
+	}
+	struct sbuf *sbuf;
+	sbuf = sbuf_new_auto();
+
+	for (p = s; *p; p++) {
+		if (isprint(*(unsigned char*)p) || *p == '\t') {
+			sbuf_putc(sbuf, *p);
+		} else {
+			sbuf_printf(sbuf, "\\#%03o", *(unsigned char*)p);
+		}
+	}
+	sbuf_finish(sbuf);
+	fprintf(sess->opts->outfile, fmt, sbuf_data(sbuf));
+
+	sbuf_delete(sbuf);
+}
+
+/*
+ * rval is filled with whether there is any argument that requires
+ * late printing or whether itemization is requested.
+ * 0 = neither
+ * 1 = itemize
+ * 2 = late print
+ * 3 = both
+ *
+ * rval is expected to be initialized to zero before the first call.
+ */
+static const char *
+printf_doformat(const char *fmt, int *rval, const struct sess *sess,
+    const struct flist *fl, int do_print)
+{
+	static const char skip1[] = "'-+ 0";
+	char convch;
+	char start[strlen(fmt) + 1];
+	char *dptr;
+	int l;
+	char widthstring[8192];
+	int humanlevel = 0;
+
+	dptr = start;
+	*dptr++ = '%';
+	*dptr = 0;
+
+	fmt++;
+
+	widthstring[0] = '%';
+	l = strspn(fmt, widthchars);
+	/* We need a reserve of 4 chars for substitutions below, plus lead */
+	if (l + 5u > sizeof(widthstring)) {
+		ERRX("Insufficient buffer for width format");
+		return NULL;
+	}
+	strlcpy(widthstring + 1, fmt, l + 1);
+
+	if (strchr(widthstring, '\'')) {
+		char *cooked = malloc(strlen(widthstring));
+
+		if (cooked == NULL) {
+			ERR("malloc");
+			return NULL;
+		}
+		humanlevel = isit_human(cooked, widthstring);
+		strlcpy(widthstring, cooked, l + 1);
+		l -= humanlevel;
+		free(cooked);
+	}
+
+	/* skip to field width */
+	while (*fmt && strchr(skip1, *fmt) != NULL) {
+		*dptr++ = *fmt++;
+		*dptr = 0;
+	}
+	if (!*fmt) {
+		ERRX("missing format character");
+		return NULL;
+	}
+	while (isdigit(*fmt)) {
+		*dptr++ = *fmt++;
+		*dptr = 0;
+	}
+
+	*dptr++ = *fmt;
+	*dptr = 0;
+	convch = *fmt;
+	fmt++;
+
+	switch (convch) {
+	case 'a': {
+		/* TODO: server address */
+		break;
+	}
+	case 'b': {
+		char foo[8192];
+		uint64_t bytes_transferred;
+		*rval |= 2;
+
+		bytes_transferred = sess->total_read - sess->total_read_lf +
+			sess->total_write - sess->total_write_lf;
+
+		if (do_print) {
+			switch (humanlevel) {
+			case 0:
+				widthstring[l + 1] = 'l';
+				widthstring[l + 2] = 'd';
+				widthstring[l + 3] = '\0';
+				fprintf(sess->opts->outfile, widthstring,
+				    bytes_transferred);
+				break;
+			case 1:
+				widthstring[l + 1] = 'l';
+				widthstring[l + 2] = 'd';
+				widthstring[l + 3] = '\0';
+				fprintf(sess->opts->outfile, widthstring,
+				    bytes_transferred);
+				break;
+			case 2:
+				humanize_number(foo, 5, bytes_transferred,
+				    "", HN_AUTOSCALE, HN_DECIMAL|HN_NOSPACE);
+				widthstring[l + 1] = 's';
+				widthstring[l + 2] = '\0';
+				fprintf(sess->opts->outfile, widthstring, foo);
+				break;
+			case 3:
+				humanize_number(foo, 5, bytes_transferred, "",
+				    HN_AUTOSCALE,
+				    HN_DECIMAL|HN_NOSPACE|HN_DIVISOR_1000);
+				widthstring[l + 1] = 's';
+				widthstring[l + 2] = '\0';
+				fprintf(sess->opts->outfile, widthstring, foo);
+				break;
+			}
+		}
+		break;
+	}
+	case 'B': {
+		/* Print mode human-readable */
+		char buf[12]; /* Documented size of all strmode calls */
+
+		if (do_print) {
+			our_strmode(fl->st.mode, buf);
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			fprintf(sess->opts->outfile, widthstring, buf);
+		}
+		break;
+	}
+	case 'c': {
+		/* "%c the total size of the block checksums received for the
+		   basis file (only when sending)" */
+		/* 
+		 * I don't think smb rsync implements what it says in the
+		 * manpage.
+		 */
+		*rval |= 2;
+		break;
+	}
+#if 0
+	case 'C': {
+
+		/* This is a rsync 3.x feature */
+
+		/* the full-file checksum if it is known for the file.
+		 * For older rsync protocols/versions, the checksum
+		 * was salted, and is thus not a useful value (and is
+		 * not dis- played when that is the case). For the
+		 * checksum to output for a file, either the
+		 * --checksum option must be in-ef- fect or the file
+		 * must have been transferred without a salted
+		 * checksum being used.  See the --checksum-choice
+		 * option for a way to choose the algorithm.
+		*/
+
+		break;
+	}
+#endif
+	case 'f': {
+		/*
+		 * "the filename (long form on sender; no trailing "/")"
+		 */
+		if (do_print) {
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			print_7_or_8_bit(sess, widthstring, fl->path);
+		}
+		break;		
+	}
+	case 'G': {
+		/* FIXME this is incorrect since gid 0 is also root */
+		if (do_print) {
+			if (fl->st.gid) {
+				widthstring[l + 1] = 'd';
+				widthstring[l + 2] = '\0';
+				fprintf(sess->opts->outfile, widthstring, fl->st.gid);
+			} else {
+				widthstring[l + 1] = 's';
+				widthstring[l + 2] = '\0';
+				fprintf(sess->opts->outfile, widthstring, "DEFAULT");
+			}
+		}
+		break;
+	}
+	case 'h': {
+		/* TODO Remote host name, when daemon */
+		break;
+	}
+	case 'i': {
+		/* TODO itemize string */
+		*rval |= 1;
+		break;
+	}
+	case 'l': {
+		/* File length */
+		char foo[8192];
+
+		if (do_print) {
+			switch (humanlevel) {
+			case 0:
+				widthstring[l + 1] = 'l';
+				widthstring[l + 2] = 'd';
+				widthstring[l + 3] = '\0';
+				fprintf(sess->opts->outfile, widthstring, fl->st.size);
+				break;
+			case 1:
+				/* TODO for 3.x: use a printf with "'" */
+				widthstring[l + 1] = '\'';
+				widthstring[l + 2] = 'l';
+				widthstring[l + 3] = 'd';
+				widthstring[l + 4] = '\0';
+				fprintf(sess->opts->outfile, widthstring, fl->st.size);
+				break;
+			case 2:
+				humanize_number(foo, 5, fl->st.size,
+				    "", HN_AUTOSCALE, HN_DECIMAL|HN_NOSPACE);
+				widthstring[l + 1] = 's';
+				widthstring[l + 2] = '\0';
+				fprintf(sess->opts->outfile, widthstring, foo);
+				break;
+			case 3:
+				humanize_number(foo, 5, fl->st.size, "", HN_AUTOSCALE,
+				    HN_DECIMAL|HN_NOSPACE|HN_DIVISOR_1000);
+				widthstring[l + 1] = 's';
+				widthstring[l + 2] = '\0';
+				fprintf(sess->opts->outfile, widthstring, foo);
+				break;
+			}
+		}
+		break;
+	}
+	case 'L': {
+		/* TODO: hardlinks */
+		char buf[8192];
+
+		if (do_print) {
+			if (fl->link != NULL) {
+				snprintf(buf, sizeof(buf), "-> %s", fl->link);
+				widthstring[l + 1] = 's';
+				widthstring[l + 2] = '\0';
+				print_7_or_8_bit(sess, widthstring, buf);
+			}
+		}
+#if 0
+		/* TODO */
+		if (hardlinkstuff)
+			*rval |= 2;
+#endif
+		break;
+	}
+	case 'm': {
+		/* TODO: module name.  Even in client mode */
+		break;
+	}
+	case 'M': {
+		/* Modification time of item */
+		char buf[8192];
+
+		if (do_print) {
+			/* 2024/01/30-16:23:29 */
+			strftime(buf, sizeof(buf), "%Y/%m/%d-%H:%M:%S", 
+			    localtime(&fl->st.mtime));
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			fprintf(sess->opts->outfile, widthstring, buf);
+		}
+		break;
+	}
+	case 'n': {
+		/* Alternate file name print */
+		char buf[8192];
+
+		if (do_print) {
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			/* "(short form; trailing "/" on dir)" */
+			if (S_ISDIR(fl->st.mode))
+				snprintf(buf, sizeof(buf), "%s/", fl->wpath);
+			else
+				snprintf(buf, sizeof(buf), "%s", fl->wpath);
+			print_7_or_8_bit(sess, widthstring, buf);
+		}
+		break;
+	}
+	case 'o': {
+		/* the operation, which is "send", "recv", or "del." (the
+		   latter includes the trailing period) */
+		break;
+	}
+	case 'p': {
+		/* PID as a number */
+		if (do_print) {
+			widthstring[l + 1] = 'd';
+			widthstring[l + 2] = '\0';
+			/* TODO: capture top-level pid in main() */
+			fprintf(sess->opts->outfile, widthstring, getpid());
+		}
+		break;
+	}
+	case 'P': {
+		/* TODO: module path */
+		break;
+	}
+	case 't': {
+		/* Current machine time */
+		char buf[8192];
+		time_t now;
+
+		if (do_print) {
+			time(&now);
+			strftime(buf, sizeof(buf), "%Y/%m/%d-%H:%M:%S", localtime(&now));
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			fprintf(sess->opts->outfile, widthstring, buf);
+		}
+		break;
+	}
+	case 'u': {
+		/* TODO: auth username */
+		break;
+	}
+	case 'U': {
+		/* FIXME this is incorrect since uid 0 is also root */
+		if (do_print) {
+			if (fl->st.uid) {
+				widthstring[l + 1] = 'd';
+				widthstring[l + 2] = '\0';
+				fprintf(sess->opts->outfile, widthstring, fl->st.uid);
+			} else {
+				widthstring[l + 1] = 's';
+				widthstring[l + 2] = '\0';
+				fprintf(sess->opts->outfile, widthstring, "DEFAULT");
+			}
+		}
+		break;
+	}
+	}
+	return fmt;
+}
+
+int
+output(struct sess *sess, const struct flist *fl, int do_print)
+{
+	size_t len;
+	int end, rval = 0;
+	const char *start;
+	const char *fmt, *format;
+
+	if (sess->opts->outformat == NULL)
+		return 0;
+
+	fmt = format = sess->opts->outformat;
+	len = strlen(fmt);
+	rval = end = 0;
+
+	for (; *fmt;) {
+		start = fmt;
+		while (fmt < format + len) {
+ 			if (fmt[0] == '%') {
+				if (do_print)
+					fwrite(start, 1, fmt - start,
+					    sess->opts->outfile);
+				if (fmt[1] == '%') {
+					/* %% prints a % */
+					if (do_print)
+						fputc('%', sess->opts->outfile);
+					fmt += 2;
+				} else {
+					fmt = printf_doformat(fmt, &rval, sess,
+					    fl, do_print);
+					if (fmt == NULL || *fmt == '\0')
+						return rval;
+					end = 0;
+				}
+				start = fmt;
+			} else
+				fmt++;
+		}
+		if (end == 1) {
+			ERRX("missing format character");
+			return rval;
+		}
+		if (do_print)
+			fwrite(start, 1, fmt - start, sess->opts->outfile);
+	}
+	if (do_print)
+		fputc('\n', sess->opts->outfile);
+
+	sess->total_read_lf = sess->total_read;
+	sess->total_write_lf = sess->total_write;
+	return rval;
 }

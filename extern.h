@@ -334,6 +334,7 @@ struct	opts {
 	int		 hard_links;		/* -H --hard-links */
 	int		 remove_source;		/* --remove-source-files */
 	int		 supermode;		/* --{no-,}super */
+	int		 bit8;		        /* -8 --8-bit-output */
 	off_t		 max_size;		/* --max-size */
 	off_t		 min_size;		/* --min-size */
 	char		*rsync_path;		/* --rsync-path */
@@ -343,6 +344,8 @@ struct	opts {
 	char		*basedir[MAX_BASEDIR];
 	char            *filesfrom;             /* --files-from */
 	int		 from0;			/* -0 */
+	char            *outformat;             /* --out-format */
+	FILE            *outfile;               /* --out-format and -v */
 	const char	*sockopts;		/* --sockopts */
 	off_t		 bwlimit;		/* --bwlimit */
 	int		 size_only;		/* --size-only */
@@ -466,12 +469,24 @@ struct	sess {
 	int32_t		   lver; /* local version */
 	int32_t		   rver; /* remote version */
 	uint64_t	   total_read; /* non-logging wire/reads */
+	uint64_t	   total_read_lf; /* reads at time of last file */
 	uint64_t	   total_size; /* total file size */
 	uint64_t	   total_write; /* non-logging wire/writes */
+	uint64_t	   total_write_lf; /* writes at last file*/
+	uint64_t	   total_files; /* file count */
+	uint64_t	   total_files_xfer; /* files transferred */
+	uint64_t	   total_xfer_size; /* total file size transferred */
+	uint64_t	   total_unmatched; /* data we transferred */
+	uint64_t	   total_matched; /* data we recreated */
+	uint64_t	   flist_size; /* items on the flist */
+	uint64_t	   flist_build; /* time to build flist */
+	uint64_t	   flist_xfer; /* time to transfer flist */
 	int		   mplex_reads; /* multiplexing reads? */
 	size_t		   mplex_read_remain; /* remaining bytes */
 	int		   mplex_writes; /* multiplexing writes? */
 	double             last_time; /* last time printed --progress */  
+	int                itemize; /* --itemize or %i in --output-format */
+	int                lateprint; /* Does output format contain a flag requiring late print? */
 	char             **filesfrom; /* Contents of files-from */
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
 	int		   filesfrom_fd; /* --files-from */
@@ -798,5 +813,9 @@ sess_is_inplace(struct sess *sess)
 #ifndef S_ISTXT
 #define S_ISTXT S_ISVTX
 #endif
+
+int output(struct sess *sess, const struct flist *fl, int do_print);
+void our_strmode(mode_t mode, char *p);
+void print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s);
 
 #endif /*!EXTERN_H*/

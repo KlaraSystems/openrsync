@@ -25,6 +25,7 @@ OBJS	   = blocks.o \
 	     server.o \
 	     session.o \
 	     socket.o \
+	     strmode.o \
 	     symlinks.o \
 	     uploader.o
 ALLOBJS	   = $(OBJS) \
@@ -37,7 +38,7 @@ all: openrsync
 afl: $(AFLS)
 
 openrsync: $(ALLOBJS)
-	$(CC) $(LDFLAGS) -o $@ $(ALLOBJS) -lm $(LDADD_LIB_SOCKET) $(LDADD_SCAN_SCALED)
+	$(CC) $(LDFLAGS) -o $@ $(ALLOBJS) -lm -lutil -lsbuf $(LDADD_LIB_SOCKET) $(LDADD_SCAN_SCALED)
 
 $(AFLS): $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $*.c $(OBJS)
