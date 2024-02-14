@@ -932,10 +932,6 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	argc--;
 	argv++;
 
-	if (!daemon_operation_allowed(sess, client_opts, module,
-	    user_read_only))
-		goto fail;	/* Error already logged. */
-
 	if (!daemon_limit_verbosity(sess, module))
 		goto fail;
 
@@ -956,6 +952,13 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 	}
 
+	sess->mplex_writes = 1;
+	/* XXX LOG2("write multiplexing enabled"); */
+
+	if (!daemon_operation_allowed(sess, client_opts, module,
+	    user_read_only))
+		goto fail;	/* Error already logged. */
+
 	/* Strip any <module>/ off the beginning. */
 	daemon_normalize_paths(module, argc, argv);
 
@@ -967,8 +970,6 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 
 	sess->opts = client_opts;
-	sess->mplex_writes = 1;
-	/* XXX LOG2("write multiplexing enabled"); */
 
 	cleanup_set_session(cleanup_ctx, sess);
 	cleanup_release(cleanup_ctx);
