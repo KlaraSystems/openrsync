@@ -361,6 +361,7 @@ struct	opts {
 	int		 modwin;		/* --modify-windows=sec */
 	int		 fuzzy_basis;		/* -y */
 	int		 modwin;		/* --modify-windows=sec */
+	int		 quiet;			/* -q, --quiet */
 };
 
 enum rule_type {

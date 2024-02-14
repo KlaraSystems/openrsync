@@ -716,6 +716,7 @@ static const struct option	 lopts[] = {
     { "no-p",		no_argument,	&opts.preserve_perms,	0 },
     { "port",		required_argument, NULL,		OP_PORT },
     { "protocol",	required_argument, NULL,		OP_PROTOCOL },
+    { "quiet",		no_argument,	NULL,			'q' },
     { "recursive",	no_argument,	NULL,			'r' },
     { "no-recursive",	no_argument,	&opts.recursive,	0 },
     { "no-r",		no_argument,	&opts.recursive,	0 },
@@ -770,7 +771,8 @@ static void
 usage(int exitcode)
 {
 	fprintf(exitcode == 0 ? stdout : stderr, "usage: %s"
-	    " [-46BCDEFHIKLOPRSTWVabcdghklnoprtuvxy] [-e program] [-f filter] [--address=sourceaddr]\n"
+	    " [-0468BCDEFHIKLOPRSTWVabcdghklnopqrtuvxyz] [-e program] [-f filter]\n"
+	    "\t[--8-bit-output] [--address=sourceaddr]\n"
 	    "\t[--append] [--backup-dir=dir] [--bwlimit=limit] [--cache | --no-cache]\n"
 	    "\t[--compare-dest=dir] [--contimeout] [--copy-dest=dir] [--copy-unsafe-links]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
@@ -825,7 +827,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 #endif
 	opts.protocol = RSYNC_PROTOCOL;
 
-	while ((c = getopt_long(argc, argv, "046B:CDEFHIKLOPRSVWabcde:f:ghklnoprtuvxyz", lopts,
+	while ((c = getopt_long(argc, argv, "0468B:CDEFHIKLOPRSVWabcde:f:ghklnopqrtuvxyz", lopts,
 	    &lidx)) != -1) {
 		/* Give the filter a shot to reject the option. */
 		if (filter != NULL) {
@@ -972,6 +974,9 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			break;
 		case 'p':
 			opts.preserve_perms = 1;
+			break;
+		case 'q':
+			opts.quiet++;
 			break;
 		case 'r':
 			implied_recursive = 0;
@@ -1280,6 +1285,9 @@ basedir:
 
 		lidx = -1;
 	}
+
+	if (opts.quiet > 0)
+		verbose = 0;
 
 	/* Shouldn't be possible. */
 	assert(opts.ipf == 0 || opts.ipf == 4 || opts.ipf == 6);
