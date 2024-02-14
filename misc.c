@@ -24,6 +24,8 @@
  */
 #include "config.h"
 
+#include <sys/stat.h>
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -92,4 +94,35 @@ freeargs(arglist *args)
 		args->nalloc = args->num = 0;
 		args->list = NULL;
 	}
+}
+
+/*
+ * The name is just used for diagnostic output.
+ *
+ * Returns 0 if the file did not pass strict mode verification, 1 if it
+ * successfully passed.
+ */
+int
+check_file_mode(const char *name, int fd)
+{
+	struct stat sb;
+
+	if (fstat(fd, &sb) == -1) {
+		ERR("%s: fstat", name);
+		return 0;
+	}
+
+	if ((sb.st_mode & S_IRWXO) != 0) {
+		ERRX("%s: strict mode violation (other permission bits set)",
+		    name);
+		return 0;
+	}
+
+	if (geteuid() == 0 && sb.st_uid != 0) {
+		ERRX("%s: strict mode violation (root process, file not owned by root)",
+		    name);
+		return 0;
+	}
+
+	return 1;
 }

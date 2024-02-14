@@ -29,11 +29,15 @@
 #include <limits.h>
 #include <netdb.h>
 #include <poll.h>
+#if HAVE_READPASSPHRASE
+#include <readpassphrase.h>
+#endif
 #include <resolv.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <limits.h>
 #if HAVE_ERR
@@ -43,6 +47,13 @@
 #include "extern.h"
 
 #define	RSYNC_LISTEN_BACKLOG	5
+
+/*
+ * Defaults from the reference rsync; the max password size is specifically for
+ * password files, and not otherwise strictly enforced.
+ */
+#define	RSYNCD_DEFAULT_USER	"nobody"
+#define	RSYNCD_MAX_PASSWORDSZ	511
 
 /*
  * Negative values don't make sense for any of the options we support, so we use
@@ -554,6 +565,161 @@ inet_resolve(struct sess *sess, const char *host, size_t *sz, int passive)
 	return src;
 }
 
+static char *
+protocol_auth_getpass(struct sess *sess, char *buf, size_t bufsz)
+{
+	const char *envpass;
+
+	memset(buf, 0, bufsz);
+
+	envpass = getenv("RSYNC_PASSWORD");
+	if (sess->opts->password_file != NULL) {
+		int fd;
+
+		fd = open(sess->opts->password_file, O_RDONLY);
+		if (fd == -1) {
+			ERR("%s: open", sess->opts->password_file);
+			return NULL;
+		}
+
+		if (check_file_mode(sess->opts->password_file, fd)) {
+			ssize_t readsz;
+
+			if (envpass != NULL)
+				ERRX("RSYNC_PASSWORD environment variable set but not used in favor of --password-file");
+
+			readsz = read(fd, buf, bufsz - 1);
+			if (readsz < 0) {
+				ERR("%s: read", sess->opts->password_file);
+				close(fd);
+				goto prompt;
+			}
+
+			close(fd);
+
+			if (readsz == 0)
+				goto prompt;
+
+			readsz = strcspn(buf, "\r\n");
+			buf[readsz] = '\0';
+
+			return &buf[0];
+		}
+
+		close(fd);
+		ERRX("Ignoring password file '%s' due to strict mode violation",
+		    sess->opts->password_file);
+	}
+
+	/*
+	 * Fallback to using the environment if the password file wasn't
+	 * suitable at all.
+	 */
+	if (envpass != NULL) {
+		if (strlcpy(buf, envpass, bufsz) >= bufsz) {
+			ERRX("RSYNC_PASSWORD value too large (max %zu)", bufsz - 1);
+			return NULL;
+		}
+
+		return &buf[0];
+	}
+
+prompt:
+
+	return readpassphrase("Password: ", buf, bufsz, 0);
+}
+
+int
+rsync_password_hash(const char *password, const char *challenge,
+    char *buf, size_t bufsz)
+{
+	MD4_CTX ctx;
+	uint8_t hash[MD4_DIGEST_LENGTH];
+	int32_t seed = 0;
+	size_t len;
+
+	MD4_Init(&ctx);
+	MD4_Update(&ctx, &seed, sizeof(seed));
+	MD4_Update(&ctx, password, strlen(password));
+	MD4_Update(&ctx, challenge, strlen(challenge));
+	MD4_Final(hash, &ctx);
+
+	if (b64_ntop(hash, sizeof(hash), buf, bufsz) < 0)
+		return 0;
+
+	/*
+	 * Omitted from the reference rsync's protocol documentation is that
+	 * it's base64 and, more specifically, without padding.  Chop them off.
+	 */
+	len = strlen(buf);
+	while (len > 0 && buf[len - 1] == '=') {
+		buf[--len] = '\0';
+	}
+
+	return 1;
+}
+
+/*
+ * Respond to an auth request.
+ * Return <0 on failure, 1 on success.
+ */
+static int
+protocol_auth(struct sess *sess, int sd, const char *challenge)
+{
+	char password[RSYNCD_MAX_PASSWORDSZ + 1];
+	char response[RSYNCD_CHALLENGE_RESPONSESZ];
+	const char *user;
+	int rc;
+
+	while (isspace(*challenge))
+		challenge++;
+
+	if (*challenge == '\0') {
+		ERRX("Malformed auth challenge");
+		return -1;
+	}
+
+	/* XXX Also check the URI? */
+	user = getenv("USER");
+	if (user == NULL)
+		user = getenv("LOGNAME");
+	if (user == NULL)
+		user = RSYNCD_DEFAULT_USER;
+
+	if (protocol_auth_getpass(sess, password, sizeof(password)) == NULL) {
+		ERRX("Failed to obtain password");
+		return -1;
+	}
+
+	memset(response, 0, sizeof(response));
+	rc = rsync_password_hash(password, challenge, response,
+	    sizeof(response));
+	explicit_bzero(password, sizeof(password));
+
+	if (!rc) {
+		ERRX("Password hashing failed");
+		return -1;
+	}
+
+	/* Respond <user> <response> */
+	if (!io_write_buf(sess, sd, user, strlen(user))) {
+		ERR("io_write_buf");
+		return -1;
+	}
+
+	if (!io_write_byte(sess, sd, ' ')) {
+		ERR("io_write_byte");
+		return -1;
+	}
+
+	if (!io_write_line(sess, sd, response)) {
+		ERR("io_write_line");
+		return -1;
+	}
+
+	return 0;
+}
+
 /*
  * Process an rsyncd preamble line.
  * This is either free-form text or @RSYNCD commands.
@@ -561,7 +727,7 @@ inet_resolve(struct sess *sess, const char *host, size_t *sz, int passive)
  */
 static int
 protocol_line(struct sess *sess, __attribute__((unused)) const char *host,
-    const char *cp)
+    int sd, const char *cp)
 {
 	int	major, minor;
 
@@ -579,6 +745,11 @@ protocol_line(struct sess *sess, __attribute__((unused)) const char *host,
 
 	if (strcmp(cp, "OK") == 0)
 		return 1;
+
+	if (strncmp(cp, "AUTHREQD", sizeof("AUTHREQ") - 1) == 0) {
+		cp += sizeof("AUTHREQD") - 1;
+		return protocol_auth(sess, sd, cp);
+	}
 
 	/*
 	 * Otherwise, all we have left is our version.
@@ -893,7 +1064,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		if (buf[i - 1] == '\r')
 			buf[i - 1] = '\0';
 
-		if ((c = protocol_line(&sess, f->host, buf)) < 0) {
+		if ((c = protocol_line(&sess, f->host, sd, buf)) < 0) {
 			ERRX1("protocol_line");
 			goto out;
 		} else if (c > 0)

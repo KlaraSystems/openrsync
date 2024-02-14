@@ -644,6 +644,7 @@ enum {
 	OP_COPY_UNSAFE_LINKS,
 	OP_SAFE_LINKS,
 	OP_FORCE,
+	OP_PASSWORD_FILE,
 	OP_PROTOCOL,
 	OP_IGNORE_ERRORS,
 	OP_OUTFORMAT,
@@ -727,6 +728,7 @@ static const struct option	 lopts[] = {
     { "no-owner",	no_argument,	&opts.preserve_uids,	0 },
     { "no-o",		no_argument,	&opts.preserve_uids,	0 },
     { "one-file-system",no_argument,	NULL,			'x' },
+    { "password-file",	required_argument, NULL,		OP_PASSWORD_FILE },
     { "partial",	no_argument,	&opts.partial,		1 },
     { "no-partial",	no_argument,	&opts.partial,		0 },
     { "partial-dir",	required_argument,	NULL,		OP_PARTIAL_DIR },
@@ -806,8 +808,8 @@ usage(int exitcode)
 	    "\t[--ignore-existing] [--ignore-non-existing] [--include]\n"
 	    "\t[--include-from=file] [--inplace] [--keep-dirlinks] [--link-dest=dir]\n"
 	    "\t[--max-size=SIZE] [--min-size=SIZE] [--modify-window=sec] [--no-motd] [--numeric-ids]\n"
-	    "\t[--out-format=FMT] [--partial] [--port=portnumber] [--progress] [--protocol]\n"
-	    "\t[--read-batch=file]\n"
+	    "\t[--out-format=FMT] [--partial] [--password-file=pwfile] [--port=portnumber]\n"
+	    "\t[--progress] [--protocol] [--read-batch=file]\n"
 	    "\t[--remove-source-files] [--rsync-path=program] [--safe-links] [--size-only]\n"
 	    "\t[--sockopts=sockopts] [--specials] [--suffix] [--super] [--timeout=seconds]\n"
 	    "\t[--only-write-batch=file | --write-batch=file]\n"
@@ -1264,6 +1266,9 @@ basedir:
 			opts.backup_suffix = strdup(optarg);
 			if (opts.backup_suffix == NULL)
 				errx(ERR_NOMEM, NULL);
+			break;
+		case OP_PASSWORD_FILE:
+			opts.password_file = optarg;
 			break;
 		case OP_PARTIAL_DIR:
 			opts.partial = 1;

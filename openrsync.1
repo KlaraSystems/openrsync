@@ -63,6 +63,7 @@
 .Op Fl -no-motd
 .Op Fl -numeric-ids
 .Op Fl -partial
+.Op Fl -password-file Ns = Ns Ar pwfile
 .Op Fl -port Ns = Ns Ar service
 .Op Fl -progress
 .Op Fl -read-batch Ns = Ns Ar file
@@ -563,6 +564,15 @@ Do not remove partially transferred files if
 .Nm
 is interrupted, which opens up the possibility for them to be easily resumed
 later.
+.It Fl -password-file Ns = Ns Ar pwfile
+Define a file to read the password from when connecting to an rsync daemon.
+The password should be written on the first line of the file, and may have a
+terminating newline.
+The
+.Ar pwfile
+is expected to not be readable by 'other', and to be owned by root if
+.Nm
+is running as root.
 .It Fl -port Ns = Ns Ar service
 Specify an alternative TCP port number.
 The
@@ -1002,7 +1012,22 @@ is used.
 .Sh ENVIRONMENT
 The following environment variables affect execution of
 .Nm :
-.Bl -tag -width "RSYNC_RSH"
+.Bl -tag -width "RSYNC_PASSWORD"
+.It Ev LOGNAME
+This variable may also hold the username to use when connecting to an rsync
+daemon.
+If
+.Ev LOGNAME
+is not set, then
+.Dq nobody
+will be used.
+.It Ev USER
+This variable holds the username to use when connecting to an rsync daemon.
+If
+.Ev USER
+is not set, then
+.Ev LOGNAME
+will be used.
 .It Ev RSYNC_RSH
 This variable specifies the remote shell to use for remote connections.
 The default remote shell is
@@ -1012,6 +1037,15 @@ if neither
 nor
 .Fl -rsh
 are specified.
+.It Ev RSYNC_PASSWORD
+This variable specifies the password to use when connecting to an rsync daemon.
+It will be ignored if the
+.Fl -password-file
+option is specified and passes the mode and owner check described above in the
+option's description.
+On many systems, environment variables are readable by other processes and
+should be considered insecure.
+Please prefer a password file instead.
 .El
 .\" .Sh FILES
 .Sh EXIT STATUS
