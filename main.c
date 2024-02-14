@@ -676,22 +676,17 @@ enum {
 	OP_COPY_UNSAFE_LINKS,
 	OP_SAFE_LINKS,
 	OP_FORCE,
+	OP_IGNORE_ERRORS,
 	OP_PASSWORD_FILE,
 	OP_PROTOCOL,
-	OP_IGNORE_ERRORS,
-	OP_OUTFORMAT,
-	OP_BIT8,
-	OP_MODWIN,
-	OP_BLOCKING_IO,
-	OP_OUTFORMAT,
-	OP_BIT8,
 	OP_READ_BATCH,
 	OP_WRITE_BATCH,
 	OP_ONLY_WRITE_BATCH,
 	OP_OUTFORMAT,
 	OP_BIT8,
-	OP_MAX_DELETE,
 	OP_HELP,
+	OP_BLOCKING_IO,
+	OP_MODWIN,
 };
 
 static const struct option	 lopts[] = {
@@ -824,7 +819,6 @@ static const struct option	 lopts[] = {
     { "from0",		no_argument,	NULL,			'0' },
     { "out-format",	required_argument,	NULL,		OP_OUTFORMAT },
     { "delay-updates",	no_argument,	&opts.dlupdates,	1 },
-    { "8-bit-output",	no_argument,	NULL,			OP_BIT8 },
     { "modify-window",	required_argument,	NULL,		OP_MODWIN },
     { "8-bit-output",	no_argument,	NULL,			OP_BIT8 },
     { NULL,		0,		NULL,			0 }

@@ -389,8 +389,8 @@ struct	opts {
 	int		 preserve_executability;	/* --executability */
 	int		 modwin;		/* --modify-windows=sec */
 	int		 fuzzy_basis;		/* -y */
-	int		 modwin;		/* --modify-windows=sec */
 	int		 quiet;			/* -q, --quiet */
+	int		 modwin;		/* --modify-windows=sec */
 };
 
 enum rule_type {
