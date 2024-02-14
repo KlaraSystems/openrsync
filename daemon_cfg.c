@@ -67,6 +67,8 @@ static struct rsync_daemon_param {
 	/** Module parameters **/
 	PARAM("comment",	NULL),
 	PARAM_DFLT("gid",		NULL,		"-2"),
+	PARAM("hosts allow",	"hostsallow"),
+	PARAM("hosts deny",	"hostsdeny"),
 	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
 	PARAM("log file",	"logfile"),
@@ -95,8 +97,6 @@ static struct rsync_daemon_param {
 	PARAM("outgoing chmod",	"outgoingchmod"),
 	PARAM("auth users",	"authusers"),
 	PARAM("secrets file",	"secretsfile"),
-	PARAM("hosts allow",	"hostsallow"),
-	PARAM("hosts deny",	"hostsdeny"),
 
 	PARAM_DFLT("strict modes",	"strictmodes",	"true"),
 	PARAM_DFLT("ignore errors",	"ignoreerrors",	"false"),

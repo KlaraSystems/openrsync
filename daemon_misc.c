@@ -156,6 +156,267 @@ daemon_client_error(struct sess *sess, const char *fmt, ...)
 	 */
 }
 
+static long
+parse_addr(sa_family_t family, const char *strmask, struct sockaddr *maskaddr)
+{
+	void *addr;
+
+	if (family == AF_INET) {
+		struct sockaddr_in *sin = (void *)maskaddr;
+
+		addr = &sin->sin_addr;
+	} else {
+		struct sockaddr_in6 *sin6 = (void *)maskaddr;
+
+		addr = &sin6->sin6_addr;
+	}
+
+	if (inet_pton(family, strmask, addr) != 1)
+		return 0;
+
+	maskaddr->sa_family = family;
+	return 1;
+}
+
+static long
+parse_mask(sa_family_t family, const char *strmask, struct sockaddr *maskaddr)
+{
+	char *endp;
+	unsigned long mask;
+
+	errno = 0;
+	mask = strtoul(strmask, &endp, 10);
+	if (errno == 0 && *endp == '\0') {
+		uint8_t *addr;
+		size_t addrsz, nbytes;
+		int rem;
+
+		/* No sanity checking at all. */
+		if (family == AF_INET) {
+			struct sockaddr_in *sin = (void *)maskaddr;
+
+			addr = (uint8_t *)&sin->sin_addr;
+			addrsz = sizeof(sin->sin_addr);
+		} else {
+			struct sockaddr_in6 *sin6 = (void *)maskaddr;
+
+			addr = (uint8_t *)&sin6->sin6_addr;
+			addrsz = sizeof(sin6->sin6_addr);
+		}
+
+		memset(addr, 0, addrsz);
+
+		/* Invalid...  */
+		if (mask > (addrsz << 3))
+			return 0;
+
+		/*
+		 * We can memset up until the last byte of the mask, then
+		 * set the remainder manually.
+		 */
+		nbytes = mask >> 3;
+
+		/* Recalculate our last byte's worth, if any. */
+		rem = mask & 0x07;	/* Truncated bits */
+		mask = ~((1 << (8 - rem)) - 1);
+
+		memset(addr, 0xff, nbytes);
+		if (rem != 0)
+			addr[nbytes] |= mask;
+
+		return 1;
+	}
+
+	/* Must be an address mask... */
+	if (parse_addr(family, strmask, maskaddr))
+		return 1;
+	return 0;
+}
+
+static int
+masked_match(char *host, struct sockaddr *addr)
+{
+	struct sockaddr_storage hostaddr, maskaddr;
+	uint8_t *laddr, *maddr, *raddr;
+	char *strmask;
+	size_t addrsz;
+	sa_family_t family;
+
+	family = addr->sa_family;
+	strmask = strrchr(host, '/');
+	assert(strmask != NULL);
+
+	if (!parse_mask(family, strmask + 1, (struct sockaddr *)&maskaddr))
+		return 0;
+
+	*strmask = '\0';
+
+	if (!parse_addr(family, host, (struct sockaddr *)&hostaddr))
+		return 0;
+
+	if (family == AF_INET) {
+		struct sockaddr_in *left, *right, *mask;
+
+		left = (struct sockaddr_in *)&hostaddr;
+		right = (struct sockaddr_in *)addr;
+		mask = (struct sockaddr_in *)&maskaddr;
+
+		laddr = (uint8_t *)&left->sin_addr;
+		raddr = (uint8_t *)&right->sin_addr;
+		maddr = (uint8_t *)&mask->sin_addr;
+		addrsz = sizeof(left->sin_addr);
+	} else {
+		struct sockaddr_in6 *left, *right, *mask;
+
+		left = (struct sockaddr_in6 *)&hostaddr;
+		right = (struct sockaddr_in6 *)addr;
+		mask = (struct sockaddr_in6 *)&maskaddr;
+
+		laddr = (uint8_t *)&left->sin6_addr;
+		raddr = (uint8_t *)&right->sin6_addr;
+		maddr = (uint8_t *)&mask->sin6_addr;
+		addrsz = sizeof(left->sin6_addr);
+	}
+
+	/* Finally, compare the two. */
+	for (size_t i = 0; i < addrsz; i++) {
+		if (((laddr[i] ^ raddr[i]) & maddr[i]) != 0)
+			return 0;
+	}
+
+	return 1;
+}
+
+static int
+daemon_connection_matches_one(const struct sess *sess, char *host)
+{
+	const struct daemon_role *role;
+	const char *addr, *masked;
+
+	role = (void *)sess->role;
+	if (role->client_host[0] != '\0' &&
+	    rmatch(host, role->client_host, 0) == 0)
+		return 1;
+
+	masked = strrchr(host, '/');
+	addr = &role->client_addr[0];
+	if (masked == NULL)
+		return strcmp(host, addr) == 0;
+
+	return masked_match(host, role->client_sa);
+}
+
+static int
+daemon_connection_matches(struct sess *sess, const char *hostlistp, bool *match,
+    int *total)
+{
+	char *host, *hostlist;
+	int cnt;
+	bool matched;
+
+	hostlist = strdup(hostlistp);
+	if (hostlist == NULL) {
+		daemon_client_error(sess, "out of memory");
+		return -1;
+	}
+
+	cnt = 0;
+	matched = false;
+	while ((host = strsep(&hostlist, ", \t")) != NULL) {
+		if (*host == '\0')
+			continue;
+
+		cnt++;
+
+		/* Check host */
+		if (daemon_connection_matches_one(sess, host)) {
+			matched = true;
+			break;
+		}
+	}
+
+	*total = cnt;
+	*match = matched;
+
+	free(hostlist);
+	return 0;
+}
+
+/* Check 'hosts allow' and 'hosts deny' */
+int
+daemon_connection_allowed(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+	const char *hostlist;
+	int allowcnt, denycnt, rc;
+	bool has_deny, matched;
+
+	role = (void *)sess->role;
+
+	allowcnt = denycnt = 0;
+	has_deny = cfg_has_param(role->dcfg, module, "hosts deny");
+	if (cfg_has_param(role->dcfg, module, "hosts allow")) {
+		rc = cfg_param_str(role->dcfg, module, "hosts allow",
+		    &hostlist);
+		assert(rc == 0);
+
+		/* Fail safe, don't allow if we failed to parse. */
+		if (daemon_connection_matches(sess, hostlist,
+		    &matched, &allowcnt) == -1) {
+			daemon_client_error(sess, "failed to process allow host list");
+			return 0;
+		}
+
+		if (allowcnt > 0) {
+			if (matched)
+				return 1;
+
+			if (!has_deny) {
+				daemon_client_error(sess,
+				    "access denied by allow policy from %s [%s]",
+				    role->client_host, role->client_addr);
+				return 0;
+			}
+		}
+	}
+
+	if (has_deny) {
+		rc = cfg_param_str(role->dcfg, module, "hosts deny",
+		    &hostlist);
+		assert(rc == 0);
+
+		/* Fail safe, don't allow if we failed to parse. */
+		if (daemon_connection_matches(sess, hostlist,
+		    &matched, &denycnt) == -1) {
+			daemon_client_error(sess, "failed to process deny host list");
+			return 0;
+		}
+
+		if (denycnt > 0) {
+			if (matched) {
+				daemon_client_error(sess,
+				    "access denied by deny policy from %s [%s]",
+				    role->client_host, role->client_addr);
+				return 0;
+			}
+		} else if (allowcnt > 0) {
+			/*
+			 * We had an allow list and we thought we had a deny
+			 * list, but we parsed the list only to discover it was
+			 * actually empty.  Deny the connection, since they were
+			 * not allowed by the allow list.
+			 */
+			daemon_client_error(sess,
+			    "access denied by allow policy from %s [%s]",
+			    role->client_host, role->client_addr);
+			return 0;
+		}
+	}
+
+	/* Default policy is to accept all. */
+	return 1;
+}
+
 /*
  * Return value of this one is reversed, as we're describing whether the
  * connection is being limited from happening or not.

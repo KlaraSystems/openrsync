@@ -36,6 +36,7 @@ struct daemon_role {
 	struct role		 role;
 	char			 client_host[NI_MAXHOST]; /* hostname */
 	char			 client_addr[INET6_ADDRSTRLEN]; /* addr */
+	struct sockaddr		*client_sa;
 	const char		*cfg_file;	/* (c) daemon config file */
 	char			*motd_file;	/* (f) client motd */
 	struct daemon_cfg	*dcfg;		/* (f) daemon config */
@@ -52,6 +53,7 @@ struct daemon_role {
 int	daemon_chuser_setup(struct sess *, const char *);
 int	daemon_chuser(struct sess *, const char *);
 void	daemon_client_error(struct sess *, const char *, ...);
+int	daemon_connection_allowed(struct sess *, const char *);
 int	daemon_connection_limited(struct sess *, const char *);
 int	daemon_fill_hostinfo(struct sess *, const char *,
 	    const struct sockaddr *, size_t);
