@@ -972,7 +972,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (!daemon_apply_chmod(sess, module, client_opts))
 		goto fail;
 
-	if (!daemon_set_numeric_ids(sess, client_opts, module, use_chroot))
+	if (!daemon_apply_chrootopts(sess, module, client_opts, use_chroot))
 		goto fail;
 
 	sess->opts = client_opts;
