@@ -51,6 +51,8 @@ struct daemon_role {
 };
 
 int	daemon_apply_chmod(struct sess *, const char *, struct opts *);
+int	daemon_apply_chrootopts(struct sess *, const char *, struct opts *,
+	    int);
 int	daemon_chuser_setup(struct sess *, const char *);
 int	daemon_chuser(struct sess *, const char *);
 void	daemon_client_error(struct sess *, const char *, ...);
@@ -64,7 +66,6 @@ void	daemon_normalize_paths(const char *, int, char *[]);
 int	daemon_open_logfile(const char *, bool);
 int	daemon_operation_allowed(struct sess *, const struct opts *,
 	    const char *, int);
-int	daemon_set_numeric_ids(struct sess *, struct opts *, const char *, int);
 int	daemon_setup_logfile(struct sess *, const char *);
 
 #endif /* !DAEMON_H */
