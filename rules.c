@@ -597,7 +597,10 @@ parse_rule_impl(struct ruleset *ruleset, const char *line, enum rule_type def,
 			/* FALLTHROUGH */
 		default:
 			modifiers = 0;
-			if (def == RULE_NONE) {
+			if (def == RULE_NONE ||
+			    strncmp(line, "- ", 2) == 0 ||
+			    strncmp(line, "+ ", 2) == 0 ||
+			    strcmp(line, "!") == 0) {
 				len = strcspn(line, " _");
 				type = parse_command(line, len, &modifiers);
 			}
