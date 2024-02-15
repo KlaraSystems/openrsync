@@ -969,6 +969,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (client_opts->filesfrom_path != NULL)
 		daemon_normalize_paths(module, 1, &client_opts->filesfrom_path);
 
+	if (!daemon_apply_chmod(sess, module, client_opts))
+		goto fail;
+
 	if (!daemon_set_numeric_ids(sess, client_opts, module, use_chroot))
 		goto fail;
 
