@@ -131,7 +131,7 @@ batch_apply_flags(struct sess *sess, struct batchhdr *hdr, struct opts *opts)
 		*field = value;
 	}
 
-	if (sess->protocol < 29) {
+	if (!protocol_newbatch) {
 		if (opts->recursive) {
 			opts->dirs = DIRMODE_IMPLIED;
 		} else if (opts->dirs == DIRMODE_IMPLIED) {
@@ -331,7 +331,7 @@ batch_close(struct sess *sess, const struct fargs *f, int rc)
 	free(args);
 
 	if (*rules != NULL) {
-		if (sess->protocol < 29)
+		if (!protocol_newbatch)
 			fprintf(fp, "--exclude-from=- ");
 		else
 			fprintf(fp, "--filter=\". -\"");
