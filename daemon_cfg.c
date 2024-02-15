@@ -73,6 +73,7 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("gid",		NULL,		"-2"),
 	PARAM("hosts allow",	"hostsallow"),
 	PARAM("hosts deny",	"hostsdeny"),
+	PARAM_DFLT("ignore errors",	"ignoreerrors",	"false"),
 	PARAM("include",	NULL),
 	PARAM("include from",	"includefrom"),
 	PARAM("incoming chmod",	"incomingchmod"),
@@ -98,7 +99,6 @@ static struct rsync_daemon_param {
 	/* default disabled when chroot */
 	PARAM("munge symlinks",	"mungesymlinks"),
 
-	PARAM_DFLT("ignore errors",	"ignoreerrors",	"false"),
 	PARAM_DFLT("ignore nonreadable",	"ignorenonreadable",	"false"),
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
 	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),

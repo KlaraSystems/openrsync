@@ -975,6 +975,13 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (!daemon_apply_chrootopts(sess, module, client_opts, use_chroot))
 		goto fail;
 
+	if (!client_opts->ignore_errors &&
+	    cfg_param_bool(role->dcfg, module, "ignore errors",
+	    &client_opts->ignore_errors) != 0) {
+		daemon_client_error(sess, "%s: 'ignore errors' invalid");
+		goto fail;
+	}
+
 	sess->opts = client_opts;
 
 	cleanup_set_session(cleanup_ctx, sess);
