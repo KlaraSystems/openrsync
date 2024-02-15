@@ -863,6 +863,25 @@ fl_print(const char *id, struct fl *fl)
 	}
 }
 
+static void
+flist_chmod(const struct sess *sess, struct flist *ff)
+{
+	mode_t mode = ff->st.mode;
+
+	if (S_ISDIR(mode)) {
+		mode &= ~sess->chmod_dir_AND;
+		mode |= sess->chmod_dir_OR;
+		mode |= sess->chmod_dir_X;
+	} else {
+		mode &= ~sess->chmod_file_AND;
+		mode |= sess->chmod_file_OR;
+		if (ff->st.mode & (S_IXUSR | S_IXGRP | S_IXOTH))
+			mode |= sess->chmod_file_X;
+	}
+
+	ff->st.mode = mode;
+}
+
 /*
  * Copy all the elements of path that are directories.
  * We need those for --relative, because we need to
@@ -971,6 +990,11 @@ flist_append(struct sess *sess, const struct stat *st,
 	 */
 
 	flist_copy_stat(f, st);
+
+	if (sess->opts->chmod != NULL) {
+		/* Client-sender --chmod */
+		flist_chmod(sess, f);
+	}
 
 	/* Optionally copy link information. */
 
@@ -1085,6 +1109,11 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			goto out;
 		} else
 			ff->st.mode = fflast->st.mode;
+
+		if (sess->opts->chmod != NULL) {
+			/* Client-receiver --chmod */
+			flist_chmod(sess, ff);
+		}
 
 		/* Conditional part: uid. */
 
@@ -1619,23 +1648,6 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 
 		f->wpath = f->path + stripdir;
 		flist_copy_stat(f, ent->fts_statp);
-
-		if (sess->opts->chmod != NULL) {
-			mode_t mode = f->st.mode;
-
-			if (S_ISDIR(mode)) {
-				mode &= ~sess->chmod_dir_AND;
-				mode |= sess->chmod_dir_OR;
-				mode |= sess->chmod_dir_X;
-			} else {
-				mode &= ~sess->chmod_file_AND;
-				mode |= sess->chmod_file_OR;
-				if (f->st.mode & (S_IXUSR | S_IXGRP | S_IXOTH))
-					mode |= sess->chmod_file_X;
-			}
-
-			f->st.mode = mode;
-		}
 
 		/* Optionally copy link information. */
 

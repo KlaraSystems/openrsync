@@ -55,6 +55,9 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	sess.lver = sess.protocol = sess.opts->protocol;
 	sess.wbatch_fd = -1;
 
+	if (sess.opts->chmod != NULL)
+		chmod_parse(sess.opts->chmod, &sess);
+
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
 

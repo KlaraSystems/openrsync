@@ -365,7 +365,7 @@ struct	opts {
 	int		 append;		/* --append */
 	int		 checksum;		/* -c --checksum */
 	int		 checksum_seed;		/* --checksum-seed */
-	char		*chmod;			/* --chmod */
+	const char	*chmod;			/* --chmod */
 	int		 recursive;		/* -r */
 	enum dryrun	 dry_run;		/* -n */
 	int		 inplace;		/* --inplace */
