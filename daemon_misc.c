@@ -165,6 +165,45 @@ daemon_client_error(struct sess *sess, const char *fmt, ...)
 	 */
 }
 
+static void
+daemon_configure_filter_type(struct daemon_role *role, const char *module,
+    const char *fparam, enum rule_type type, bool is_file)
+{
+	const char *filter;
+	int rc;
+
+	if (!cfg_has_param(role->dcfg, module, fparam))
+		return;
+
+	rc = cfg_param_str(role->dcfg, module, fparam, &filter);
+	assert(rc == 0);
+
+	if (is_file)
+		parse_file(filter, type, '\n');
+	else
+		parse_rule_words(filter, type, '\n');
+}
+
+int
+daemon_configure_filters(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+
+	role = (void *)sess->role;
+
+	daemon_configure_filter_type(role, module, "filter", RULE_NONE, false);
+	daemon_configure_filter_type(role, module, "include from", RULE_INCLUDE,
+	    true);
+	daemon_configure_filter_type(role, module, "include", RULE_INCLUDE,
+	    false);
+	daemon_configure_filter_type(role, module, "exclude from", RULE_EXCLUDE,
+	    true);
+	daemon_configure_filter_type(role, module, "exclude", RULE_EXCLUDE,
+	    false);
+
+	return 1;
+}
+
 static long
 parse_addr(sa_family_t family, const char *strmask, struct sockaddr *maskaddr)
 {

@@ -67,9 +67,14 @@ static struct rsync_daemon_param {
 	/** Module parameters **/
 	PARAM("auth users",	"authusers"),
 	PARAM("comment",	NULL),
+	PARAM("exclude",	NULL),
+	PARAM("exclude from",	"excludefrom"),
+	PARAM("filter",		NULL),
 	PARAM_DFLT("gid",		NULL,		"-2"),
 	PARAM("hosts allow",	"hostsallow"),
 	PARAM("hosts deny",	"hostsdeny"),
+	PARAM("include",	NULL),
+	PARAM("include from",	"includefrom"),
 	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
 	PARAM("log file",	"logfile"),
@@ -91,11 +96,6 @@ static struct rsync_daemon_param {
 	/* default disabled when chroot */
 	PARAM("munge symlinks",	"mungesymlinks"),
 
-	PARAM("filter",		NULL),
-	PARAM("exclude",	NULL),
-	PARAM("exclude from",	"excludefrom"),
-	PARAM("include",	NULL),
-	PARAM("include from",	"includefrom"),
 	PARAM("incoming chmod",	"incomingchmod"),
 	PARAM("outgoing chmod",	"outgoingchmod"),
 
@@ -577,7 +577,7 @@ cfg_parse(const struct sess *sess, const char *cfg_file, int module)
 			 * XXX Exception: this *does* throw an unrecoverable
 			 * error.
 			 */
-			fprintf(stderr, "failed to find %s\n", key);
+			fprintf(stderr, "Invalid key in rsyncd.conf: '%s'\n", key);
 			error = -1;
 			break;
 		}
