@@ -46,6 +46,7 @@
 #define	protocol_dlrename	(sess->protocol >= 29)
 #define	protocol_keepalive	(sess->protocol >= 29)
 #define	protocol_fliststats	(sess->protocol >= 29)
+#define	protocol_newbatch	(sess->protocol >= 29)
 
 /*
  * itemize-changes flags.
