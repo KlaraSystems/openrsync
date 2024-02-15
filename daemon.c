@@ -850,9 +850,6 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 	}
 
-	if (!daemon_setup_logfile(sess, module))
-		goto fail;
-
 	if (cfg_param_bool(role->dcfg, module, "use chroot",
 	    &use_chroot) != 0) {
 		/* Log it and pretend it's unset. */
@@ -868,6 +865,12 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	rc = cfg_param_str(role->dcfg, module, "path", &module_path);
 	assert(rc == 0);
+
+	if (!daemon_configure_filters(sess, module))
+		goto fail;
+
+	if (!daemon_setup_logfile(sess, module))
+		goto fail;
 
 	/*
 	 * Resolve UIDs/GIDs before we enter our chroot, just in case they're

@@ -53,6 +53,7 @@ struct daemon_role {
 int	daemon_chuser_setup(struct sess *, const char *);
 int	daemon_chuser(struct sess *, const char *);
 void	daemon_client_error(struct sess *, const char *, ...);
+int	daemon_configure_filters(struct sess *, const char *);
 int	daemon_connection_allowed(struct sess *, const char *);
 int	daemon_connection_limited(struct sess *, const char *);
 int	daemon_fill_hostinfo(struct sess *, const char *,
