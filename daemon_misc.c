@@ -38,6 +38,38 @@ static int daemon_rangelock(struct sess *, const char *, const char *, int);
 #define	CONNLOCK_START(conn)	((conn) * 4)
 #define	CONNLOCK_SIZE(conn)	(4)
 
+int
+daemon_apply_chmod(struct sess *sess, const char *module,
+    struct opts *opts)
+{
+	struct daemon_role *role;
+	const char *chmod, *which;
+	int rc;
+
+	role = (void *)sess->role;
+	if (opts->sender)
+		which = "outgoing chmod";
+	else
+		which = "incoming chmod";
+
+	if (!cfg_has_param(role->dcfg, module, which))
+		return 1;
+
+	rc = cfg_param_str(role->dcfg, module, which, &chmod);
+	assert(rc == 0);
+
+	rc = chmod_parse(chmod, sess);
+	if (rc != 0) {
+		daemon_client_error(sess, "%s: failed to parse '%s': %s",
+		    module, which, strerror(rc));
+		return 0;
+	}
+
+	opts->chmod = chmod;
+
+	return 1;
+}
+
 static int
 daemon_chuser_resolve_name(const char *name, bool is_gid, id_t *oid)
 {

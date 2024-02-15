@@ -50,6 +50,7 @@ struct daemon_role {
 	bool			 do_setid;	/* do setuid/setgid */
 };
 
+int	daemon_apply_chmod(struct sess *, const char *, struct opts *);
 int	daemon_chuser_setup(struct sess *, const char *);
 int	daemon_chuser(struct sess *, const char *);
 void	daemon_client_error(struct sess *, const char *, ...);
