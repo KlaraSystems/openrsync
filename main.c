@@ -610,11 +610,15 @@ chmod_parse(const char *arg, struct sess *sess)
 			if (which == 0 || which == 'D') {
 				if (who == 0)
 					sess->chmod_dir_AND = 07777;
+				else
+					sess->chmod_file_AND = mask & 0x777;
 				sess->chmod_dir_OR = bits;
 			}
 			if (which == 0 || which == 'F') {
 				if (who == 0)
 					sess->chmod_file_AND = 07777;
+				else
+					sess->chmod_file_AND = mask & 0777;
 				sess->chmod_file_OR = bits;
 			}
 			break;
