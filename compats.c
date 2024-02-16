@@ -528,6 +528,20 @@ daemon(int nochdir, int noclose)
 	}
 
 	if (setsid() == -1)
+		return (-1);
+
+	if (!nochdir)
+		(void)chdir("/");
+
+	if (!noclose && (fd = open(_PATH_DEVNULL, O_RDWR)) != -1) {
+		(void)dup2(fd, STDIN_FILENO);
+		(void)dup2(fd, STDOUT_FILENO);
+		(void)dup2(fd, STDERR_FILENO);
+		if (fd > 2)
+			(void)close(fd);
+	}
+	return (0);
+}
 #endif /* !HAVE_DAEMON */
 #if !HAVE_EXPLICIT_BZERO
 /* OPENBSD ORIGINAL: lib/libc/string/explicit_bzero.c */

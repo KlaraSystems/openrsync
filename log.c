@@ -125,7 +125,7 @@ rsync_set_logfile(FILE *new_logfile)
 	rsync_logfile_changed(prev_logfile, new_logfile);
 }
 
-static void
+static void __printflike(2, 0)
 log_vwritef(int priority, const char *fmt, va_list ap)
 {
 
@@ -135,7 +135,7 @@ log_vwritef(int priority, const char *fmt, va_list ap)
 		vfprintf(log_file, fmt, ap);
 }
 
-static void
+static void __printflike(2, 3)
 log_writef(int priority, const char *fmt, ...)
 {
 	va_list ap;
@@ -367,7 +367,7 @@ isit_human(char *s1, const char *s2)
 	return count;
 }
 
-void
+void __printflike(2, 0)
 print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s)
 {
 	const char *p;
@@ -402,7 +402,7 @@ print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s)
  *
  * rval is expected to be initialized to zero before the first call.
  */
-static const char *
+static const char * __printflike(1, 0)
 printf_doformat(const char *fmt, int *rval, const struct sess *sess,
     const struct flist *fl, int do_print)
 {
