@@ -468,7 +468,10 @@ is also given or if the remote group name is unknown on the local machine,
 set the numeric group ID to match the source instead.
 .It Fl H , -hard-links
 Attempt to preserve hard links within the list of files transferred.
-.It Fl h , -help
+.It Fl h, --human-readable
+Display numbers of bytes in human readable units.
+If specified once, uses units of 1000, if specified twice uses units of 1024.
+.It Fl -help
 Print a brief description of all options.
 .It Fl l , -links
 Also transfer symbolic links.

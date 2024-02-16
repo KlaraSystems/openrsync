@@ -344,6 +344,7 @@ struct	opts {
 	int		 backup;		/* --backup */
 	char		*backup_dir;		/* --backup-dir */
 	char		*backup_suffix;		/* --suffix */
+	int		 human_readable;	/* --human-readable */
 	int		 ign_exist;		/* --ignore-existing */
 	int		 ign_non_exist;		/* --ignore-nonexisting */
 	int		 relative;		/* --relative */
@@ -831,8 +832,10 @@ void		 cleanup_filesfrom(struct sess *sess);
 void             print_filesfrom(char *const *, int, const char *);
 void		 delayed_renames(struct sess *sess);
 
-int		chmod_parse(const char *arg, struct sess *sess);
-int		scan_scaled_def(char *, long long *, char);
+int		 chmod_parse(const char *arg, struct sess *sess);
+int		 scan_scaled_def(char *, long long *, char);
+
+int		 rsync_humanize(struct sess *, char *, size_t, int64_t);
 
 static inline int
 sess_is_inplace(struct sess *sess)

@@ -32,64 +32,54 @@ stats_log(struct sess *sess,
     uint64_t tread, uint64_t twrite, uint64_t tsize, uint64_t fbuild,
     uint64_t fxfer)
 {
-	double		 tr, tw, ts;
-	const char	*tru = "B", *twu = "B", *tsu = "B";
-	int		 trsz = 0, twsz = 0, tssz = 0;
+	char		rbuf[32], wbuf[32], sbuf[32];
 
 	assert(verbose);
 	if (sess->opts->server)
 		return;
 
-	if (tread >= 1024 * 1024 * 1024) {
-		tr = tread / (1024.0 * 1024.0 * 1024.0);
-		tru = "GB";
-		trsz = 3;
-	} else if (tread >= 1024 * 1024) {
-		tr = tread / (1024.0 * 1024.0);
-		tru = "MB";
-		trsz = 2;
-	} else if (tread >= 1024) {
-		tr = tread / 1024.0;
-		tru = "KB";
-		trsz = 1;
-	} else
-		tr = tread;
-
-	if (twrite >= 1024 * 1024 * 1024) {
-		tw = twrite / (1024.0 * 1024.0 * 1024.0);
-		twu = "GB";
-		twsz = 3;
-	} else if (twrite >= 1024 * 1024) {
-		tw = twrite / (1024.0 * 1024.0);
-		twu = "MB";
-		twsz = 2;
-	} else if (twrite >= 1024) {
-		tw = twrite / 1024.0;
-		twu = "KB";
-		twsz = 1;
-	} else
-		tw = twrite;
-
-	if (tsize >= 1024 * 1024 * 1024) {
-		ts = tsize / (1024.0 * 1024.0 * 1024.0);
-		tsu = "GB";
-		tssz = 3;
-	} else if (tsize >= 1024 * 1024) {
-		ts = tsize / (1024.0 * 1024.0);
-		tsu = "MB";
-		tssz = 2;
-	} else if (tsize >= 1024) {
-		ts = tsize / 1024.0;
-		tsu = "KB";
-		tssz = 1;
-	} else
-		ts = tsize;
+	rsync_humanize(sess, (char*)&rbuf, sizeof(rbuf), tread);
+	rsync_humanize(sess, (char*)&wbuf, sizeof(wbuf), twrite);
+	rsync_humanize(sess, (char*)&sbuf, sizeof(sbuf), tsize);
 
 	LOG1("Transfer complete: "
-	    "%.*lf %s sent, %.*lf %s read, %.*lf %s file size",
-	    trsz, tr, tru,
-	    twsz, tw, twu,
-	    tssz, ts, tsu);
+	    "%s sent, %s read, %s file size",
+	    (char*)&rbuf, (char*)&wbuf, (char*)&sbuf);
+
+	LOG3("File list generation time: %.3f seconds, "
+	    "transfer time: %.3f seconds",
+	    (double)sess->flist_build / 1000,
+	    (double)sess->flist_xfer / 1000);
+}
+
+static void
+stats_output(struct sess *sess)
+{
+	char *tbuf[32];
+
+	LOG0("Number of files: %lu", sess->total_files);
+	LOG0("Number of files transferred: %lu", sess->total_files_xfer);
+	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_size);
+	LOG0("Total file size: %s", (char*)&tbuf);
+	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_xfer_size);
+	LOG0("Total transferred file size: %s", (char*)&tbuf);
+	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_unmatched);
+	LOG0("Unmatched data: %s", (char*)&tbuf);
+	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_matched);
+	LOG0("Matched data: %s", (char*)&tbuf);
+	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->flist_size);
+	LOG0("File list size: %s", (char*)&tbuf);
+	if (sess->flist_build) {
+		LOG0("File list generation time: %.3f seconds",
+		    (double)sess->flist_build / 1000);
+		LOG0("File list transfer time: %.3f seconds",
+		    (double)sess->flist_xfer / 1000);
+	}
+	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_write);
+	LOG0("Total sent: %s", (char*)&tbuf);
+	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_read);
+	LOG0("Total received: %s", (char*)&tbuf);
+
 }
 
 /*
@@ -148,7 +138,7 @@ sess_stats_send(struct sess *sess, int fd)
 		}
 	}
 
-	if (verbose > 0)
+	if (verbose > 0 || sess->opts->stats)
 		stats_log(sess, tr, tw, ts, fb, fx);
 	return 1;
 }
@@ -188,7 +178,7 @@ sess_stats_recv(struct sess *sess, int fd)
 		}
 	}
 
-	if (verbose > 0)
+	if (verbose > 0 || sess->opts->stats)
 		stats_log(sess, tr, tw, ts, fb, fx);
 	return 1;
 }

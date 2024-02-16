@@ -784,3 +784,38 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 	sess->total_write_lf = sess->total_write;
 	return rval;
 }
+
+/*
+ * Print a number into the provided buffer depending on the current
+ * --human-readable level.
+ * Returns 0 on success, -1 if the buffer is too small.
+ */
+int
+rsync_humanize(struct sess *sess, char *buf, size_t len, int64_t val)
+{
+	size_t res;
+	char tbuf[32];
+
+	switch (sess->opts->human_readable) {
+	case 0:
+		humanize_number(tbuf, sizeof(tbuf), val, "B", 0, 0);
+		res = snprintf(buf, len, "%s", tbuf);
+		break;
+	case 1:
+		humanize_number(tbuf, 9, val, "B",
+		    HN_AUTOSCALE, HN_DECIMAL|HN_DIVISOR_1000);
+		res = snprintf(buf, len, "%s", tbuf);
+		break;
+	case 2:
+		humanize_number(tbuf, 10, val, "B",
+		    HN_AUTOSCALE, HN_DECIMAL|HN_IEC_PREFIXES);
+		res = snprintf(buf, len, "%s", tbuf);
+		break;
+	}
+
+	if (res >= len) {
+		return -1;
+	}
+
+	return 0;
+}
