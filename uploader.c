@@ -1306,11 +1306,6 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	if (sess->opts->dry_run == DRY_FULL ||
 	    sess->opts->read_batch != NULL) {
 		log_file(sess, f);
-		if (sess->opts->read_batch == NULL &&
-		    !io_write_int(sess, p->fdout, p->idx)) {
-			ERRX1("io_write_int");
-			return -1;
-		}
 		return 0;
 	}
 
