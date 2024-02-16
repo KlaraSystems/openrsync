@@ -1162,8 +1162,6 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	if (!io_read_close(&sess, sd)) {
 		WARNX("data remains in read pipe");
 		rc = ERR_IPC;
-	} else {
-		rc = (sess.total_errors > 0) ? ERR_PARTIAL : 0;
 	} else if (sess.err_del_limit) {
 		assert(sess.total_deleted >= sess.opts->max_delete);
 		rc = ERR_DEL_LIMIT;

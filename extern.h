@@ -392,7 +392,6 @@ struct	opts {
 	int		 modwin;		/* --modify-windows=sec */
 	int		 fuzzy_basis;		/* -y */
 	int		 quiet;			/* -q, --quiet */
-	int		 modwin;		/* --modify-windows=sec */
 	long		 max_delete;		/* --max-delete */
 };
 

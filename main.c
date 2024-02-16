@@ -1241,9 +1241,6 @@ basedir:
 		case OP_FILESFROM:
 			opts.filesfrom = optarg;
 			break;
-		case OP_OUTFORMAT:
-		        opts.outformat = optarg;
-			break;
 		case OP_MODWIN:
 		        opts.modwin = atoi(optarg);
 			break;
