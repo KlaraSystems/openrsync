@@ -1033,7 +1033,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.copy_links = 1;
 			break;
 		case 'n':
-			opts.dry_run = 1;
+			opts.dry_run = DRY_FULL;
 			break;
 		case 'o':
 			opts.preserve_uids = 1;
