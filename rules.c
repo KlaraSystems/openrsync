@@ -723,6 +723,7 @@ parse_rule_impl(struct ruleset *ruleset, const char *line, enum rule_type def,
 	return 0;
 }
 
+int
 parse_rule_words(const char *line, enum rule_type def, int delim)
 {
 	return parse_rule_impl(&global_ruleset, line, def, MOD_MERGE_WORDSPLIT,

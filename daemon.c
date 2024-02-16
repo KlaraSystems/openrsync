@@ -30,6 +30,7 @@
 #include <limits.h>
 #include <paths.h>
 #if HAVE_B64_NTOP
+#include <netinet/in.h>
 #include <resolv.h>
 #endif
 #include <stdbool.h>
