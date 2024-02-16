@@ -2311,7 +2311,8 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 	if (sess->opts->max_delete < 0)
 		return 1;
 	if (sess->opts->max_delete > 0) {
-		if (sess->total_deleted >= sess->opts->max_delete)
+		if (sess->total_deleted >= sess->opts->max_delete ||
+		    sess->err_del_limit)
 			return 1;
 
 		/*
@@ -2325,9 +2326,7 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 		}
 	}
 
-	/* Iterate backward through flist to emulate standard rsync behavior */
-
-	for (i = flsz; i-- > (flsz - del_limit); /**/) {
+	for (i = 0; i < del_limit; i++) {
 		LOG1("%s: deleting", fl[i].wpath);
 		if (sess->opts->dry_run)
 			continue;
