@@ -414,7 +414,7 @@ platform_move_file(const struct sess *sess, struct flist *fl,
     int fromfd, const char *fname, int tofd, const char *toname, int final)
 {
 
-	if (move_file(fromfd, fname, tofd, toname) != 0) {
+	if (move_file(fromfd, fname, tofd, toname, final) != 0) {
 		ERR("%s: move_file: %s", fname, toname);
 		return 0;
 	}
