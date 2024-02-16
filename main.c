@@ -688,6 +688,10 @@ enum {
 	OP_READ_BATCH,
 	OP_WRITE_BATCH,
 	OP_ONLY_WRITE_BATCH,
+	OP_OUTFORMAT,
+	OP_BIT8,
+	OP_MAX_DELETE,
+	OP_HELP,
 };
 
 static const struct option	 lopts[] = {
@@ -736,7 +740,8 @@ static const struct option	 lopts[] = {
     { "no-group",	no_argument,	&opts.preserve_gids,	0 },
     { "no-g",		no_argument,	&opts.preserve_gids,	0 },
     { "hard-links",	no_argument,	&opts.hard_links,	'H' },
-    { "help",		no_argument,	NULL,			'h' },
+    { "help",		no_argument,	NULL,			OP_HELP },
+    { "human-readable",	no_argument,	NULL,			'h' },
     { "ignore-errors",	no_argument,	NULL,			OP_IGNORE_ERRORS },
     { "ignore-existing", no_argument,	NULL,			OP_IGNORE_EXISTING },
     { "ignore-non-existing", no_argument, NULL,			OP_IGNORE_NON_EXISTING },
@@ -1356,11 +1361,19 @@ basedir:
 		case OP_BIT8:
 			opts.bit8++;
 			break;
+		case 'h':
+			/* -h without any other parameters */
+			if (argc == 2) {
+				usage(0);
+				break;
+			}
+			opts.human_readable++;
+			break;
 		case 'V':
 			fprintf(stderr, "openrsync: protocol version %u\n",
 			    RSYNC_PROTOCOL);
 			exit(0);
-		case 'h':
+		case OP_HELP:
 			usage(0);
 			break;
 		default:
