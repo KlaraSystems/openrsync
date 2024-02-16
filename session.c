@@ -138,7 +138,7 @@ sess_stats_send(struct sess *sess, int fd)
 		}
 	}
 
-	if (verbose > 0 || sess->opts->stats)
+	if (verbose > 0)
 		stats_log(sess, tr, tw, ts, fb, fx);
 	return 1;
 }
@@ -178,7 +178,7 @@ sess_stats_recv(struct sess *sess, int fd)
 		}
 	}
 
-	if (verbose > 0 || sess->opts->stats)
+	if (verbose > 0)
 		stats_log(sess, tr, tw, ts, fb, fx);
 	return 1;
 }
