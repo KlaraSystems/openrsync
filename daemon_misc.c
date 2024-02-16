@@ -589,6 +589,7 @@ daemon_fill_hostinfo(struct sess *sess, const char *module,
     const struct sockaddr *addr, size_t slen)
 {
 	struct daemon_role *role;
+	int rc;
 
 	role = (void *)sess->role;
 
@@ -599,10 +600,10 @@ daemon_fill_hostinfo(struct sess *sess, const char *module,
 	    !cfg_has_param(role->dcfg, module, "hosts deny"))
 		return 1;
 
-	if (getnameinfo(addr, slen, &role->client_host[0],
-	    sizeof(role->client_host), NULL, 0, 0) != 0) {
+	if ((rc = getnameinfo(addr, slen, &role->client_host[0],
+	    sizeof(role->client_host), NULL, 0, 0)) != 0) {
 		daemon_client_error(sess, "%s: reverse dns lookup failed: %s",
-		    module, strerror(errno));
+		    module, gai_strerror(rc));
 		return 0;
 	}
 
@@ -747,7 +748,7 @@ daemon_rangelock(struct sess *sess, const char *module, const char *lockf,
 	 */
 	for (int i = 0; i < max; i++) {
 		rlock.l_start = CONNLOCK_START(i);
-		rlock.l_start = CONNLOCK_SIZE(i);
+		rlock.l_len = CONNLOCK_SIZE(i);
 
 		rc = fcntl(fd, F_SETLK, &rlock);
 		if (rc == -1 && errno != EAGAIN) {
