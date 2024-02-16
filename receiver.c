@@ -732,16 +732,14 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				ERRX1("rsync_downloader");
 				goto out;
 			} else if (c == 0) {
-				size_t cnt;
-
 				assert(phase >= 0 && phase <= max_phase);
-				phase++;
 
 				/*
 				 * Process any delayed updates.
 				 * For protocol 29 we handle these in a later phase.
 				 */
-				if (!protocol_dlrename) {
+				if (!protocol_dlrename ||
+				    phase == PHASE_DLUPDATES) {
 					delayed_renames(sess);
 					free(sess->dlrename);
 					sess->dlrename = NULL;
@@ -752,23 +750,12 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				 * so finish up the tail end of acks.
 				 */
 				upload_ack_complete(ul, sess, fdout);
-
-				/*
-				 * If we don't have any files here, we'll just
-				 * bail out immediately and close out the phase
-				 * after the receiver loop. We could instead
-				 * just reset the uploader and let it roll
-				 * through the flist and realize nothing needs
-				 * done, then close out the phase as we did in
-				 * the first phase, but it seems relatively
-				 * harmless to optimize this.
-				 */
-				if (phase == 2 ||
-				    !(cnt = download_needs_redo(dl)))
+				phase++;
+				if (phase == max_phase + 1)
 					break;
 
 				LOG2("%s: receiver ready for phase %d data (%zu to redo)",
-				    root, phase + 1, cnt);
+				    root, phase + 1, download_needs_redo(dl));
 
 				sess->role->append = 0;
 
@@ -783,38 +770,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		}
 	}
 
-	/*
-	 * Properly close us out by progressing through the phases.  This is not
-	 * necessary if we went through a redo phase, as the uploader will have
-	 * sent the second end-of-phase and the downloader will have already
-	 * eaten the ack.
-	 */
-	while (phase <= max_phase) {
-		/*
-		 * In protocol 29 and later we delay this processing after
-		 * we have sent the first End-of-Phase marker.
-		 */
-		if (phase == 2 && protocol_dlrename) {
-			delayed_renames(sess);
-			free(sess->dlrename);
-			sess->dlrename = NULL;
-		}
-
-		if (sess->opts->read_batch == NULL &&
-		    !io_write_int(sess, fdout, -1)) {
-			ERRX1("io_write_int");
-			goto out;
-		}
-		if (!io_read_int(sess, fdin, &ioerror)) {
-			ERRX1("io_read_int");
-			goto out;
-		}
-		if (ioerror != -1) {
-			ERRX("expected phase ack");
-			goto out;
-		}
-		phase++;
-	}
+	assert(phase == max_phase + 1);
 
 	/*
 	 * Following transfers, we'll take care of --delete-after.

@@ -1683,10 +1683,10 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		assert(*fileoutfd != -1);
 
 		for ( ; u->idx < u->flsz; u->idx++) {
-			if (u->phase > 0 &&
+			if (u->phase == PHASE_REDO &&
 			    (u->fl[u->idx].flstate & FLIST_REDO) == 0)
 				continue;
-			if (u->phase == 2)
+			else if (u->phase == PHASE_DLUPDATES)
 				continue;
 			if (S_ISDIR(u->fl[u->idx].st.mode))
 				c = pre_dir(u, sess);

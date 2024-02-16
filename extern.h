@@ -112,6 +112,10 @@
  */
 #define MAX_BASEDIR	20
 
+#define	PHASE_XFER	0
+#define	PHASE_REDO	1
+#define	PHASE_DLUPDATES 2	/* Protocol 29 */
+
 enum basemode {
 	BASE_MODE_COMPARE = 1,	/* Just compare */
 	BASE_MODE_COPY,		/* Copy into rootfd */
