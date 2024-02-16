@@ -453,7 +453,6 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		goto out;
 	}
 	sess->total_files = flsz;
-	sess->flist_size = sess->total_read - flist_bytes;
 	hls.n = build_for_hardlinks(hl, fl, flsz); /* Size is same */
 	hls.infos = hl;
 

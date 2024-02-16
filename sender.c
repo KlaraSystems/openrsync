@@ -104,94 +104,10 @@ send_up_reset(struct send_up *p)
 	p->stat.curst = BLKSTAT_NONE;
 }
 
-/*
- * Fast forward through part of the file the other side already
- * has while keeping compression state intact.
- * Returns 1 on success, 0 on error.
- */
+/* Returns 1 on success, 0 on error */
 static int
-token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
+compress_reinit(struct sess *sess)
 {
-	char		*buf = NULL, *cbuf = NULL;
-	size_t		 sz, clen, rlen;
-	off_t		 off;
-	int		 res;
-
-	if (comp_state == COMPRESS_INIT) {
-		cctx.zalloc = NULL;
-		cctx.zfree = NULL;
-		cctx.next_in = NULL;
-		cctx.avail_in = 0;
-		cctx.next_out = NULL;
-		cctx.avail_out = 0;
-		if (deflateInit2(&cctx, sess->opts->compression_level,
-		    Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-			ERRX1("deflateInit2");
-			return 0;
-		}
-		comp_state = COMPRESS_RUN;
-	}
-
-	if (tok >= up->cur->blks->blksz) {
-		ERRX("token not in block set: %zu (have %zu blocks)",
-		    tok, up->cur->blks->blksz);
-		return 0;
-	}
-	sz = (tok == up->cur->blks->blksz - 1 && up->cur->blks->rem) ?
-	    up->cur->blks->rem : up->cur->blks->len;
-	assert(sz);
-	assert(up->stat.map != MAP_FAILED);
-	off = tok * up->cur->blks->len;
-	buf = up->stat.map + off;
-	assert(up->stat.map != MAP_FAILED);
-
-	cbuf = malloc(MAX_CHUNK_BUF);
-	if (cbuf == NULL) {
-		ERRX1("malloc");
-		return 0;
-	}
-	cctx.avail_in = 0;
-	rlen = sz;
-	clen = 0;
-	while (rlen > 0) {
-		clen = rlen;
-		if (clen > MAX_CHUNK) {
-			clen = MAX_CHUNK;
-		}
-		rlen -= clen;
-		cctx.next_in = (Bytef *)buf;
-		cctx.avail_in = clen;
-		cctx.next_out = (Bytef *)cbuf;
-		cctx.avail_out = TOKEN_MAX_DATA;
-		res = deflate(&cctx, Z_INSERT_ONLY);
-		if (res != Z_OK || cctx.avail_in != 0) {
-			ERRX1("deflate ff res=%d", res);
-			return 0;
-		}
-		buf += clen;
-	}
-
-	return 1;
-}
-
-/*
- * This is like send_up_fsm() except for sending compressed blocks
- * Returns zero on failure, non-zero on success.
- */
-static int
-send_up_fsm_compressed(struct sess *sess, size_t *phase,
-	struct send_up *up, void **wb, size_t *wbsz, size_t *wbmax,
-	struct flist *fl)
-{
-	size_t		 pos = 0, isz = sizeof(int32_t),
-			 dsz = MD4_DIGEST_LENGTH;
-	unsigned char	 fmd[MD4_DIGEST_LENGTH];
-	off_t		 sz, ssz;
-	char		 buf[16];
-	char		*sbuf = NULL, *cbuf = NULL;
-	int		 res, pres;
-	unsigned	 pending_bytes;
-	int		 pending_bits;
 
 	if (comp_state == COMPRESS_INIT) {
 		cctx.zalloc = NULL;
@@ -215,6 +131,87 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		comp_state = COMPRESS_RUN;
 	}
 
+	return 1;
+}
+/*
+ * Fast forward through part of the file the other side already
+ * has while keeping compression state intact.
+ * Returns 1 on success, 0 on error.
+ */
+static int
+token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
+{
+	char		*buf = NULL, *cbuf = NULL;
+	size_t		 sz, clen, rlen;
+	off_t		 off;
+	int		 res;
+
+	if (tok >= up->cur->blks->blksz) {
+		ERRX("token not in block set: %zu (have %zu blocks)",
+		    tok, up->cur->blks->blksz);
+		return 0;
+	}
+	sz = (tok == up->cur->blks->blksz - 1 && up->cur->blks->rem) ?
+	    up->cur->blks->rem : up->cur->blks->len;
+	assert(sz);
+	assert(up->stat.map != MAP_FAILED);
+	off = tok * up->cur->blks->len;
+	buf = up->stat.map + off;
+
+	cbuf = malloc(MAX_CHUNK_BUF);
+	if (cbuf == NULL) {
+		ERRX1("malloc");
+		return 0;
+	}
+	if (!compress_reinit(sess)) {
+		ERRX1("decompress_reinit");
+		free(cbuf);
+		return 0;
+	}
+
+	cctx.avail_in = 0;
+	rlen = sz;
+	clen = 0;
+	while (rlen > 0) {
+		clen = rlen;
+		if (clen > MAX_CHUNK) {
+			clen = MAX_CHUNK;
+		}
+		rlen -= clen;
+		cctx.next_in = (Bytef *)buf;
+		cctx.avail_in = clen;
+		cctx.next_out = (Bytef *)cbuf;
+		cctx.avail_out = TOKEN_MAX_DATA;
+		res = deflate(&cctx, Z_INSERT_ONLY);
+		if (res != Z_OK || cctx.avail_in != 0) {
+			ERRX1("deflate ff res=%d", res);
+			free(cbuf);
+			return 0;
+		}
+		buf += clen;
+	}
+	free(cbuf);
+
+	return 1;
+}
+
+/*
+ * This is like send_up_fsm() except for sending compressed blocks
+ * Returns zero on failure, non-zero on success.
+ */
+static int
+send_up_fsm_compressed(struct sess *sess, size_t *phase,
+	struct send_up *up, void **wb, size_t *wbsz, size_t *wbmax,
+	struct flist *fl)
+{
+	size_t		 pos = 0, isz = sizeof(int32_t),
+			 dsz = MD4_DIGEST_LENGTH;
+	unsigned char	 fmd[MD4_DIGEST_LENGTH];
+	off_t		 sz, ssz;
+	char		 buf[16];
+	char		*sbuf = NULL, *cbuf = NULL;
+	int		 res;
+
 	switch (up->stat.curst) {
 	case BLKSTAT_DATA:
 		/*
@@ -234,6 +231,13 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			ERRX1("malloc");
 			return 0;
 		}
+
+		if (!compress_reinit(sess)) {
+			ERRX1("decompress_reinit");
+			free(cbuf);
+			return 0;
+		}
+
 		cctx.next_in = (Bytef *)sbuf;
 		cctx.avail_in = sz;
 		cctx.next_out = (Bytef *)(cbuf + 2);
@@ -281,6 +285,14 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 * depending on the token.
 		 */
 
+		up->stat.curst = up->stat.curtok ?
+			BLKSTAT_NEXT : BLKSTAT_FLUSH;
+
+		if (up->stat.curtok == 0) {
+			/* Empty files don't need handling */
+			return 1;
+		}
+
 		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, 1)) {
 			ERRX1("io_lowbuffer_alloc");
 			return 0;
@@ -295,8 +307,6 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			&pos, *wbsz, -(up->stat.curtok + 1));
 
 		token_ff_compressed(sess, up, -(up->stat.curtok + 1));
-		up->stat.curst = up->stat.curtok ?
-			BLKSTAT_NEXT : BLKSTAT_NEXT;
 		return 1;
 	case BLKSTAT_HASH:
 		/*
@@ -350,12 +360,14 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		}
 		if (res != Z_OK && res != Z_BUF_ERROR) {
 			ERRX1("final deflate() res=%d", res);
+			free(cbuf);
 			return 0;
 		}
 
 		/* Send the end of token marker */
 		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, 1)) {
 			ERRX1("io_lowbuffer_alloc");
+			free(cbuf);
 			return 0;
 		}
 		io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
