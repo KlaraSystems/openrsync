@@ -272,18 +272,23 @@ info_for_hardlink_compare(const void *onep, const void *twop)
 }
 
 /* Important: this needs to happen after fl is sorted. */
-static void
+static int
 build_for_hardlinks(struct info_for_hardlink *hl,
 	const struct flist *const fl, const size_t flsz)
 {
 	size_t i;
+	int hlsz = 0;
+
 	for (i = 0; i < flsz; i++) {
-		hl[i].device = fl[i].st.device;
-		hl[i].inode = fl[i].st.inode;
-		hl[i].ref = &fl[i];
+		if (fl[i].st.inode == 0 && fl[i].st.device == 0)
+			continue;
+		hl[hlsz].device = fl[i].st.device;
+		hl[hlsz].inode = fl[i].st.inode;
+		hl[hlsz++].ref = &fl[i];
 	}
-	qsort(hl, flsz, sizeof(struct info_for_hardlink),
+	qsort(hl, hlsz, sizeof(struct info_for_hardlink),
 		info_for_hardlink_compare);
+	return hlsz;
 }
 
 const struct flist *
@@ -446,12 +451,10 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		ERRX1("reallocarray receiver");
 		goto out;
 	}
-	build_for_hardlinks(hl, fl, flsz); /* Size is same */
 	sess->total_files = flsz;
 	sess->flist_size = sess->total_read - flist_bytes;
-	hls.n = flsz;
+	hls.n = build_for_hardlinks(hl, fl, flsz); /* Size is same */
 	hls.infos = hl;
-		
 
 	/* The IO error is sent after the file list. */
 
