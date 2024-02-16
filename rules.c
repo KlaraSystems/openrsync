@@ -839,13 +839,14 @@ postfix_command(struct rule *r)
 static bool
 rule_should_xfer(struct sess *sess, struct rule *r)
 {
+	bool res = true;
 
 	/*
 	 * Merge files without the include/exclude modifiers get passed through
 	 * for compatibility.
 	 */
 	if (r->type == RULE_MERGE) {
-		return (r->modifiers &
+		res = (r->modifiers &
 		    (MOD_MERGE_EXCLUDE | MOD_MERGE_INCLUDE)) == 0;
 	}
 
@@ -860,15 +861,21 @@ rule_should_xfer(struct sess *sess, struct rule *r)
 		case RULE_PROTECT:
 		case RULE_RISK:
 			/* Explicitly receiver-side rules */
-			return true;
+			res = true;
+			break;
 		default:
+			res = false;
 			break;
 		}
-
-		return false;
 	}
 
-	return true;
+	if (sess->opts->del_excl && sess->mode == FARGS_SENDER &&
+	    r->type != RULE_MERGE) {
+		/* We don't send non-merge rules when del_excl is enabled */
+		res = false;
+	}
+
+	return res;
 }
 
 void
