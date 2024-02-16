@@ -757,7 +757,6 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
     int32_t idx, struct flist *fl, size_t flsz, int fd)
 {
 	struct send_dl	*s;
-	size_t		 pos = 0;
 
 	/* End-of-phase marker. */
 	if (idx == -1) {
