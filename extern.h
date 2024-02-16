@@ -27,6 +27,11 @@
 
 #include "md4.h"
 
+#ifndef __printflike
+#define __printflike(fmtarg, firstvararg) \
+	__attribute__((__format__ (__printf__, fmtarg, firstvararg)))
+#endif
+
 #ifndef nitems
 #define nitems(_a)	(sizeof((_a)) / sizeof((_a)[0]))
 #endif
