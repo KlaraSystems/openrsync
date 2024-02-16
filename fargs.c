@@ -312,7 +312,7 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--bwlimit=%lld",
 		    (long long)(sess->opts->bwlimit / 1024));
 	}
-	if (sess->opts->modwin >= 0)
+	if (sess->opts->modwin > 0)
 		addargs(&args, "--modify-window=%d", sess->opts->modwin);
 	if (f->mode == FARGS_SENDER && sess->opts->temp_dir) {
 		addargs(&args, "--temp-dir");
