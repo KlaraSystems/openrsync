@@ -1357,7 +1357,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	 * may dedupe on the sender side, but the reference rsync will not in
 	 * order to give receivers flexibility in how they handle it.
 	 */
-	for (int i = 0; i < flsz; i++)
+	for (size_t i = 0; i < flsz; i++)
 		fl[i].sendidx = i;
 
 	flist_topdirs(sess, fl, flsz);
@@ -2349,7 +2349,8 @@ int
 flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 {
 	size_t	 del_limit = flsz;
-	size_t	 i;
+	long	 begin, end, inc;
+	long	 i;
 	int	 flag;
 	char buf[PATH_MAX];
 
@@ -2385,7 +2386,20 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 		}
 	}
 
-	for (i = 0; i < del_limit; i++) {
+	/* Process flist in reverse order starting with protocol 29
+	 * (due to change in sorting algorithm).
+	 */
+	if (sess->protocol < 29) {
+		begin = 0;
+		end = del_limit;
+		inc = 1;
+	} else {
+		begin = del_limit - 1;
+		end = -1;
+		inc = -1;
+	}
+
+	for (i = begin; i != end; i += inc) {
 		LOG1("%s: deleting", fl[i].wpath);
 		if (sess->opts->dry_run)
 			continue;
