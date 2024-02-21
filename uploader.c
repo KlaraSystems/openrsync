@@ -901,7 +901,12 @@ pre_dir(struct upload *p, struct sess *sess)
 		 * directory and that doesn't work.
 		 */
 		LOG3("%s: updating directory", f->path);
-		log_dir(sess, f);
+
+		if ((sess->opts->preserve_perms && st.st_mode != f->st.mode) ||
+		    (sess->opts->preserve_times && !sess->opts->omit_dir_times &&
+		     st.st_mtime != f->st.mtime)) {
+			log_dir(sess, f);
+		}
 
 		if (sess->opts->del == DMODE_DURING || sess->opts->del == DMODE_DELAY) {
 			pre_dir_delete(p, sess, sess->opts->del);
