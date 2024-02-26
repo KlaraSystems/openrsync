@@ -96,6 +96,20 @@ force_delete_applicable(struct upload *p, struct sess *sess, mode_t mode)
 }
 
 /*
+ * Save the original destination file metadata so that it can
+ * be applied to the backup file.
+ */
+static void
+dstat_save(const struct stat *st, struct fldstat *dstat)
+{
+	dstat->mode = st->st_mode;
+	dstat->atime = st->st_atim;
+	dstat->mtime = st->st_mtim;
+	dstat->uid = st->st_uid;
+	dstat->gid = st->st_gid;
+}
+
+/*
  * Log a directory by emitting the file and a trailing slash, just to
  * show the operator that we're a directory.
  */
@@ -227,7 +241,7 @@ static int
 pre_symlink(struct upload *p, struct sess *sess)
 {
 	struct stat		 st;
-	const struct flist	*f;
+	struct flist		*f;
 	int			 rc, newlink = 0, updatelink = 0;
 	char			*b, *temp = NULL;
 
@@ -323,6 +337,9 @@ pre_symlink(struct upload *p, struct sess *sess)
 		newlink = 1;
 	}
 
+	if (rc != -1)
+		dstat_save(&st, &f->dstat);
+
 	rsync_set_metadata_at(sess, newlink,
 	    newlink && sess->opts->temp_dir ? p->tempfd : p->rootfd, f,
 	    newlink && temp != NULL ? temp : f->path);
@@ -352,7 +369,7 @@ static int
 pre_dev(struct upload *p, struct sess *sess)
 {
 	struct stat		 st;
-	const struct flist	*f;
+	struct flist		*f;
 	int			 rc, newdev = 0, updatedev = 0;
 	char			*temp = NULL;
 
@@ -433,6 +450,9 @@ pre_dev(struct upload *p, struct sess *sess)
 		newdev = 1;
 	}
 
+	if (rc != -1)
+		dstat_save(&st, &f->dstat);
+
 	rsync_set_metadata_at(sess, newdev, TMPDIR_FD, f,
 	    newdev && temp != NULL ? temp : f->path);
 
@@ -460,7 +480,7 @@ static int
 pre_fifo(struct upload *p, struct sess *sess)
 {
 	struct stat		 st;
-	const struct flist	*f;
+	struct flist		*f;
 	int			 rc, newfifo = 0;
 	char			*temp = NULL;
 
@@ -524,6 +544,9 @@ pre_fifo(struct upload *p, struct sess *sess)
 
 		newfifo = 1;
 	}
+
+	if (rc != -1)
+		dstat_save(&st, &f->dstat);
 
 	rsync_set_metadata_at(sess, newfifo, TMPDIR_FD, f,
 	    newfifo && temp != NULL ? temp : f->path);
@@ -749,7 +772,7 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 		    rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D), FARGS_RECEIVER,
 		    perish_ent != NULL) == -1) {
-			WARNX("skip excluded file %s",
+			LOG2("skip excluded file %s",
 			    ent->fts_path + stripdir);
 			fts_set(fts, ent, FTS_SKIP);
 			ent->fts_parent->fts_number++;
@@ -1228,7 +1251,7 @@ pre_file_fuzzy(struct sess *sess, struct upload *p, struct flist *f,
 		}
 		/* root has the trailing / already */
 		if (snprintf(pathbuf, sizeof(pathbuf), "%s%s", root,
-		    di->d_name) > sizeof(pathbuf)) {
+		    di->d_name) >= (int)sizeof(pathbuf)) {
 			continue;
 		}
 		if (fstatat(p->rootfd, pathbuf, &st, AT_SYMLINK_NOFOLLOW) ==
@@ -1344,6 +1367,9 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	if (rc >= 0 && rc < 3) {
 		bool fix_metadata = (rc != 0 || !sess->opts->ign_non_exist) &&
 		    !sess->opts->dry_run;
+
+		if (fix_metadata)
+			dstat_save(&st, &f->dstat);
 
 		if (fix_metadata &&
 		    !rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {

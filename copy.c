@@ -377,6 +377,57 @@ out:
 }
 
 int
+backup_file(int fromdfd, const char *fname, int todfd, const char *tname,
+    int replace, const struct fldstat *dstat)
+{
+	struct stat st;
+	int rc;
+
+	rc = move_file(fromdfd, fname, todfd, tname, replace);
+	if (rc != 0)
+		return rc;
+
+	if (fstatat(todfd, tname, &st, 0) == -1)
+		return -1;
+
+	/*
+	 * Set metadata on the backup file to match the metadata
+	 * from the original destination file.
+	 */
+	if (st.st_atim.tv_sec != dstat->atime.tv_sec ||
+	    st.st_atim.tv_nsec != dstat->atime.tv_nsec ||
+	    st.st_mtim.tv_sec != dstat->mtime.tv_sec ||
+	    st.st_mtim.tv_nsec != dstat->mtime.tv_nsec) {
+		const struct timespec ts[] = {
+			dstat->atime, dstat->mtime,
+		};
+
+		rc = utimensat(todfd, tname, ts, AT_SYMLINK_NOFOLLOW);
+		if (rc != 0)
+			return rc;
+	}
+
+	if (st.st_mode != dstat->mode) {
+		rc = fchmodat(todfd, tname, dstat->mode, AT_SYMLINK_NOFOLLOW);
+		if (rc != 0)
+			return rc;
+	}
+
+	if (st.st_uid != dstat->uid || st.st_gid != dstat->gid) {
+		const uid_t uid = dstat->uid;
+		const uid_t gid = dstat->gid;
+
+		if (uid != (uid_t)-1 || gid != (gid_t)-1) {
+			rc = fchownat(todfd, tname, uid, gid, AT_SYMLINK_NOFOLLOW);
+			if (rc != 0)
+				return rc;
+		}
+	}
+
+	return 0;
+}
+
+int
 backup_to_dir(struct sess *sess, int rootfd, const struct flist *f,
     const char *dest, mode_t mode)
 {
@@ -413,8 +464,8 @@ backup_to_dir(struct sess *sess, int rootfd, const struct flist *f,
 		    "%s\n", f->path);
 		return 0;
 	} else {
-		if ((ret = move_file(rootfd, f->path, rootfd, dest, 1)) < 0) {
-			ERR("%s: move_file: %s", f->path, dest);
+		if ((ret = backup_file(rootfd, f->path, rootfd, dest, 1, &f->dstat)) < 0) {
+			ERR("%s: backup_file: %s", f->path, dest);
 			return ret;
 		}
 	}

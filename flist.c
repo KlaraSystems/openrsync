@@ -1146,6 +1146,9 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		}  else
 			ff->st.mtime = fflast->st.mtime;
 
+		ff->dstat.atime.tv_nsec = UTIME_NOW;
+		ff->dstat.mtime.tv_sec = ff->st.mtime;
+
 		/* Read the file mode. */
 
 		if (!(FLIST_MODE_SAME & flag)) {
@@ -1159,6 +1162,8 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			goto out;
 		} else
 			ff->st.mode = fflast->st.mode;
+
+		ff->dstat.mode = ff->st.mode;
 
 		if (sess->opts->chmod != NULL) {
 			/* Client-receiver --chmod */
@@ -1186,6 +1191,10 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 				ff->st.uid = 0;
 			} else
 				ff->st.uid = fflast->st.uid;
+
+			ff->dstat.uid = ff->st.uid;
+		} else {
+			ff->dstat.uid = -1;
 		}
 
 		/* Conditional part: gid. */
@@ -1209,6 +1218,10 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 				ff->st.gid = 0;
 			} else
 				ff->st.gid = fflast->st.gid;
+
+			ff->dstat.gid = ff->st.gid;
+		} else {
+			ff->dstat.gid = -1;
 		}
 
 		/* Conditional part: devices & special files. */
@@ -2302,7 +2315,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		    rules_match(ent->fts_path + stripdir,
 		    (ent->fts_info == FTS_D), FARGS_RECEIVER,
 		    perish_ent != NULL) == -1) {
-			WARNX("skip excluded file %s",
+			LOG2("skip excluded file %s",
 			    ent->fts_path + stripdir);
 			if (ent->fts_info == FTS_D)
 				skip_post = 1;
@@ -2518,9 +2531,9 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 					sess->total_errors++;
 					continue;
 				}
-				if (move_file(root, fl[i].wpath,
-				    root, buf, 1) == -1) {
-					ERR("%s: move_file: %s", fl[i].wpath,
+				if (backup_file(root, fl[i].wpath,
+				    root, buf, 1, &fl[i].dstat) == -1) {
+					ERR("%s: backup_file: %s", fl[i].wpath,
 					    buf);
 					sess->total_errors++;
 					continue;

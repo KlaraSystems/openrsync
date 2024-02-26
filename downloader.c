@@ -1688,9 +1688,9 @@ again:
 			}
 			if (snprintf(buf2, sizeof(buf2), "%s/%s%s",
 			    sess->opts->backup_dir, usethis,
-			    sess->opts->backup_suffix) > (int)sizeof(buf2)) {
+			    sess->opts->backup_suffix) >= (int)sizeof(buf2)) {
 				ERR("%s: backup-dir: compound backup path "
-				    "too long: %s/%s%s > %d", f->path,
+				    "too long: %s/%s%s >= %d", f->path,
 				    sess->opts->backup_dir, usethis,
 				    sess->opts->backup_suffix,
 				    (int)sizeof(buf2));
@@ -1704,18 +1704,19 @@ again:
 		} else if (!S_ISDIR(st2.st_mode)) {
 			LOG3("%s: doing backup", f->path);
 			if (snprintf(buf2, sizeof(buf2), "%s%s", f->path,
-			    sess->opts->backup_suffix) > (int)sizeof(buf2)) {
+			    sess->opts->backup_suffix) >= (int)sizeof(buf2)) {
 				ERR("%s: backup: compound backup path too "
-				    "long: %s%s > %d", f->path, f->path,
+				    "long: %s%s >= %d", f->path, f->path,
 				    sess->opts->backup_suffix,
 				    (int)sizeof(buf2));
 				goto out;
 			}
-			if (move_file(p->rootfd, f->path,
-				p->rootfd, buf2, 1) == -1) {
-				ERR("%s: move_file: %s", f->path, buf2);
-				goto out;
+			if (backup_file(p->rootfd, f->path,
+			    p->rootfd, buf2, 1, &f->dstat) == -1) {
+				ERR("%s: backup_file: %s", f->path, buf2);
+				sess->total_errors++;
 			}
+
 		}
 	}
 
