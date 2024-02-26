@@ -22,6 +22,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <fts.h>
 #include <stdio.h>
@@ -343,6 +344,18 @@ struct	flstat {
 #define	FLSTAT_PLATFORM_MASK	0xf0000000
 };
 
+/*
+ * Subset of stat(2) information from the original destination
+ * file that we need to apply to backup files.
+ */
+struct	fldstat {
+	mode_t		 mode;	 /* mode */
+	struct timespec	 atime;	 /* access */
+	struct timespec	 mtime;	 /* modification */
+	uid_t		 uid;	 /* user */
+	gid_t		 gid;	 /* group */
+};
+
 enum name_basis {
 	BASIS_DIR_LOW = 0,
 	BASIS_DIR_HIGH = 0x7F,
@@ -375,6 +388,7 @@ struct	flist {
 	platform_open	*open; /* special open() for this entry */
 	platform_flist_sent	*sent; /* notify the platform an entry was sent */
 	int		 sendidx; /* Sender index */
+	struct fldstat	 dstat; /* original destination file information */
 };
 
 #define	FLIST_COMPLETE		0x01	/* Finished */
@@ -938,6 +952,7 @@ int		 hash_file_by_path(int, const char *, size_t, unsigned char *);
  */
 int		 move_file(int, const char *, int, const char *, int);
 void		 copy_file(int, const char *, const struct flist *);
+int		 backup_file(int, const char *, int, const char *, int, const struct fldstat *);
 int		 backup_to_dir(struct sess *, int, const struct flist *,
 		    const char *, mode_t);
 
