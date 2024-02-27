@@ -21,6 +21,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
+#include <getopt.h>
 #include <netdb.h>
 #include <stdbool.h>
 
@@ -32,6 +33,13 @@
  * (c) Allocated within config, or an option pointer -- do not free
  * (f) Allocated independently, child should free
  */
+
+struct daemon_refused {
+	const struct option	* const *refused_lopts;	/* (f) */
+	char			 *refused_shopts;	/* (f) */
+	size_t			 refused_loptsz;
+};
+
 struct daemon_role {
 	struct role		 role;
 	char			 client_host[NI_MAXHOST]; /* hostname */
@@ -48,6 +56,7 @@ struct daemon_role {
 	int			 client;
 	bool			 client_control;
 	bool			 do_setid;	/* do setuid/setgid */
+	struct daemon_refused	 refused;
 };
 
 int	daemon_apply_chmod(struct sess *, const char *, struct opts *);
@@ -66,6 +75,7 @@ void	daemon_normalize_paths(const char *, int, char *[]);
 int	daemon_open_logfile(const char *, bool);
 int	daemon_operation_allowed(struct sess *, const struct opts *,
 	    const char *, int);
+int	daemon_parse_refuse(struct sess *, const char *);
 int	daemon_setup_logfile(struct sess *, const char *);
 
 #endif /* !DAEMON_H */

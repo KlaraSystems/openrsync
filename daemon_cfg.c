@@ -87,6 +87,7 @@ static struct rsync_daemon_param {
 	PARAM("outgoing chmod",	"outgoingchmod"),
 	PARAM("path",		NULL),
 	PARAM_DFLT("read only",		"readonly",	"true"),
+	PARAM("refuse options",	"refuseoptions"),
 	PARAM("secrets file",	"secretsfile"),
 	PARAM_DFLT("strict modes",	"strictmodes",	"true"),
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
@@ -103,7 +104,6 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
 	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),
 
-	PARAM("refuse options",	"refuseoptions"),
 	PARAM("dont compress",	"dontcompress"),
 	PARAM("pre-xfer exec",	"pre-xferexec"),
 	PARAM("post-xfer exec",	"post-xferexec"),
