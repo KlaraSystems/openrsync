@@ -698,7 +698,8 @@ enum {
 	OP_COMPLEVEL,
 };
 
-static const struct option	 lopts[] = {
+const char rsync_shopts[] = "0468B:CDEFHIKLOPRSVWabcde:f:ghklnopqrtuvxyz";
+const struct option	 rsync_lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
     { "archive",	no_argument,	NULL,			'a' },
@@ -909,12 +910,12 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 #endif
 	opts.protocol = RSYNC_PROTOCOL;
 
-	while ((c = getopt_long(argc, argv, "0468B:CDEFHIKLOPRSVWabcde:f:ghklnopqrtuvxyz", lopts,
-	    &lidx)) != -1) {
+	while ((c = getopt_long(argc, argv, rsync_shopts, rsync_lopts, &lidx)) != -1) {
 		/* Give the filter a shot to reject the option. */
 		if (filter != NULL) {
 			const struct option *lopt;
 			int rc;
+			char shopt;
 
 			/*
 			 * If we can tie this particular option to a long opt,
@@ -923,7 +924,9 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			 * reject based on either name.
 			 */
 			if (lidx == -1) {
-				for (lopt = lopts; lopt->name != NULL; lopt++) {
+				shopt = c;
+
+				for (lopt = rsync_lopts; lopt->name != NULL; lopt++) {
 					if (lopt->flag == NULL &&
 					    lopt->val == c)
 						break;
@@ -932,10 +935,14 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 				if (lopt->name == NULL)
 					lopt = NULL;
 			} else {
-				lopt = &lopts[lidx];
+				lopt = &rsync_lopts[lidx];
+				if (isprint(lopt->val))
+					shopt = lopt->val;
+				else
+					shopt = 0;
 			}
 
-			rc = (*filter)(sess, c, lopt);
+			rc = (*filter)(sess, shopt, lopt);
 			if (rc < 0)
 				continue;
 			else if (rc == 0)
@@ -1157,7 +1164,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			if (opts.alt_base_mode != 0 &&
 			    opts.alt_base_mode != BASE_MODE_COMPARE) {
 				errx(1, "option --%s conflicts with %s",
-				    lopts[lidx].name,
+				    rsync_lopts[lidx].name,
 				    alt_base_mode(opts.alt_base_mode));
 			}
 			opts.alt_base_mode = BASE_MODE_COMPARE;
@@ -1166,7 +1173,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			if (opts.alt_base_mode != 0 &&
 			    opts.alt_base_mode != BASE_MODE_COPY) {
 				errx(1, "option --%s conflicts with %s",
-				    lopts[lidx].name,
+				    rsync_lopts[lidx].name,
 				    alt_base_mode(opts.alt_base_mode));
 			}
 			opts.alt_base_mode = BASE_MODE_COPY;
@@ -1207,7 +1214,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			if (opts.alt_base_mode != 0 &&
 			    opts.alt_base_mode != BASE_MODE_LINK) {
 				errx(1, "option --%s conflicts with %s",
-				    lopts[lidx].name,
+				    rsync_lopts[lidx].name,
 				    alt_base_mode(opts.alt_base_mode));
 			}
 			opts.alt_base_mode = BASE_MODE_LINK;
@@ -1215,7 +1222,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 basedir:
 			if (basedir_cnt >= MAX_BASEDIR)
 				errx(1, "too many --%s directories specified",
-				    lopts[lidx].name);
+				    rsync_lopts[lidx].name);
 			opts.basedir[basedir_cnt++] = optarg;
 			break;
 		case OP_READ_BATCH:

@@ -18,6 +18,7 @@
 #include <sys/types.h>
 
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <grp.h>
 #include <fcntl.h>
@@ -719,6 +720,285 @@ daemon_operation_allowed(struct sess *sess, const struct opts *opts,
 	}
 
 	return !deny;
+}
+
+static int
+daemon_add_short_refuse(struct sess *sess, char **shopts,
+    size_t *shoptlen, size_t *shoptsz, char shopt)
+{
+	char *chkopts = *shopts;
+
+	/* Allocate on demand. */
+	if (chkopts == NULL) {
+		*shoptsz = strlen(rsync_shopts);
+		chkopts = calloc(1, *shoptsz + 1);
+		if (chkopts == NULL) {
+			daemon_client_error(sess, "out of memory");
+			return 0;
+		}
+
+		*shopts = chkopts;
+	}
+
+	if (strchr(chkopts, shopt) != NULL)
+		return 1;
+
+	assert(*shoptlen < *shoptsz);
+	chkopts[(*shoptlen)++] = shopt;
+
+	return 1;
+}
+
+#define	REFUSE_LONG_ALLOC_BATCH		(8)
+
+static int
+daemon_add_long_refuse(struct sess *sess, const struct option ***lopts,
+    size_t *optlen, size_t *optsz, const struct option *opt)
+{
+	const struct option **chkopts = *lopts;
+
+	if (*optlen == *optsz) {
+		*optsz += REFUSE_LONG_ALLOC_BATCH;
+		chkopts = reallocarray(*lopts, *optsz, sizeof(*chkopts));
+		if (chkopts == NULL) {
+			daemon_client_error(sess, "out of memory");
+			return 0;
+		}
+
+		*lopts = chkopts;
+	}
+
+	for (size_t i = 0; i < *optlen; i++) {
+		if (chkopts[i] == opt)
+			return 1;
+	}
+
+	assert(*optlen < *optsz);
+	chkopts[(*optlen)++] = opt;
+
+	return 1;
+}
+
+static int
+daemon_add_long_refuse_name(struct sess *sess, const struct option ***lopts,
+    size_t *optlen, size_t *optsz, const char *name)
+{
+	const struct option *chkopt;
+
+	for (chkopt = &rsync_lopts[0]; chkopt->name != NULL; chkopt++) {
+		if (strcmp(chkopt->name, name) != 0)
+			continue;
+
+		return (daemon_add_long_refuse(sess, lopts, optlen, optsz,
+		    chkopt));
+	}
+
+	return 1;
+}
+
+static int
+daemon_can_refuse_wildcard(const char *option, char shopt)
+{
+	static const char no_wildcard_shopts[] = { 'e', 'n', '0' };
+	static const char *no_wildcard_lopts[] = {
+	    "server", "sender", "rsh", "out-format", "log-format",
+	    "dry-run", "from0"
+	};
+
+	assert(option != NULL || shopt != 0);
+	assert((option != NULL) ^ (shopt != 0));
+
+	if (shopt != 0) {
+		for (size_t i = 0; i < nitems(no_wildcard_shopts); i++) {
+			if (shopt == no_wildcard_shopts[i])
+				return 0;
+		}
+
+		return 1;
+	}
+
+	for (size_t i = 0; i < nitems(no_wildcard_lopts); i++) {
+		if (strcmp(option, no_wildcard_lopts[i]) == 0)
+			return 0;
+	}
+
+	return 1;
+}
+
+int
+daemon_parse_refuse(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+	const char *refuse_cfg;
+	const struct option *chkopt, **lopts;
+	char *refused, *shopts, *token;
+	size_t loptlen, loptsz, shoptlen, shoptsz;
+	int rc;
+	bool explicit_archive = false;
+
+	role = (void *)sess->role;
+	if (!cfg_has_param(role->dcfg, module, "refuse options"))
+		return 1;
+
+	rc = cfg_param_str(role->dcfg, module, "refuse options", &refuse_cfg);
+	assert(rc == 0);
+
+	refused = strdup(refuse_cfg);
+	if (refused == NULL) {
+		daemon_client_error(sess, "out of memory");
+		return 0;
+	}
+
+	loptlen = loptsz = 0;
+	shoptlen = shoptsz = 0;
+	lopts = NULL;
+	shopts = NULL;
+	while ((token = strsep(&refused, " ")) != NULL) {
+		char shopt = 0;
+		bool wildcard;
+
+		/* Skip empty fields */
+		if (token[0] == '\0')
+			continue;
+
+#define	SHORT_OPTION(token)	(isprint(token[0]) && \
+    (token[1] == '\0' || (token[1] == '*' && token[2] == '\0')))
+
+		if (SHORT_OPTION(token) && (token[1] != '*' ||
+		    daemon_can_refuse_wildcard(NULL, token[0]))) {
+			shopt = token[0];
+
+			if (!daemon_add_short_refuse(sess, &shopts, &shoptlen,
+			    &shoptsz, shopt)) {
+				free(refused);
+				free(shopts);
+				free(lopts);
+
+				return 0;
+			}
+
+			if (shopt == 'a' && token[1] == '\0')
+				explicit_archive = true;
+
+			/*
+			 * We won't bother with the long option matching if it
+			 * has a short option, just to save a little bit of
+			 * memory and time.
+			 */
+			if (token[1] == '\0')
+				continue;
+		}
+
+		wildcard = strchr(token, '*') != NULL;
+
+		/* Check for explicit matches first */
+		for (chkopt = &rsync_lopts[0]; chkopt->name != NULL;
+		    chkopt++) {
+			if (rmatch(token, chkopt->name, 0) != 0)
+				continue;
+
+			/*
+			 * See if we can avoid consuming a lopt spot.
+			 */
+			if (chkopt->flag == NULL && isprint(chkopt->val)) {
+				if (wildcard &&
+				    !daemon_can_refuse_wildcard(NULL,
+				    chkopt->val))
+					continue;
+				if (chkopt->val == 'a' &&
+				    strcmp(token, "archive") == 0)
+					explicit_archive = true;
+				if (!daemon_add_short_refuse(sess, &shopts,
+				    &shoptlen, &shoptsz, chkopt->val)) {
+					free(refused);
+					free(shopts);
+					free(lopts);
+
+					return 0;
+				}
+
+				continue;
+			} else if (wildcard &&
+			    !daemon_can_refuse_wildcard(chkopt->name, 0))
+				continue;
+
+			if (!daemon_add_long_refuse(sess, &lopts, &loptlen,
+			    &loptsz, chkopt)) {
+				free(refused);
+				free(shopts);
+				free(lopts);
+
+				return 0;
+			}
+		}
+
+		if (rmatch(token, "delete", 0) == 0) {
+			if (!daemon_add_long_refuse_name(sess, &lopts, &loptlen,
+			    &loptsz, "remove-sent-files") ||
+			    !daemon_add_long_refuse_name(sess, &lopts, &loptlen,
+			    &loptsz, "remove-source-files")) {
+				free(refused);
+				free(shopts);
+				free(lopts);
+
+				return 0;
+			}
+		}
+	}
+
+	if (shopts != NULL) {
+		/*
+		 * If we excluded -a explicitly rather than by wildcard, then
+		 * we refuse all of the implied options as well.
+		 */
+		if (explicit_archive) {
+			int rc;
+
+			for (const char *shoptchk = "rlptgoD"; *shoptchk != '\0';
+			    shoptchk++) {
+				rc = daemon_add_short_refuse(sess, &shopts,
+				    &shoptlen, &shoptsz, *shoptchk);
+
+				assert(rc != 0);
+			}
+		} else if (strchr(shopts, 'a') == NULL) {
+			/*
+			 * If we refused any part of -a, then we need to refuse
+			 * 'a' as well.
+			 */
+			for (const char *shoptchk = "rlptgoD"; *shoptchk != '\0';
+			    shoptchk++) {
+				rc = daemon_add_short_refuse(sess, &shopts,
+				    &shoptlen, &shoptsz,  'a');
+
+				assert(rc != 0);
+				break;
+			}
+		}
+
+		if (strchr(shopts, 'D') != NULL) {
+			if (!daemon_add_long_refuse_name(sess, &lopts, &loptlen,
+			    &loptsz, "devices") ||
+			    !daemon_add_long_refuse_name(sess, &lopts, &loptlen,
+			    &loptsz, "specials")) {
+				return 0;
+			}
+		}
+
+		if (strchr(shopts, 'P') != NULL) {
+			if (!daemon_add_long_refuse_name(sess, &lopts, &loptlen,
+			    &loptsz, "partial") ||
+			    !daemon_add_long_refuse_name(sess, &lopts, &loptlen,
+			    &loptsz, "progress")) {
+				return 0;
+			}
+		}
+	}
+
+	role->refused.refused_shopts = shopts;
+	role->refused.refused_lopts = lopts;
+	role->refused.refused_loptsz = loptlen;
+	return 1;
 }
 
 static int

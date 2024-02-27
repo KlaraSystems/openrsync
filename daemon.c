@@ -339,13 +339,44 @@ fail:
 }
 
 static int
-daemon_reject(struct sess *sess, int opt, const struct option *lopt)
+daemon_reject(struct sess *sess, int shopt, const struct option *lopt)
 {
+	struct daemon_role *role;
+
+	role = (void *)sess->role;
 
 	if (lopt != NULL && strcmp(lopt->name, "daemon") == 0) {
 		daemon_client_error(sess,
 		    "protection error: --daemon sent as client option");
 		return 0;
+	}
+
+	/*
+	 * Short options are quick, we just search the short opt string and
+	 * refuse it if it's there.  dameon_parse_refuse() adds the short option
+	 * for each long option, so we don't need to fallback to searching the
+	 * long options.
+	 */
+	if (role->refused.refused_shopts != NULL && shopt != 0) {
+		if (strchr(role->refused.refused_shopts, shopt) != NULL) {
+			daemon_client_error(sess, "option refused: -%c",
+			    shopt);
+			return 0;
+		}
+
+		return 1;
+	}
+
+	if (role->refused.refused_lopts != NULL && lopt != NULL) {
+		const struct option * const *chkopt = role->refused.refused_lopts;
+
+		for (size_t i = 0; i < role->refused.refused_loptsz; i++) {
+			if (chkopt[i] == lopt) {
+				daemon_client_error(sess,
+				    "option refused: --%s", lopt->name);
+				return 0;
+			}
+		}
 	}
 
 	return 1;
@@ -794,11 +825,13 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;	/* Error already logged. */
 
 	/* XXX PROTOCOL_MIN, etc. */
-	if (sess->rver < sess->lver) {
+	if (sess->rver < RSYNC_PROTOCOL_MIN) {
 		daemon_client_error(sess,
 		    "could not negotiate a protocol; client requested %d (supported range: %d to %d)",
-		    sess->rver, sess->lver, sess->lver);
+		    sess->rver, RSYNC_PROTOCOL_MIN, sess->lver);
 		goto fail;
+	} else if (sess->rver < sess->lver) {
+		sess->protocol = sess->rver;
 	}
 
 	/* Grab the motd before we free it. */
@@ -918,6 +951,9 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (cfg_param_int(role->dcfg, module, "timeout", &poll_timeout) != 0)
 		WARN("%s: bad value for 'timeout'", module);
 
+	if (!daemon_parse_refuse(sess, module))
+		goto fail;
+
 	optreset = 1;
 	optind = 1;
 	client_opts = rsync_getopt(argc, argv, &daemon_reject, sess);
@@ -981,6 +1017,11 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	    &client_opts->ignore_errors) != 0) {
 		daemon_client_error(sess, "%s: 'ignore errors' invalid");
 		goto fail;
+	}
+
+	if (client_opts->whole_file < 0) {
+		/* Simplify all future checking of this value */
+		client_opts->whole_file = 0;
 	}
 
 	sess->opts = client_opts;

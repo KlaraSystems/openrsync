@@ -17,6 +17,7 @@
 #ifndef EXTERN_H
 #define EXTERN_H
 
+#include <getopt.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -655,6 +656,8 @@ struct hardlinks;
 const struct flist *find_hl(const struct flist *this,
 			    const struct hardlinks *hl);
 
+extern const char rsync_shopts[];
+extern const struct option rsync_lopts[];
 extern int verbose;
 
 #define	TMPDIR_FD	(sess->opts->temp_dir ? p->tempfd : p->rootfd)
