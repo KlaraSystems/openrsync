@@ -31,6 +31,10 @@
 
 #include "extern.h"
 
+#ifndef MAX
+#define	MAX(a,b)	(((a)>(b))?(a):(b))
+#endif
+
 #define _MAXBSIZE (64 * 1024)
 
 /*
@@ -101,6 +105,125 @@ count_dir_depth(const char *path, int dirdepth, int strict)
 	}
 
 	return dirdepth;
+}
+
+char *
+make_safe_link(const char *link)
+{
+	char *dest, *dsep, *end, *start, *walker;
+	size_t depth = 0, destsz, linksz;
+	char trailer;
+
+	/*
+	 * We want at least enough space for "./" in the output buffer, in case
+	 * the input is empty.
+	 */
+	linksz = strlen(link);
+	destsz = MAX(2, linksz);
+	dest = malloc(destsz + 1);
+	if (dest == NULL) {
+		ERR("malloc");
+		return (NULL);
+	}
+
+	if (linksz == 0) {
+		*dest = '\0';
+		goto out;
+	}
+
+	(void)strlcpy(dest, link, destsz + 1);
+
+	trailer = link[linksz - 1];
+
+	start = dest;
+	end = &dest[linksz + 1];
+
+	walker = start;
+	while (*walker == '/')
+		walker++;
+
+	/* Empty string or just a lot of '/' */
+	if (*walker == '\0') {
+		*dest = '\0';
+		goto out;
+	}
+
+	/* At a minimum we need to move the remaining bits back to the front. */
+	memmove(start, walker, end - walker);
+
+	dsep = walker = start;
+	while ((walker = strsep(&dsep, "/")) != NULL) {
+		char *next;
+
+		if (walker > start)
+			*(walker - 1) = '/';
+		if (*walker == '\0') {
+			if (dsep == NULL)
+				break;
+
+			/* Normalize double slashes while we're here. */
+			memmove(walker, walker + 1, end - (walker + 1));
+			dsep--;
+			end--;
+
+			continue;
+		}
+
+		next = dsep;
+		if (next == NULL)
+			next = end - 1;
+		if (strncmp(walker, ".", next - walker) == 0) {
+			/* Just move /./ out of the way. */
+			if (*next == '\0') {
+				/* Truncate, preserve trailing slash. */
+				*walker = *(walker + 1);
+				break;
+			}
+
+			memmove(walker, next, end - next);
+			end -= next - walker;
+			dsep -= next - walker;
+			continue;
+		}
+
+		if (strncmp(walker, "..", next - walker) == 0) {
+			/*
+			 * We strip as soon as we move from 1 -> 0, we don't
+			 * just allow "foo/.." to remain as-is.
+			 */
+			if (depth <= 1) {
+				/*
+				 * Strip everything prior to this, because we
+				 * just moved out of our root.
+				 */
+				if (*next == '\0') {
+					/* Just zap the whole string. */
+					*start = '\0';
+					break;
+				}
+
+				/* Otherwise, preserve the trailing part. */
+				memmove(start, next, end - next);
+				end -= next - start;
+				dsep -= next - start;
+
+				depth = 0;
+			} else {
+				depth--;
+			}
+
+			continue;
+		} else {
+			depth++;
+		}
+	}
+
+out:
+	if (*dest == '\0')
+		(void)snprintf(dest, destsz + 1, ".%s",
+		    trailer == '/' ? "/" : "");
+
+	return (dest);
 }
 
 /*
