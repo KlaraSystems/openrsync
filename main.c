@@ -1331,6 +1331,7 @@ basedir:
 			opts.backup_suffix = strdup(optarg);
 			if (opts.backup_suffix == NULL)
 				errx(ERR_NOMEM, NULL);
+			opts.backup_suffix_given++;
 			break;
 		case OP_PASSWORD_FILE:
 			opts.password_file = optarg;

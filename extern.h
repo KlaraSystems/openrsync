@@ -458,6 +458,7 @@ struct	opts {
 	int		 backup;		/* --backup */
 	char		*backup_dir;		/* --backup-dir */
 	char		*backup_suffix;		/* --suffix */
+	int		 backup_suffix_given;	/* --suffix given flag */
 	int		 human_readable;	/* --human-readable */
 	int		 ign_exist;		/* --ignore-existing */
 	int		 ign_non_exist;		/* --ignore-nonexisting */
