@@ -22,6 +22,26 @@
 
 #include "extern.h"
 
+/* To make the summary log output more closely resemble that of
+ * standard rsync we remove the space from between the number
+ * and the suffix character, and eliminate any 'B' suffix.
+ */
+static void
+stats_log_fixup(const size_t bufsz, char *buf)
+{
+	char *p;
+
+	p = strchr(buf, ' ');
+	if (p != NULL && p[1] != '\0') {
+		if (p[1] == 'B') {
+			p[0] = '\0';
+		} else {
+			p[0] = p[1];
+			p[1] = '\0';
+		}
+	}
+}
+
 /*
  * Accept how much we've read, written, and file-size, and print them in
  * a human-readable fashion (with GB, MB, etc. prefixes).
@@ -32,19 +52,30 @@ stats_log(struct sess *sess,
     uint64_t tread, uint64_t twrite, uint64_t tsize, uint64_t fbuild,
     uint64_t fxfer)
 {
-	char		rbuf[32], wbuf[32], sbuf[32];
-
-	assert(verbose);
 	if (sess->opts->server)
 		return;
 
-	rsync_humanize(sess, (char*)&rbuf, sizeof(rbuf), tread);
-	rsync_humanize(sess, (char*)&wbuf, sizeof(wbuf), twrite);
-	rsync_humanize(sess, (char*)&sbuf, sizeof(sbuf), tsize);
+	if (verbose > 0 || sess->opts->stats) {
+		char rbuf[32], wbuf[32], sbuf[32], ratebuf[32];
+		int64_t rate;
 
-	LOG1("Transfer complete: "
-	    "%s sent, %s read, %s file size",
-	    (char*)&rbuf, (char*)&wbuf, (char*)&sbuf);
+		rate = (tread + twrite) / (sess->flist_xfer + 0.5);
+
+		rsync_humanize(sess, rbuf, sizeof(rbuf), tread);
+		rsync_humanize(sess, wbuf, sizeof(wbuf), twrite);
+		rsync_humanize(sess, sbuf, sizeof(sbuf), tsize);
+		rsync_humanize(sess, ratebuf, sizeof(ratebuf), rate);
+
+		stats_log_fixup(sizeof(rbuf), rbuf);
+		stats_log_fixup(sizeof(wbuf), wbuf);
+		stats_log_fixup(sizeof(sbuf), sbuf);
+		stats_log_fixup(sizeof(ratebuf), ratebuf);
+
+		LOG0("\nsent %s bytes  received %s bytes  %s bytes/sec",
+		     wbuf, rbuf, ratebuf);
+		LOG0("total size is %s  speedup is %.2lf",
+		     sbuf, tsize / (tread + twrite + 0.001));
+	}
 
 	LOG3("File list generation time: %.3f seconds, "
 	    "transfer time: %.3f seconds",
@@ -94,14 +125,20 @@ sess_stats_send(struct sess *sess, int fd)
 	uint64_t tw, tr, ts, fb, fx;
 	int statfd = -1;
 
-	if (!sess->opts->server && sess->wbatch_fd == -1 && verbose == 0)
-		return 1;
-
 	tw = sess->total_write;
 	tr = sess->total_read;
 	ts = sess->total_size;
 	fb = sess->flist_build;
 	fx = sess->flist_xfer;
+
+	if (sess->opts->stats)
+		stats_output(sess);
+
+	if (verbose > 0 || sess->opts->stats)
+		stats_log(sess, tr, tw, ts, fb, fx);
+
+	if (!sess->opts->server && sess->wbatch_fd == -1 && verbose == 0)
+		return 1;
 
 	/*
 	 * The client-sender doesn't need to send stats, unless we're writing a
@@ -137,12 +174,6 @@ sess_stats_send(struct sess *sess, int fd)
 			}
 		}
 	}
-
-	if (verbose > 0 || sess->opts->stats)
-		stats_log(sess, tr, tw, ts, fb, fx);
-
-	if (sess->opts->stats)
-		stats_output(sess);
 
 	return 1;
 }
