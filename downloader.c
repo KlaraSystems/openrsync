@@ -38,7 +38,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <limits.h>
-#include <zlib.h>
 
 #include "zlib/zlib.h"
 #include "md4.h"

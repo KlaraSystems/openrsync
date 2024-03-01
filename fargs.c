@@ -269,6 +269,9 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-x");
 	if (sess->opts->compress)
 		addargs(&args, "-z");
+	if (sess->opts->compress &&
+	    sess->opts->compression_level != -1)
+		addargs(&args, "--compress-level=%d", sess->opts->compression_level);
 	if (sess->opts->specials && !sess->opts->devices)
 		addargs(&args, "--specials");
 	if (!sess->opts->specials && sess->opts->devices)
