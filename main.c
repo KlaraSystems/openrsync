@@ -41,6 +41,7 @@
 #endif
 
 #include "extern.h"
+#include "zlib/zlib.h"
 
 extern struct cleanup_ctx *cleanup_ctx;
 
@@ -694,6 +695,7 @@ enum {
 	OP_MODWIN,
 	OP_MAX_DELETE,
 	OP_STATS,
+	OP_COMPLEVEL,
 };
 
 static const struct option	 lopts[] = {
@@ -714,6 +716,7 @@ static const struct option	 lopts[] = {
     { "copy-dest",	required_argument, NULL,		OP_COPY_DEST },
     { "link-dest",	required_argument, NULL,		OP_LINK_DEST },
     { "compress",	no_argument,	NULL,			'z' },
+    { "compress-level",	required_argument, NULL,		OP_COMPLEVEL },
     { "contimeout",	required_argument, NULL,		OP_CONTIMEOUT },
     { "copy-dirlinks",	no_argument,	NULL,			'k' },
     { "copy-links",	no_argument,	&opts.copy_links,	'L' },
@@ -898,7 +901,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 	cvs_excl = 0;
 	lidx = -1;
 	opts.max_size = opts.min_size = -1;
-	opts.compression_level = -1;
+	opts.compression_level = Z_DEFAULT_COMPRESSION;
 	opts.whole_file = -1;
 	opts.outfile = stderr;
 #ifdef __APPLE__
@@ -1374,6 +1377,27 @@ basedir:
 			break;
 		case OP_FORCE:
 			opts.force_delete++;
+			break;
+		case OP_COMPLEVEL:
+			if (*optarg != '\0') {
+				char *endptr;
+
+				errno = 0;
+				tmpint = strtoll(optarg, &endptr, 0);
+				if (*endptr != '\0')
+					errx(1, "--compress-level=%s: invalid numeric value",
+					     optarg);
+				if (tmpint < Z_DEFAULT_COMPRESSION)
+					errx(1, "--compress-level=%s: must be no less than %d",
+					     optarg, Z_DEFAULT_COMPRESSION);
+				if (tmpint > Z_BEST_COMPRESSION)
+					errx(1, "--compress-level=%s: must be no greater than %d",
+					     optarg, Z_BEST_COMPRESSION);
+
+				opts.compression_level = tmpint;
+				if (opts.compression_level == Z_NO_COMPRESSION)
+					opts.compress = 0;
+			}
 			break;
 		case OP_IGNORE_ERRORS:
 			opts.ignore_errors++;
