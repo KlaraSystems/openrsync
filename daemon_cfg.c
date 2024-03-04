@@ -45,13 +45,14 @@ struct daemon_cfg_param;
 #define	PARAM(nameval, cnameval)	\
 	{ .name = (nameval), .cname = (cnameval), .dflt = "" }
 #define	PARAM_DFLT(nameval, cnameval, dfltval)	\
-	{ .name = (nameval), .cname = (cnameval), .dflt = (dfltval) }
+	{ .name = (nameval), .cname = (cnameval), .dflt = (dfltval), .dflt_set = true }
 
 /* XXX We may want to validate these on read. */
 static struct rsync_daemon_param {
 	const char	*name;
 	const char	*cname;
 	const char	*dflt;
+	bool		 dflt_set;
 
 	/* Global value, just for quicker lookup. */
 	const struct daemon_cfg_param	*global;
@@ -651,7 +652,7 @@ cfg_is_valid_module(struct daemon_cfg *dcfg, const char *module)
 static int
 cfg_param_resolve(struct daemon_cfg *dcfg, const char *which_mod,
     const char *key, const struct rsync_daemon_param **odparam,
-    const struct daemon_cfg_param **ocparam, bool explicit_only)
+    const struct daemon_cfg_param **ocparam)
 {
 	const struct rsync_daemon_param *dparam;
 	const struct daemon_cfg_param *cparam;
@@ -675,13 +676,8 @@ cfg_param_resolve(struct daemon_cfg *dcfg, const char *which_mod,
 		cparam = dparam->global;
 	} else {
 		cparam = cfg_module_find_param(module, dparam);
-		if (cparam == NULL && !explicit_only)
+		if (cparam == NULL && dparam->global != NULL)
 			cparam = dparam->global;
-	}
-
-	if (explicit_only && cparam == NULL) {
-		errno = ENOENT;
-		return -1;
 	}
 
 	if (odparam != NULL)
@@ -716,11 +712,10 @@ cfg_has_param(struct daemon_cfg *dcfg, const char *which_mod, const char *key)
 	const struct rsync_daemon_param *dparam;
 	const struct daemon_cfg_param *cparam;
 
-	if (cfg_param_resolve(dcfg, which_mod, key, &dparam, &cparam,
-	    true) != 0)
+	if (cfg_param_resolve(dcfg, which_mod, key, &dparam, &cparam) != 0)
 		return 0;
 
-	return 1;
+	return cparam != NULL;
 }
 
 static int
@@ -730,8 +725,15 @@ cfg_param_fetch(struct daemon_cfg *dcfg, const char *which_mod, const char *key,
 	const struct rsync_daemon_param *dparam;
 	const struct daemon_cfg_param *cparam;
 
-	if (cfg_param_resolve(dcfg, which_mod, key, &dparam, &cparam,
-	    false) != 0)
+	if (cfg_param_resolve(dcfg, which_mod, key, &dparam, &cparam) != 0)
+		return -1;
+
+	/*
+	 * cfg_param_resolve() will return any cparam it can; if it returns
+	 * NULL, then that means that we neither had a value supplied nor did
+	 * we have a default provided in the table above.
+	 */
+	if (cparam == NULL && !dparam->dflt_set)
 		return -1;
 
 	if (cparam == NULL)

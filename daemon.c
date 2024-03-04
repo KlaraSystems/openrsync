@@ -1075,8 +1075,8 @@ get_global_cfgstr(struct daemon_cfg *dcfg, const char *key, const char **out)
 	int error;
 
 	error = cfg_param_str(dcfg, "global", key, out);
-
-	assert(error == 0);
+	if (error != 0)
+		*out = "";
 }
 
 static int
