@@ -16,6 +16,7 @@
 #include "config.h"
 
 #include <sys/types.h>
+#include <sys/stat.h>
 
 #include <assert.h>
 #include <ctype.h>
@@ -606,6 +607,125 @@ daemon_fill_hostinfo(struct sess *sess, const char *module,
 		daemon_client_error(sess, "%s: reverse dns lookup failed: %s",
 		    module, gai_strerror(rc));
 		return 0;
+	}
+
+	return 1;
+}
+
+static int
+daemon_symlink_munge_filter(const char *link, char **outlink, enum fmode mode)
+{
+
+	if (mode == FARGS_SENDER) {
+		/* Sender: de-munge */
+		if (strncmp(link, RSYNCD_MUNGE_PREFIX,
+		    sizeof(RSYNCD_MUNGE_PREFIX) - 1) != 0) {
+			/* Nothing to de-munge, just return. */
+			*outlink = NULL;
+			return 0;
+		}
+
+		*outlink = strdup(link + sizeof(RSYNCD_MUNGE_PREFIX) - 1);
+		if (*outlink == NULL) {
+			ERR("strdup");
+			return -1;
+		}
+	} else {
+		/*
+		 * Receiver: do the munge so that we can't be tricked into
+		 * following it.
+		 */
+		if (asprintf(outlink, "%s%s", RSYNCD_MUNGE_PREFIX, link) == -1) {
+			ERR("asprintf");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int
+daemon_symlink_sanitize_filter(const char *link, char **outlink,
+    enum fmode mode)
+{
+
+	/*
+	 * We have nothing to do if we're sending out; the damage was likely
+	 * done when we received the link, and we can't exactly reverse it.
+	 */
+	if (mode == FARGS_SENDER) {
+		*outlink = NULL;
+		return (0);
+	}
+
+	/*
+	 * For the receiver, we need to make the link safe by making it relative
+	 * and stripping any bits that might make us jump outside of the module
+	 * path.
+	 */
+	*outlink = make_safe_link(link);
+	if (*outlink == NULL) {
+		ERRX1("make_safe_link");
+		return (ENOMEM);
+	}
+
+	return 0;
+}
+
+int
+daemon_install_symlink_filter(struct sess *sess, const char *module,
+    int chrooted)
+{
+	struct daemon_role *role;
+	int munge;
+
+	/* Munging default is inverse of chrooted. */
+	munge = !chrooted;
+
+	/*
+	 * If we're not chrooted, we must install one of two filters: either
+	 * munge symlinks is true and we need to install the munger filter, or
+	 * it's false and we need to install the safety belt that strips leading
+	 * '/' and sanitizes away anything that might make us escape the module
+	 * path.
+	 *
+	 * If unspecified, "munge symlinks" defaults to false.
+	 */
+	role = (void *)sess->role;
+	if (cfg_has_param(role->dcfg, module, "munge symlinks") &&
+	    cfg_param_bool(role->dcfg, module, "munge symlinks", &munge) != 0) {
+		daemon_client_error(sess, "%s: 'munge symlinks' invalid",
+		    module);
+		return 0;
+	}
+
+	/*
+	 * If we're chrooted and not munging, we can just bail out now without
+	 * installing a failure.  The user could still configure us for munging
+	 * even in a chroot and we should honor it, and if we're not chrooted
+	 * then we *have* to install some filter.
+	 */
+	if (!munge && chrooted)
+		return 1;
+
+	if (munge) {
+		struct stat st;
+
+		if (stat(RSYNCD_MUNGE_PREFIX, &st) == -1) {
+			if (errno != ENOENT) {
+				daemon_client_error(sess,
+				    "%s: failed to stat munge dir", module);
+				return 0;
+			}
+		} else if (S_ISDIR(st.st_mode)) {
+			daemon_client_error(sess,
+			    "%s: security violation: munger failure", module);
+			return 0;
+		}
+
+		sess->symlink_filter = daemon_symlink_munge_filter;
+	} else {
+		sess->symlink_filter = daemon_symlink_sanitize_filter;
 	}
 
 	return 1;

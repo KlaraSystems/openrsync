@@ -83,7 +83,8 @@ static struct rsync_daemon_param {
 	PARAM("log file",	"logfile"),
 	PARAM_DFLT("max connections",	"maxconnections",	"0"),
 	PARAM_DFLT("max verbosity",	"maxverbosity",	"1"),
-	/* numeric ids default is based on chroot. */
+	/* next two defaults are based on chroot. */
+	PARAM("munge symlinks",	"mungesymlinks"),
 	PARAM("numeric ids",	"numericids"),
 	PARAM("outgoing chmod",	"outgoingchmod"),
 	PARAM("path",		NULL),
@@ -98,9 +99,6 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("write only",	"writeonly",	"false"),
 
 	/* Not implemented module options */
-	/* default disabled when chroot */
-	PARAM("munge symlinks",	"mungesymlinks"),
-
 	PARAM_DFLT("ignore nonreadable",	"ignorenonreadable",	"false"),
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
 	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),

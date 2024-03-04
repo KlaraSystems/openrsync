@@ -1014,10 +1014,35 @@ flist_append(struct sess *sess, const struct stat *st,
 	/* Optionally copy link information. */
 
 	if (S_ISLNK(st->st_mode)) {
-		f->link = symlink_read(f->path);
-		if (f->link == NULL) {
+		char *link;
+
+		link = symlink_read(f->path);
+		if (link == NULL) {
 			ERRX1("symlink_read");
 			return 0;
+		}
+
+		/*
+		 * Give the installed filter a chance at it; it may need to
+		 * append to the link we have, so we may end up with an entirely
+		 * new string.
+		 */
+		if (sess->symlink_filter != NULL) {
+			int error;
+
+			error = sess->symlink_filter(link, &f->link,
+			    FARGS_SENDER);
+			if (error != 0) {
+				ERRX1("symlink_filter");
+				return 0;
+			}
+
+			if (f->link == NULL)
+				f->link = link;
+			else
+				free(link);
+		} else {
+			f->link = link;
 		}
 	}
 
@@ -1251,6 +1276,8 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 
 		if (S_ISLNK(ff->st.mode) &&
 		    sess->opts->preserve_links) {
+			char *link;
+
 			if (!io_read_size(sess, fdin, &lsz)) {
 				ERRX1("io_read_size");
 				goto out;
@@ -1258,14 +1285,36 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 				ERRX("empty link name");
 				goto out;
 			}
-			ff->link = calloc(lsz + 1, 1);
-			if (ff->link == NULL) {
+			link = calloc(lsz + 1, 1);
+			if (link == NULL) {
 				ERR("calloc");
 				goto out;
 			}
-			if (!io_read_buf(sess, fdin, ff->link, lsz)) {
+			if (!io_read_buf(sess, fdin, link, lsz)) {
+				free(link);
 				ERRX1("io_read_buf");
 				goto out;
+			}
+
+			/* Give an installed filter a shot. */
+			if (sess->symlink_filter != NULL) {
+				int error;
+
+				error = sess->symlink_filter(link, &ff->link,
+				    FARGS_RECEIVER);
+
+				if (error != 0) {
+					free(link);
+					ERRX1("symlink_filter");
+					goto out;
+				}
+
+				if (ff->link == NULL)
+					ff->link = link;
+				else
+					free(link);
+			} else {
+				ff->link = link;
 			}
 		}
 

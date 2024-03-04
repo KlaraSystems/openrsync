@@ -27,6 +27,8 @@
 
 #include "extern.h"
 
+#define	RSYNCD_MUNGE_PREFIX	"/rsyncd-munged/"
+
 /*
  * Memory legend:
  *
@@ -70,6 +72,7 @@ int	daemon_connection_allowed(struct sess *, const char *);
 int	daemon_connection_limited(struct sess *, const char *);
 int	daemon_fill_hostinfo(struct sess *, const char *,
 	    const struct sockaddr *, size_t);
+int	daemon_install_symlink_filter(struct sess *, const char *, int);
 int	daemon_limit_verbosity(struct sess *, const char *);
 void	daemon_normalize_paths(const char *, int, char *[]);
 int	daemon_open_logfile(const char *, bool);
