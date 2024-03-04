@@ -581,6 +581,14 @@ struct	role {
 };
 
 /*
+ * The filter should return 0 on success, or -1 on failure.  If *outlink is
+ * populated on a successful return, then it should be used in place of the
+ * symlink we were given.  If it is NULL on a successful return, then the filter
+ * is declining to act and the caller should proceed with the original link.
+ */
+typedef int (symlink_filter)(const char *, char **, enum fmode);
+
+/*
  * Values required during a communication session.
  */
 struct	sess {
@@ -621,6 +629,7 @@ struct	sess {
 	mode_t		   chmod_file_OR;
 	mode_t		   chmod_file_X;
 	double             start_time; /* Time of first transfer */
+	symlink_filter	  *symlink_filter;
 	uint64_t           total_errors; /* Total non-fatal errors */
 	long		   total_deleted; /* Total files deleted */
 	bool		   err_del_limit; /* --max-delete limit exceeded */
