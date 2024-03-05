@@ -1139,7 +1139,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 
 	dfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY);
 	if (dfd == -1) {
-		if (errno == ENOENT || is_partialdir)
+		if (errno == ENOENT || is_partialdir || errno == EACCES)
 			return 1;
 		err(ERR_FILE_IO, "%s: pre_file_check_altdir: openat", root);
 	}
