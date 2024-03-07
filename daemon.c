@@ -907,6 +907,16 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 
 	/*
+	 * openrsync does not honor 'dont compress' because it may be actively
+	 * harmful at the feature level we're at -- notably, per-file
+	 * compression levels can't be set with earlier versions of --compress,
+	 * so if the first file matches a "dont compress" pattern then we end up
+	 * effectively disabling compression for the entire transfer.
+	 */
+	if (cfg_has_param(role->dcfg, module, "dont compress"))
+		WARNX("%s: 'dont compress' is present but not honored", module);
+
+	/*
 	 * Resolve UIDs/GIDs before we enter our chroot, just in case they're
 	 * not strictly numeric.
 	 */
