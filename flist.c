@@ -1451,10 +1451,11 @@ flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
     struct fl *fl, const struct stat *st)
 {
 	/* filter files */
-	if (rules_match(root, 0, FARGS_SENDER, 0) == -1) {
+	if (rules_match(root, S_ISDIR(st->st_mode), FARGS_SENDER, 0) == -1) {
 		WARNX("%s: skipping excluded %s", root, type);
 		return 1;
 	}
+	/* add it to our world view */
 	if (!flist_append(sess, st, root, fl)) {
 		ERRX1("flist_append");
 		return 0;
