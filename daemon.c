@@ -806,7 +806,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (!daemon_extract_addr(sess, saddr, slen))
 		goto fail;
 
-	sess->lver = RSYNC_PROTOCOL;
+	sess->lver = sess->protocol = RSYNC_PROTOCOL;
 
 	cleanup_init(cleanup_ctx);
 
