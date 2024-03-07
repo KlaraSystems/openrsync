@@ -75,6 +75,7 @@ static struct rsync_daemon_param {
 	PARAM("hosts allow",	"hostsallow"),
 	PARAM("hosts deny",	"hostsdeny"),
 	PARAM_DFLT("ignore errors",	"ignoreerrors",	"false"),
+	PARAM_DFLT("ignore nonreadable",	"ignorenonreadable",	"false"),
 	PARAM("include",	NULL),
 	PARAM("include from",	"includefrom"),
 	PARAM("incoming chmod",	"incomingchmod"),
@@ -99,7 +100,6 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("write only",	"writeonly",	"false"),
 
 	/* Not implemented module options */
-	PARAM_DFLT("ignore nonreadable",	"ignorenonreadable",	"false"),
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
 	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),
 

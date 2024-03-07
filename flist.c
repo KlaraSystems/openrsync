@@ -1455,6 +1455,9 @@ flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
 		WARNX("%s: skipping excluded %s", root, type);
 		return 1;
 	}
+	/* don't even try to add it if we can't read it, just succeed. */
+	if (sess->opts->ignore_nonreadable && access(root, R_OK) != 0)
+		return 1;
 	/* add it to our world view */
 	if (!flist_append(sess, st, root, fl)) {
 		ERRX1("flist_append");
@@ -1693,6 +1696,11 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 			fts_set(fts, ent, FTS_SKIP);
 			continue;
 		}
+
+		/* don't even try to add it if we can't read it, just succeed. */
+		if (sess->opts->ignore_nonreadable &&
+		    access(ent->fts_path, R_OK) != 0)
+			continue;
 
 		/* Allocate a new file entry. */
 
