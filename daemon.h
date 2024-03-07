@@ -75,6 +75,7 @@ int	daemon_fill_hostinfo(struct sess *, const char *,
 	    const struct sockaddr *, size_t);
 int	daemon_install_symlink_filter(struct sess *, const char *, int);
 int	daemon_limit_verbosity(struct sess *, const char *);
+void	daemon_normalize_path(const char *, size_t, char *);
 void	daemon_normalize_paths(const char *, int, char *[]);
 int	daemon_open_logfile(const char *, bool);
 int	daemon_operation_allowed(struct sess *, const struct opts *,

@@ -769,36 +769,44 @@ daemon_limit_verbosity(struct sess *sess, const char *module)
 }
 
 void
+daemon_normalize_path(const char *module, size_t modlen, char *path)
+{
+	size_t pathlen;
+
+	/* module cannot be empty */
+	if (modlen == 0)
+		modlen = strlen(module);
+
+	/* Search for <module>[/...] */
+	if (strncmp(path, module, modlen) != 0 ||
+	    (path[modlen] != '/' && path[modlen] != '\0'))
+		return;
+
+	/*
+	 * If we just had <module> and not <module>/..., then we can
+	 * just truncate it entirely.
+	 */
+	if (path[modlen] == '\0') {
+		path[0] = '\0';
+		return;
+	}
+
+	/*
+	 * Strip the leading <module>/ prefix.  Any unprefixed paths are
+	 * assumed to be relative to the module root anyways.
+	 */
+	pathlen = strlen(&path[modlen + 1]);
+	memmove(&path[0], &path[modlen + 1],  pathlen + 1);
+}
+
+void
 daemon_normalize_paths(const char *module, int argc, char *argv[])
 {
-	char *path;
-	size_t modlen, pathlen;
+	size_t modlen;
 
 	modlen = strlen(module);
-	for (int i = 0; i < argc; i++) {
-		path = argv[i];
-
-		/* Search for <module>[/...] */
-		if (strncmp(path, module, modlen) != 0 ||
-		    (path[modlen] != '/' && path[modlen] != '\0'))
-			continue;
-
-		/*
-		 * If we just had <module> and not <module>/..., then we can
-		 * just truncate it entirely.
-		 */
-		if (path[modlen] == '\0') {
-			path[0] = '\0';
-			continue;
-		}
-
-		/*
-		 * Strip the leading <module>/ prefix.  Any unprefixed paths are
-		 * assumed to be relative to the module root anyways.
-		 */
-		pathlen = strlen(&path[modlen + 1]);
-		memmove(&path[0], &path[modlen + 1],  pathlen + 1);
-	}
+	for (int i = 0; i < argc; i++)
+		daemon_normalize_path(module, modlen, argv[i]);
 }
 
 int

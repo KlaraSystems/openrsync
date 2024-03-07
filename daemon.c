@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <glob.h>
 #include <grp.h>
 #include <limits.h>
 #include <paths.h>
@@ -249,15 +250,108 @@ daemon_read_hello(struct sess *sess, int fd, char **module)
 	return 0;
 }
 
+#define	OPT_ALLOC_SLOTS	5
+
+static bool
+daemon_add_option(struct sess *sess, size_t *oargc, char ***oargv,
+    size_t *oargvsz, const char *buf)
+{
+	char **argv, **pargv;
+	size_t argc, argvsz, nextsz;
+
+	argv = *oargv;
+	argc = *oargc;
+	argvsz = *oargvsz;
+
+	if (argc == INT_MAX) {
+		/* XXX Do we want to limit byte size as well? */
+		daemon_client_error(sess,
+		    "protection error: too many arguments sent");
+		return false;
+	}
+
+	/*
+	 * If argc == argvsz, we need more to be able to null terminate
+	 * the array properly.
+	 */
+	if (argc == argvsz) {
+		pargv = argv;
+		nextsz = argvsz + OPT_ALLOC_SLOTS;
+		argv = recallocarray(pargv, argvsz, nextsz,
+		    sizeof(*argv));
+		if (argv == NULL) {
+			daemon_client_error(sess, "daemon out of memory");
+			return false;
+		}
+
+		*oargvsz = nextsz;
+		*oargv = argv;
+	}
+
+	argv[argc] = strdup(buf);
+	if (argv[argc] == NULL) {
+		daemon_client_error(sess, "daemon out of memory");
+		return false;
+	}
+
+	(*oargc)++;
+	return true;
+}
+
+static bool
+daemon_add_glob(struct sess *sess, const char *module, size_t *oargc,
+    char ***oargv, size_t *oargvsz, const char *buf)
+{
+	glob_t glb = { 0 };
+	int error;
+	bool ret;
+
+	/* Strip any <module>/ off the beginning. */
+	daemon_normalize_path(module, 0, buf);
+
+	if ((error = glob(buf, 0, NULL, &glb)) != 0 &&
+	    error != GLOB_NOMATCH) {
+		fprintf(stderr, "returned %d\n", error);
+		daemon_client_error(sess, "glob '%s' failed", buf);
+		return false;
+	}
+
+	if (glb.gl_pathc == 0) {
+		/*
+		 * If we didn't match anything, then we assume it was supposed
+		 * to be a literal name.
+		 */
+		ret = daemon_add_option(sess, oargc, oargv, oargvsz, buf);
+	} else {
+		/*
+		 * Otherwise, we expand it in-place instead.
+		 */
+		ret = true;
+		for (size_t i = 0; i < glb.gl_pathc; i++) {
+			if (!daemon_add_option(sess, oargc, oargv, oargvsz,
+			    glb.gl_pathv[i])) {
+				ret = false;
+				break;
+			}
+		}
+	}
+
+	globfree(&glb);
+	return ret;
+}
+
 static int
-daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
+daemon_read_options(struct sess *sess, const char *module, int fd,
+    int *oargc, char ***oargv)
 {
 	char buf[BUFSIZ];
-	char **argv, **pargv;
-	size_t argc, argvsz, linesz, nextsz;
+	char **argv;
+	size_t argc, argvsz, linesz;
+	bool fargs;
 
 	argv = NULL;
-	argc = nextsz = 0;
+	argc = 0;
+	fargs = false;
 
 	/*
 	 * At a minimum we'll have these three lines:
@@ -269,7 +363,6 @@ daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 	 * So we'll start with an array sized for 4 arguments to allow a little
 	 * wiggle room, and we'll allocate in groups of 5 as we need more.
 	 */
-#define	OPT_ALLOC_SLOTS	5
 	argvsz = OPT_ALLOC_SLOTS;
 	argv = recallocarray(argv, 0, OPT_ALLOC_SLOTS, sizeof(*argv));
 	if (argv == NULL) {
@@ -295,37 +388,18 @@ daemon_read_options(struct sess *sess, int fd, int *oargc, char ***oargv)
 			break;
 		}
 
-		if (argc == INT_MAX) {
-			/* XXX Do we want to limit byte size as well? */
-			daemon_client_error(sess,
-			    "protection error: too many arguments sent");
-			goto fail;
-		}
-
 		/*
-		 * If argc == argvsz, we need more to be able to null terminate
-		 * the array properly.
+		 * XXX Glob.
 		 */
-		if (argc == argvsz) {
-			pargv = argv;
-			nextsz = argvsz + OPT_ALLOC_SLOTS;
-			argv = recallocarray(pargv, argvsz, nextsz,
-			    sizeof(*argv));
-			if (argv == NULL) {
-				daemon_client_error(sess,
-				    "daemon out of memory");
-				argv = pargv;
+		if (fargs) {
+			if (!daemon_add_glob(sess, module, &argc, &argv,
+			    &argvsz, buf))
 				goto fail;
-			}
-		}
-
-		argv[argc] = strdup(buf);
-		if (argv[argc] == NULL) {
-			daemon_client_error(sess, "daemon out of memory");
+		} else if (!daemon_add_option(sess, &argc, &argv, &argvsz, buf))
 			goto fail;
-		}
 
-		argc++;
+		if (strcmp(buf, ".") == 0)
+			fargs = true;
 	}
 
 	*oargc = argc;
@@ -948,7 +1022,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 	}
 
-	if (daemon_read_options(sess, fd, &argc, &argv) < 0)
+	if (daemon_read_options(sess, module, fd, &argc, &argv) < 0)
 		goto fail;	/* Error already logged. */
 
 	/*
@@ -1008,9 +1082,6 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (!daemon_operation_allowed(sess, client_opts, module,
 	    user_read_only))
 		goto fail;	/* Error already logged. */
-
-	/* Strip any <module>/ off the beginning. */
-	daemon_normalize_paths(module, argc, argv);
 
 	/* Also from --files-from */
 	if (client_opts->filesfrom_path != NULL)
