@@ -103,9 +103,11 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
 	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),
 
-	PARAM("dont compress",	"dontcompress"),
 	PARAM("pre-xfer exec",	"pre-xferexec"),
 	PARAM("post-xfer exec",	"post-xferexec"),
+
+	/* Intentionally omitted options (will warn) */
+	PARAM("dont compress",	"dontcompress"),
 };
 
 struct daemon_cfg_param {
