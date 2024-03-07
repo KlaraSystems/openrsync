@@ -120,6 +120,27 @@ daemon_apply_chrootopts(struct sess *sess, const char *module,
 	return 1;
 }
 
+int
+daemon_apply_ignoreopts(struct sess *sess, const char *module, struct opts *opts)
+{
+	struct daemon_role *role;
+
+	role = (void *)sess->role;
+	if (!opts->ignore_errors &&
+	    cfg_param_bool(role->dcfg, module, "ignore errors",
+	    &opts->ignore_errors) != 0) {
+		daemon_client_error(sess, "%s: 'ignore errors' invalid");
+		return 0;
+	}
+
+	if (cfg_param_bool(role->dcfg, module, "ignore nonreadable",
+	    &opts->ignore_nonreadable) != 0) {
+		daemon_client_error(sess, "%s: 'ignore nonreadable' invalid");
+		return 0;
+	}
+
+	return 1;
+}
 
 static int
 daemon_chuser_resolve_name(const char *name, bool is_gid, id_t *oid)

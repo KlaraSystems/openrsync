@@ -478,6 +478,7 @@ struct	opts {
 #ifdef __APPLE__
 	int		 extended_attributes;	/* --extended-attributes */
 #endif
+	int		 ignore_nonreadable;	/* daemon: ignore nonreadable */
 };
 
 enum rule_type {

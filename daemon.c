@@ -1022,15 +1022,11 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (!daemon_apply_chrootopts(sess, module, client_opts, use_chroot))
 		goto fail;
 
-	if (!daemon_install_symlink_filter(sess, module, use_chroot))
+	if (!daemon_apply_ignoreopts(sess, module, client_opts))
 		goto fail;
 
-	if (!client_opts->ignore_errors &&
-	    cfg_param_bool(role->dcfg, module, "ignore errors",
-	    &client_opts->ignore_errors) != 0) {
-		daemon_client_error(sess, "%s: 'ignore errors' invalid");
+	if (!daemon_install_symlink_filter(sess, module, use_chroot))
 		goto fail;
-	}
 
 	if (client_opts->whole_file < 0) {
 		/* Simplify all future checking of this value */
