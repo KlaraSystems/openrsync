@@ -963,6 +963,9 @@ rsync_listen(struct sess *sess, rsync_client_handler *handler)
 			for (i = 0; i < bsrcsz; i++)
 				close(pfd[i].fd);
 
+			/* Reset SIGCHLD, let the client handler manage it. */
+			(void)signal(SIGCHLD, SIG_DFL);
+
 			_exit((*handler)(sess, clsock, &saddr, slen));
 		}
 	}

@@ -45,6 +45,16 @@
 #endif
 
 /*
+ * Mirror the reference rsync here; they don't really entertain path limitations
+ * lower than 4096.
+ */
+#if PATH_MAX <= 4096
+#define	BIGPATH_MAX	(4096 + 1024)
+#else
+#define	BIGPATH_MAX	(PATH_MAX + 1024)
+#endif
+
+/*
  * This is the rsync protocol version that we support.
  */
 #define	RSYNC_PROTOCOL		(29)

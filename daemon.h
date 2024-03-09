@@ -47,11 +47,15 @@ struct daemon_role {
 	char			 client_host[NI_MAXHOST]; /* hostname */
 	char			 client_addr[INET6_ADDRSTRLEN]; /* addr */
 	struct sockaddr		*client_sa;
+	char			*auth_user;	/* (f) auth user */
 	const char		*cfg_file;	/* (c) daemon config file */
 	char			*motd_file;	/* (f) client motd */
+	const char		*module_path;	/* (c) module path */
 	struct daemon_cfg	*dcfg;		/* (f) daemon config */
 	const char		*pid_file;	/* (c) daemon pidfile path */
 	FILE			*pidfp;		/* (f) daemon pidfile */
+	int			 prexfer_pipe;	/* (f) pre-xfer pipe */
+	pid_t			 prexfer_pid;	/* pre-xfer exec process */
 	int			 lockfd;
 	id_t			 uid;		/* setuid if root */
 	id_t			 gid;		/* setgid if root */
@@ -71,6 +75,9 @@ void	daemon_client_error(struct sess *, const char *, ...);
 int	daemon_configure_filters(struct sess *, const char *);
 int	daemon_connection_allowed(struct sess *, const char *);
 int	daemon_connection_limited(struct sess *, const char *);
+int	daemon_do_execcmds(struct sess *, const char *);
+int	daemon_finish_prexfer(struct sess *, const char *, const char *,
+	    size_t);
 int	daemon_fill_hostinfo(struct sess *, const char *,
 	    const struct sockaddr *, size_t);
 int	daemon_install_symlink_filter(struct sess *, const char *, int);
