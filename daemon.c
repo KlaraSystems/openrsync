@@ -16,6 +16,7 @@
 #include "config.h"
 
 #include <sys/types.h>
+#include <sys/sbuf.h>	/* XXX */
 #include <sys/time.h>
 
 #include <assert.h>
@@ -300,7 +301,7 @@ daemon_add_option(struct sess *sess, size_t *oargc, char ***oargv,
 
 static bool
 daemon_add_glob(struct sess *sess, const char *module, size_t *oargc,
-    char ***oargv, size_t *oargvsz, const char *buf)
+    char ***oargv, size_t *oargvsz, char *buf, struct sbuf *argsb)
 {
 	glob_t glb = { 0 };
 	int error;
@@ -321,6 +322,11 @@ daemon_add_glob(struct sess *sess, const char *module, size_t *oargc,
 		 * If we didn't match anything, then we assume it was supposed
 		 * to be a literal name.
 		 */
+		if (argsb != NULL) {
+			sbuf_cat(argsb, buf);
+			sbuf_putc(argsb, '\0');
+		}
+
 		ret = daemon_add_option(sess, oargc, oargv, oargvsz, buf);
 	} else {
 		/*
@@ -328,6 +334,11 @@ daemon_add_glob(struct sess *sess, const char *module, size_t *oargc,
 		 */
 		ret = true;
 		for (size_t i = 0; i < glb.gl_pathc; i++) {
+			if (argsb != NULL) {
+				sbuf_cat(argsb, glb.gl_pathv[i]);
+				sbuf_putc(argsb, '\0');
+			}
+
 			if (!daemon_add_option(sess, oargc, oargv, oargvsz,
 			    glb.gl_pathv[i])) {
 				ret = false;
@@ -345,13 +356,31 @@ daemon_read_options(struct sess *sess, const char *module, int fd,
     int *oargc, char ***oargv)
 {
 	char buf[BUFSIZ];
+	struct daemon_role *role;
+	struct sbuf *argsb, *reqsb;
 	char **argv;
 	size_t argc, argvsz, linesz;
 	bool fargs;
 
+	role = (void *)sess->role;
 	argv = NULL;
 	argc = 0;
 	fargs = false;
+	reqsb = NULL;
+
+	argsb = reqsb = NULL;
+	if (role->prexfer_pipe != -1) {
+		argsb = sbuf_new_auto();
+		if (argsb == NULL) {
+			daemon_client_error(sess, "daemon out of memory");
+			return -1;
+		}
+		reqsb = sbuf_new_auto();
+		if (reqsb == NULL) {
+			daemon_client_error(sess, "daemon out of memory");
+			return -1;
+		}
+	}
 
 	/*
 	 * At a minimum we'll have these three lines:
@@ -367,6 +396,12 @@ daemon_read_options(struct sess *sess, const char *module, int fd,
 	argv = recallocarray(argv, 0, OPT_ALLOC_SLOTS, sizeof(*argv));
 	if (argv == NULL) {
 		daemon_client_error(sess, "daemon out of memory");
+		sbuf_delete(argsb);
+		sbuf_delete(reqsb);
+		if (argsb != NULL)
+			sbuf_delete(argsb);
+		if (reqsb != NULL)
+			sbuf_delete(reqsb);
 		return -1;
 	}
 
@@ -379,10 +414,18 @@ daemon_read_options(struct sess *sess, const char *module, int fd,
 			daemon_client_error(sess,
 			    "protocol violation: expected option line");
 			errno = EINVAL;
+			if (argsb != NULL)
+				sbuf_delete(argsb);
+			if (reqsb != NULL)
+				sbuf_delete(reqsb);
 			return -1;
 		} else if (linesz == sizeof(buf)) {
 			daemon_client_error(sess, "line buffer overrun");
 			errno = EINVAL;
+			if (argsb != NULL)
+				sbuf_delete(argsb);
+			if (reqsb != NULL)
+				sbuf_delete(reqsb);
 			return -1;
 		} else if (linesz == 0) {
 			break;
@@ -392,20 +435,66 @@ daemon_read_options(struct sess *sess, const char *module, int fd,
 		 * XXX Glob.
 		 */
 		if (fargs) {
+			/*
+			 * These get added to the request as-is, but they're
+			 * added to RSYNC_ARG# with the module/ stripped in
+			 * daemon_add_glob().
+			 */
+			if (reqsb != NULL) {
+				if (sbuf_len(reqsb) != 0)
+					sbuf_putc(reqsb, ' ');
+				sbuf_cat(reqsb, buf);
+			}
+
 			if (!daemon_add_glob(sess, module, &argc, &argv,
-			    &argvsz, buf))
+			    &argvsz, buf, argsb))
 				goto fail;
-		} else if (!daemon_add_option(sess, &argc, &argv, &argvsz, buf))
-			goto fail;
+		} else {
+			if (argsb != NULL) {
+				sbuf_cat(argsb, buf);
+				sbuf_putc(argsb, '\0');
+			}
+
+			if (!daemon_add_option(sess, &argc, &argv, &argvsz,
+			    buf))
+				goto fail;
+		}
 
 		if (strcmp(buf, ".") == 0)
 			fargs = true;
+	}
+
+	if (role->prexfer_pipe != -1) {
+		const char *wargs, *wreq;
+		size_t wargsz;
+
+		wargs = wreq = NULL;
+		wargsz = 0;
+
+		if (sbuf_finish(argsb) == 0) {
+			wargs = sbuf_data(argsb);
+			wargsz = sbuf_len(argsb);
+		}
+
+		if (sbuf_finish(reqsb) == 0)
+			wreq = sbuf_data(reqsb);
+
+		daemon_finish_prexfer(sess, wreq, wargs, wargsz);
+
+		sbuf_delete(argsb);
+		sbuf_delete(reqsb);
 	}
 
 	*oargc = argc;
 	*oargv = argv;
 	return 0;
 fail:
+	if (argsb != NULL)
+		sbuf_delete(argsb);
+	if (reqsb != NULL)
+		sbuf_delete(reqsb);
+	if (role->prexfer_pipe != -1)
+		daemon_finish_prexfer(sess, NULL, NULL, 0);
 	for (size_t i = 0; i < argc; i++)
 		free(argv[i]);
 	free(argv);
@@ -812,6 +901,14 @@ daemon_auth(struct sess *sess, const char *module, int *read_only)
 	    hash, read_only);
 	fclose(secfp);
 
+	if (rc) {
+		role->auth_user = strdup(username);
+		if (role->auth_user == NULL) {
+			daemon_client_error(sess, "%s: out of memory", module);
+			return 0;
+		}
+	}
+
 	return rc;
 }
 
@@ -853,7 +950,6 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 {
 	struct daemon_role *role;
 	struct opts *client_opts;
-	const char *module_path;
 	char **argv, *module, *motd_file;
 	int argc, flags, rc, use_chroot, user_read_only;
 
@@ -863,6 +959,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	user_read_only = -1;
 
 	role = (void *)sess->role;
+	role->prexfer_pid = 0;
+	role->prexfer_pipe = -1;
 	role->client = fd;
 	assert(role->lockfd == -1);
 
@@ -971,13 +1069,16 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		use_chroot = 2;
 	}
 
-	rc = cfg_param_str(role->dcfg, module, "path", &module_path);
+	rc = cfg_param_str(role->dcfg, module, "path", &role->module_path);
 	assert(rc == 0);
 
 	if (!daemon_configure_filters(sess, module))
 		goto fail;
 
 	if (!daemon_setup_logfile(sess, module))
+		goto fail;
+
+	if (!daemon_do_execcmds(sess, module))
 		goto fail;
 
 	/*
@@ -1000,7 +1101,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	/*
 	 * We don't currently support the /./ chroot syntax of rsync 3.x.
 	 */
-	chdir(module_path);
+	chdir(role->module_path);
 	if (use_chroot && chroot(".") == -1) {
 		if (errno != EPERM || use_chroot == 1) {
 			/* XXX Fail it. */
@@ -1127,6 +1228,8 @@ done:
 		role->lockfd = -1;
 	}
 
+	close(role->prexfer_pipe);
+	free(role->auth_user);
 	for (int i = 0; i < argc; i++)
 		free(argv[i]);
 	free(argv);
@@ -1142,6 +1245,8 @@ fail:
 		role->lockfd = -1;
 	}
 
+	close(role->prexfer_pipe);
+	free(role->auth_user);
 	for (int i = 0; i < argc; i++)
 		free(argv[i]);
 	free(argv);

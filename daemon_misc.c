@@ -17,12 +17,13 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
-#include <grp.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <limits.h>
 #include <pwd.h>
 #include <stdarg.h>
@@ -607,6 +608,382 @@ daemon_connection_limited(struct sess *sess, const char *module)
 	return !daemon_rangelock(sess, module, lockf, max);
 }
 
+/*
+ * Done in the child for both pre-xfer and post-xfer commands
+ */
+static void
+daemon_do_execcmds_common_env(struct daemon_role *role, const char *module)
+{
+
+	setenv("RSYNC_MODULE_NAME", module, 1);
+	setenv("RSYNC_MODULE_PATH", role->module_path, 1);
+	setenv("RSYNC_HOST_ADDR", role->client_addr, 1);
+	setenv("RSYNC_HOST_NAME", role->client_host, 1);
+	setenv("RSYNC_USER_NAME",
+	    (role->auth_user != NULL ? role->auth_user : ""), 1);
+}
+
+/*
+ * The reference rsync seems to ignore, e.g., out of memory errors when trying
+ * to construct the environment, so we'll do the same.
+ */
+static void
+daemon_do_execcmds_num_env(const char *name, unsigned long val)
+{
+	char fmtbuf[32];
+	int ret;
+
+	ret = snprintf(fmtbuf, sizeof(fmtbuf), "%ld", val);
+	if (ret < 0 || ret >= (int)sizeof(fmtbuf))
+		return;	/* Overflow or error */
+
+	setenv(name, fmtbuf, 1);
+}
+
+static int
+daemon_await_prexfer_env_read(int infd, void *bufp, size_t bufsz)
+{
+	uint8_t *buf = bufp;
+	size_t offset;
+	ssize_t readsz;
+
+	offset = 0;
+	while (bufsz != 0) {
+		readsz = read(infd, &buf[offset], bufsz);
+		if (readsz <= 0) {
+			if (readsz == -1 && (errno == EINTR || errno == EAGAIN))
+				continue;
+
+			return 0;
+		}
+
+		offset += readsz;
+		bufsz -= readsz;
+	}
+
+	return 1;
+}
+
+static uint8_t *
+daemon_await_prexfer_env(struct daemon_role *role, int infd, size_t *obufsz)
+{
+	uint8_t *penv;
+	size_t penvsz;
+	int flags;
+
+	/* Blocking would be nice, but it's not mandatory. */
+	flags = fcntl(infd, F_GETFL);
+	if (flags != -1 && (flags & O_NONBLOCK) != 0) {
+		flags &= ~O_NONBLOCK;
+		(void)fcntl(infd, F_SETFL, flags);
+	}
+
+	if (!daemon_await_prexfer_env_read(infd, &penvsz, sizeof(penvsz)))
+		_exit(1);
+
+	penv = malloc(penvsz);
+	if (penv == NULL)
+		_exit(1);
+
+	if (!daemon_await_prexfer_env_read(infd, penv, penvsz))
+		_exit(1);
+
+	close(infd);
+	infd = -1;
+
+	*obufsz = penvsz;
+	return penv;
+}
+
+static int
+daemon_do_execcmds_pre(struct sess *sess, const char *module, const char *cmd)
+{
+	struct daemon_role *role;
+	uint8_t *penv;
+	size_t penvsz;
+	int fd[2], status;
+	pid_t pid, ppid;
+
+	role = (void *)sess->role;
+	ppid = getpid();
+	if (pipe(&fd[0]) == -1)
+		goto stagefail;
+	pid = fork();
+	if (pid == -1)
+		goto stagefail;
+
+	if (pid != 0) {
+		/* Parent returns, carries on with startup */
+		close(fd[0]);
+
+		role->prexfer_pipe = fd[1];
+		role->prexfer_pid = pid;
+		return 1;
+	}
+
+	/* Child awaits environmental information. */
+	close(fd[1]);
+
+	/*
+	 * The reference rsync seems to put this in both the parent and child
+	 * environments if the pre-xfer exec command is set, but it's not clear
+	 * why.  We'll keep the transfer process's environment clean to match
+	 * the post-xfer exec handling until we come up with a compelling reason
+	 * to do otherwise (e.g., config vars that might expect RSYNC_PID to be
+	 * populated -- this version of rsync deos not yet do var expansion).
+	 */
+	daemon_do_execcmds_num_env("RSYNC_PID", ppid);
+	daemon_do_execcmds_common_env(role, module);
+
+	penv = daemon_await_prexfer_env(role, fd[0], &penvsz);
+	if (penv != NULL) {
+		char envname[sizeof("RSYNC_ARG") + 6];
+		const uint8_t *args, *endp, *narg;
+		int ret;
+
+		setenv("RSYNC_ARG0", "rsyncd", 1);
+
+		narg = args = penv;
+
+		for (size_t i = 0; penvsz != 0; i++) {
+			if (i > 512)
+				__builtin_trap();
+
+			/*
+			 * This should always be NUL-terminated, so we shouldn't
+			 * have anything remaining if we hit endp == NULL.
+			 */
+			endp = memchr(narg, '\0', penvsz);
+			if (endp == NULL)
+				break;
+
+			/*
+			 * The first one is actually the request.  We took out
+			 * RSYNC_ARG0 above with "rsyncd", but we make up for
+			 * it here by stuffing it into RSYNC_REQUEST.
+			 */
+			if (i == 0) {
+				ret = strlcpy(envname, "RSYNC_REQUEST",
+				    sizeof(envname));
+			} else {
+				/* Add it */
+				ret = snprintf(envname, sizeof(envname),
+				    "RSYNC_ARG%ld", i);
+				if (ret == -1)
+					break;
+			}
+
+			/* It should have been wide enough... */
+			assert(ret < (int)sizeof(envname));
+			(void)setenv(envname, (const char *)narg, 1);
+
+			endp++;
+
+			penvsz -= endp - narg;
+			narg = endp;
+		}
+
+		free(penv);
+	}
+
+	/* Environment is set, let's exec it! */
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+
+	status = system(cmd);
+	if (WIFEXITED(status))
+		status = WEXITSTATUS(status);
+	else
+		status = 1;
+
+	_exit(status);
+stagefail:
+	daemon_client_error(sess, "%s: failed to stage pre-xfer process",
+	    module);
+	return 0;
+}
+
+static int
+daemon_do_execcmds_post(struct sess *sess, const char *module, const char *cmd)
+{
+	pid_t pid, ret;
+	int status;
+
+	pid = fork();
+	if (pid == -1) {
+		daemon_client_error(sess, "%s: failed to fork for post-xfer");
+		return 0;
+	}
+
+	/* Child returns */
+	if (pid == 0)
+		return 1;
+
+	/* Parent waits */
+	daemon_do_execcmds_common_env((void *)sess->role, module);
+	daemon_do_execcmds_num_env("RSYNC_PID", pid);
+
+	while ((ret = waitpid(pid, &status, 0)) == -1 &&
+	    errno == EINTR) {
+		continue;	/* Spin */
+	}
+
+	if (ret != pid)
+		status = -1;
+
+	daemon_do_execcmds_num_env("RSYNC_RAW_STATUS", status);
+
+	if (WIFEXITED(status))
+		status = WEXITSTATUS(status);
+	else
+		status = -1;
+
+	daemon_do_execcmds_num_env("RSYNC_EXIT_STATUS", status);
+
+	/* Execute the command, but propagate the child status either way. */
+	system(cmd);
+	_exit(status);
+}
+
+int
+daemon_do_execcmds(struct sess *sess, const char *module)
+{
+	struct daemon_role *role;
+	const char *cmd;
+	int rc;
+
+	role = (void *)sess->role;
+	if (!cfg_has_param(role->dcfg, module, "pre-xfer exec") &&
+	    !cfg_has_param(role->dcfg, module, "post-xfer exec"))
+		return 1;
+
+	/*
+	 * We fire up the post-xfer exec command first because it will run in
+	 * our current process and fork off a process to actually handle the
+	 * transfer to reliably grab the final status.  Thus, to be able to
+	 * provide a consistent RSYNC_PID to both commands, we need this one to
+	 * fork first -- the other one will fork and handle its command in the
+	 * child instead.
+	 */
+	if (cfg_has_param(role->dcfg, module, "post-xfer exec")) {
+		rc = cfg_param_str(role->dcfg, module, "post-xfer exec", &cmd);
+		assert(rc == 0);
+
+		if (*cmd != '\0' && !daemon_do_execcmds_post(sess, module, cmd))
+			return 0;
+	}
+
+	if (cfg_has_param(role->dcfg, module, "pre-xfer exec")) {
+		rc = cfg_param_str(role->dcfg, module, "pre-xfer exec", &cmd);
+		assert(rc == 0);
+
+		if (*cmd != '\0' && !daemon_do_execcmds_pre(sess, module, cmd))
+			return 0;
+	}
+
+	return 1;
+}
+
+static int
+daemon_finish_prexfer_write(int outfd, const void *bufp, size_t bufsz)
+{
+	const uint8_t *buf = bufp;
+	size_t offset;
+	ssize_t wsz;
+
+	offset = 0;
+	while (bufsz != 0) {
+		wsz = write(outfd, &buf[offset], bufsz);
+		if (wsz <= 0) {
+			if (wsz == -1 && errno == EINTR)
+				continue;
+			else if (wsz == -1)
+				ERR("write");
+			return 0;
+		}
+
+		offset += wsz;
+		bufsz -= wsz;
+	}
+
+	return 1;
+}
+
+int
+daemon_finish_prexfer(struct sess *sess, const char *req, const char *args,
+    size_t argsz)
+{
+	struct daemon_role *role;
+	size_t reqsz, totalsz;
+	pid_t child, ret;
+	int fd, status;
+	bool error;
+
+	role = (void *)sess->role;
+
+	child = role->prexfer_pid;
+	fd = role->prexfer_pipe;
+	assert(fd != -1 && child > 0);
+
+	if (req != NULL) {
+		error = true;
+		reqsz = strlen(req) + 1;
+
+		/*
+		 * We write totalsz, which includes the following:
+		 *   - uint8_t[strlen(req) + 1]: request, nul terminated
+		 *   - uint8_t[argsz]: nul terminated args
+		 *
+		 * If at any point we fail to write, we'll just close the other
+		 * pipe so the other side terminates and we'll cancel the
+		 * transfer based on the non-zero exit code.
+		 */
+		totalsz = reqsz + argsz;
+
+		if (!daemon_finish_prexfer_write(fd, &totalsz, sizeof(totalsz)))
+			goto done;
+		if (!daemon_finish_prexfer_write(fd, req, reqsz))
+			goto done;
+		if (!daemon_finish_prexfer_write(fd, args, argsz))
+			goto done;
+	}
+
+	error = false;
+done:
+	/*
+	 * Whether we had an error or not, close out the write side of the pipe
+	 * to force the other side out.
+	 */
+	close(fd);
+
+	role->prexfer_pipe = -1;
+
+	/* Finally, wait for it. */
+	while ((ret = waitpid(child, &status, 0)) != child) {
+		if (ret == -1) {
+			if (errno == EINTR)
+				continue;
+
+			daemon_client_error(sess,
+			    "error waiting for pre-exec xfer child");
+			return 0;
+		}
+	}
+
+	if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+		daemon_client_error(sess,
+		    "pre-xfer exec command denies transfer");
+		error = true;
+	} else if (!WIFEXITED(status)) {
+		daemon_client_error(sess, "pre-xfer exec command failed");
+		error = true;
+	}
+
+	role->prexfer_pid = 0;
+
+	return error ? 0 : 1;
+}
+
 int
 daemon_fill_hostinfo(struct sess *sess, const char *module,
     const struct sockaddr *addr, size_t slen)
@@ -620,7 +997,9 @@ daemon_fill_hostinfo(struct sess *sess, const char *module,
 	 * Nothing left to do here, nothing configured that needs reverse dns.
 	 */
 	if (!cfg_has_param(role->dcfg, module, "hosts allow") &&
-	    !cfg_has_param(role->dcfg, module, "hosts deny"))
+	    !cfg_has_param(role->dcfg, module, "hosts deny") &&
+	    !cfg_has_param(role->dcfg, module, "pre-xfer exec") &&
+	    !cfg_has_param(role->dcfg, module, "post-xfer exec"))
 		return 1;
 
 	if ((rc = getnameinfo(addr, slen, &role->client_host[0],

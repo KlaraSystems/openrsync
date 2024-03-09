@@ -89,6 +89,8 @@ static struct rsync_daemon_param {
 	PARAM("numeric ids",	"numericids"),
 	PARAM("outgoing chmod",	"outgoingchmod"),
 	PARAM("path",		NULL),
+	PARAM("post-xfer exec",	"post-xferexec"),
+	PARAM("pre-xfer exec",	"pre-xferexec"),
 	PARAM_DFLT("read only",		"readonly",	"true"),
 	PARAM("refuse options",	"refuseoptions"),
 	PARAM("secrets file",	"secretsfile"),
@@ -102,9 +104,6 @@ static struct rsync_daemon_param {
 	/* Not implemented module options */
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
 	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),
-
-	PARAM("pre-xfer exec",	"pre-xferexec"),
-	PARAM("post-xfer exec",	"post-xferexec"),
 
 	/* Intentionally omitted options (will warn) */
 	PARAM("dont compress",	"dontcompress"),
