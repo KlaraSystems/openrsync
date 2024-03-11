@@ -770,6 +770,57 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 	return 1;
 }
 
+/*
+ * Read the Itemization flags for an index off the wire.
+ * Deal with the conditional "follows" flags for extra metadata.
+ */
+static int
+download_get_iflags(struct sess *sess, int fd, struct flist *fl, int32_t idx)
+{
+	uint16_t iflags;
+
+	if (idx < 0) {
+		return 0;
+	}
+
+	if (!protocol_itemize) {
+		fl[idx].iflags = IFLAG_TRANSFER;
+		return 1;
+	}
+
+	if (!io_read_short(sess, fd, &iflags)) {
+		ERRX1("io_read_short");
+		return 0;
+	}
+	fl[idx].iflags = iflags;
+
+	if ((iflags & IFLAG_BASIS_FOLLOWS) != 0) {
+		uint8_t basis;
+
+		if (!io_read_byte(sess, fd, &basis)) {
+			ERRX1("io_read_byte");
+			return 0;
+		}
+
+		fl[idx].basis = basis;
+	}
+	if ((iflags & IFLAG_HLINK_FOLLOWS) != 0) {
+		if (fl[idx].link != NULL) {
+			free(fl[idx].link);
+		}
+		if ((fl[idx].link = calloc(1, PATH_MAX)) == NULL) {
+			ERR("calloc hlink vstring");
+			return 0;
+		} else if (!io_read_vstring(sess, fd, fl[idx].link,
+		    PATH_MAX)) {
+			ERRX1("io_read_vstring");
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
 enum protocol_token_result {
 	TOKEN_ERROR,
 	TOKEN_EOF,
@@ -1270,7 +1321,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 				break;
 			}
 		}
-		if (!get_iflags(sess, p->fdin, p->fl, idx)) {
+		if (!download_get_iflags(sess, p->fdin, p->fl, idx)) {
 			ERRX("get_iflags");
 			return 0;
 		}
