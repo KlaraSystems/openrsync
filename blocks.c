@@ -413,15 +413,6 @@ blk_recv(struct sess *sess, int fd, struct iobuf *buf, const char *path,
 	}
 
 	/*
-	 * Read what we can from the buffer, each part below will check if they
-	 * have enough to make progress.
-	 */
-	if (!iobuf_fill(sess, buf, fd)) {
-		ERRX1("iobuf_fill");
-		goto out;
-	}
-
-	/*
 	 * The block prologue consists of a few values that we'll need
 	 * in reading the individual blocks for this file.
 	 */

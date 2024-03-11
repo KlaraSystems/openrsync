@@ -1305,13 +1305,26 @@ iobuf_fill(struct sess *sess, struct iobuf *buf, int fd)
 /*
  * Copies "valsz" from "buf".
  * Calls assert() if the source doesn't have enough data.
+ * Does not advance our read pointer, caller must do that if it's actually
+ * consuming the data.
+ */
+static void
+iobuf_peek_buf(struct iobuf *buf, void *val, size_t valsz)
+{
+
+	assert(valsz <= buf->resid);
+	memcpy(val, &buf->buffer[buf->offset], valsz);
+}
+
+/*
+ * Copies "valsz" from "buf".
+ * Calls assert() if the source doesn't have enough data.
  */
 void
 iobuf_read_buf(struct iobuf *buf, void *val, size_t valsz)
 {
 
-	assert(valsz <= buf->resid);
-	memcpy(val, &buf->buffer[buf->offset], valsz);
+	iobuf_peek_buf(buf, val, valsz);
 	buf->resid -= valsz;
 
 	/*
@@ -1326,6 +1339,29 @@ iobuf_read_buf(struct iobuf *buf, void *val, size_t valsz)
 }
 
 /*
+ * Like iobuf_read_buf(), but for a single byte >=0.
+ * Returns zero on failure, non-zero on success.
+ */
+void
+iobuf_read_byte(struct iobuf *buf, uint8_t *val)
+{
+
+	iobuf_read_buf(buf, val, sizeof(*val));
+}
+
+/*
+ * Calls iobuf_peek_buf() and converts.
+ */
+int32_t
+iobuf_peek_int(struct iobuf *buf)
+{
+	int32_t	oval;
+
+	iobuf_peek_buf(buf, &oval, sizeof(int32_t));
+	return le32toh(oval);
+}
+
+/*
  * Calls iobuf_read_buf() and converts.
  */
 void
@@ -1335,6 +1371,25 @@ iobuf_read_int(struct iobuf *buf, int32_t *val)
 
 	iobuf_read_buf(buf, &oval, sizeof(int32_t));
 	*val = le32toh(oval);
+}
+
+/*
+ * Like iobuf_read_buf(), but for a short.
+ */
+void
+iobuf_read_ushort(struct iobuf *buf, uint32_t *val)
+{
+	uint16_t oval;
+
+	iobuf_read_buf(buf, &oval, sizeof(uint16_t));
+	*val = le16toh(oval);
+}
+
+void
+iobuf_read_short(struct iobuf *buf, int32_t *val)
+{
+
+	iobuf_read_ushort(buf, (uint32_t *)val);
 }
 
 /*
@@ -1353,6 +1408,58 @@ iobuf_read_size(struct iobuf *buf, size_t *val)
 	*val = oval;
 	return 1;
 }
+
+/*
+ * Reads a variable-length string no longer than `sz` into `str`.  This function
+ * is re-entrant, since we don't know exactly how much data we need to fill the
+ * buffer and it may be that we need multiple read() calls to grab it all.
+ *
+ * Returns -1 on error, 0 if `str` is not yet complete, 1 if `str` is now
+ * complete.
+ */
+int
+iobuf_read_vstring(struct iobuf *buf, struct vstring *vstr)
+{
+	uint8_t bval;
+	size_t avail, len = 0, needed;
+
+	avail = iobuf_get_readsz(buf);
+
+	if (avail == 0)
+		return 0;
+
+	if (vstr->vstring_buffer == NULL) {
+		/* Need size */
+		if (avail < (2 * sizeof(bval)))
+			return 0;
+
+		iobuf_read_byte(buf, &bval);
+		if (bval & 0x80) {
+			len = (bval - 0x80) << 8;
+			iobuf_read_byte(buf, &bval);
+		}
+
+		len |= bval;
+
+		vstr->vstring_size = len;
+		vstr->vstring_buffer = malloc(vstr->vstring_size);
+		if (vstr->vstring_buffer == NULL) {
+			ERR("malloc");
+			return -1;
+		}
+
+		avail = iobuf_get_readsz(buf);
+	}
+
+	needed = vstr->vstring_size - vstr->vstring_offset;
+	if (avail > needed)
+		avail = needed;
+
+	iobuf_read_buf(buf, &vstr->vstring_buffer[vstr->vstring_offset], avail);
+	vstr->vstring_offset += avail;
+	return vstr->vstring_offset == vstr->vstring_size ? 1 : 0;
+}
+
 
 void
 iobuf_free(struct iobuf *buf)

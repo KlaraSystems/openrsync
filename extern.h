@@ -81,6 +81,7 @@
  */
 #define	IFLAG_MISSING_DATA	(1<<16)	/* used by log_formatted() */
 #define	IFLAG_DELETED		(1<<17)	/* used by log_formatted() */
+#define	IFLAG_HAD_BASIS		(1<<18) /* had basis, used by sender_get_iflags() */
 
 #define	SIGNIFICANT_IFLAGS	\
 	(~(IFLAG_BASIS_FOLLOWS | ITEM_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE))
@@ -234,6 +235,12 @@ enum	iotag {
 	IT_SUCCESS = 100,
 	IT_DELETED,
 	IT_NO_SEND,
+};
+
+struct	vstring {
+	char		*vstring_buffer;
+	size_t		 vstring_offset;
+	size_t		 vstring_size;
 };
 
 typedef int (io_tag_handler_fn)(void *, const void *, size_t sz);
@@ -543,6 +550,7 @@ struct	blkset {
 
 enum	send_dl_state {
 	SDL_META = 0,
+	SDL_IFLAGS,
 	SDL_BLOCKS,
 	SDL_DONE,
 };
@@ -803,8 +811,13 @@ int	iobuf_alloc(struct sess *, struct iobuf *, size_t);
 size_t	iobuf_get_readsz(const struct iobuf *);
 int	iobuf_fill(struct sess *, struct iobuf *, int);
 void	iobuf_read_buf(struct iobuf *, void *, size_t);
+void	iobuf_read_byte(struct iobuf *, uint8_t *);
+int32_t	iobuf_peek_int(struct iobuf *);
 void	iobuf_read_int(struct iobuf *, int32_t *);
+void	iobuf_read_ushort(struct iobuf *, uint32_t *);
+void	iobuf_read_short(struct iobuf *, int32_t *);
 int	iobuf_read_size(struct iobuf *, size_t *);
+int	iobuf_read_vstring(struct iobuf *, struct vstring *);
 void	iobuf_free(struct iobuf *);
 
 /* accept(2) callback */
@@ -822,7 +835,6 @@ typedef int (rsync_option_filter)(struct sess *, int, const struct option *);
 struct opts	*rsync_getopt(int, char *[], rsync_option_filter *,
 		    struct sess *);
 
-int	get_iflags(struct sess *, int, struct flist *, int32_t);
 int	send_iflags(struct sess *, void **, size_t *, size_t *,
 	    size_t *, struct flist *, int32_t);
 

@@ -52,6 +52,7 @@ struct	send_dl {
 	struct blkset		*blks; /* the sender's block information */
 	size_t			 blkidx; /* last block index read */
 	enum send_dl_state	 dlstate; /* current blk recv state */
+	struct vstring		 linkstr; /* (itemized) link string data */
 	TAILQ_ENTRY(send_dl)	 entries;
 };
 
@@ -654,43 +655,42 @@ send_up_fsm(struct sess *sess, size_t *phase,
 }
 
 /*
- * Read the Itemization flags for an index off the wire.
- * Deal with the conditional "follows" flags for extra metadata.
+ * Deal with the conditional "follows" flags for extra iflag metadata.
+ *
+ * Returns -1 on error, 0 for incomplete, 1 when complete.
  */
-int
-get_iflags(struct sess *sess, int fd, struct flist *fl, int32_t idx)
+static int
+sender_get_iflags(struct iobuf *buf, struct flist *fl, struct send_dl *sdl)
 {
 
-	if (idx < 0) {
-		return 0;
-	}
+	fl = &fl[sdl->idx];
+	if ((fl->iflags & IFLAG_BASIS_FOLLOWS) != 0) {
+		uint8_t basis;
 
-	if (!protocol_itemize) {
-		fl[idx].iflags = IFLAG_TRANSFER;
-		return 1;
-	}
-
-	if (!io_read_short(sess, fd, &fl[idx].iflags)) {
-		ERRX1("io_read_short");
-		return 0;
-	}
-	if (IFLAG_BASIS_FOLLOWS & fl[idx].iflags) {
-		if (!io_read_byte(sess, fd, (uint8_t *)&fl[idx].basis)) {
-			ERRX1("io_read_byte");
+		if (iobuf_get_readsz(buf) < sizeof(uint8_t))
 			return 0;
+
+		iobuf_read_byte(buf, &basis);
+
+		fl->basis = basis;
+
+		if ((fl->iflags & IFLAG_HLINK_FOLLOWS) != 0) {
+			fl->iflags |= IFLAG_HAD_BASIS;
+			fl->iflags &= ~IFLAG_BASIS_FOLLOWS;
 		}
 	}
-	if (IFLAG_HLINK_FOLLOWS & fl[idx].iflags) {
-		if (fl[idx].link != NULL) {
-			free(fl[idx].link);
-		}
-		if ((fl[idx].link = calloc(1, PATH_MAX)) == NULL) {
-			ERR("calloc hlink vstring");
-			return 0;
-		} else if (!io_read_vstring(sess, fd, fl[idx].link,
-		    PATH_MAX)) {
-			ERRX1("io_read_vstring");
-			return 0;
+
+	if ((fl->iflags & IFLAG_HLINK_FOLLOWS) != 0) {
+		int ret;
+
+		ret = iobuf_read_vstring(buf, &sdl->linkstr);
+		if (ret <= 0)
+			return ret;
+
+		fl->link = sdl->linkstr.vstring_buffer;
+		if ((fl->iflags & IFLAG_HAD_BASIS) != 0) {
+			fl->iflags &= ~IFLAG_HAD_BASIS;
+			fl->iflags |= IFLAG_BASIS_FOLLOWS;
 		}
 	}
 
@@ -759,9 +759,11 @@ send_iflags(struct sess *sess, void **wb, size_t *wbsz, size_t *wbmax,
 static int
 send_dl_enqueue(struct sess *sess, struct send_dlq *q,
     void **wb, size_t *wbsz, size_t *wbmax,
-    int32_t idx, struct flist *fl, size_t flsz, int fd, struct send_dl **mdl)
+    int32_t idx, struct flist *fl, size_t flsz, int fd, struct iobuf *buf,
+    struct send_dl **mdl)
 {
 	struct send_dl	*s;
+	uint32_t	 iflags;
 
 	/* End-of-phase marker. */
 	if (idx == -1) {
@@ -781,16 +783,18 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 		return 0;
 	}
 
-	if (!get_iflags(sess, fd, fl, idx)) {
-		ERRX1("get_iflags");
-		return 0;
-	}
+	if (!protocol_itemize)
+		fl[idx].iflags = IFLAG_TRANSFER;
+	else
+		iobuf_read_short(buf, &fl[idx].iflags);
+
+	iflags = fl[idx].iflags;
 
 	/* Validate the index. */
-	if (fl[idx].iflags == IFLAG_NEW) {
+	if (iflags == IFLAG_NEW) {
 		/* Keep alive packet, do nothing */
 		return 1;
-	} else if (!(IFLAG_TRANSFER & fl[idx].iflags)) {
+	} else if ((iflags & IFLAG_TRANSFER) == 0) {
 		return 1;
 	} else if (S_ISDIR(fl[idx].st.mode)) {
 		ERRX("blocks requested for "
@@ -806,6 +810,16 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 		return 0;
 	}
 
+	if ((iflags & IFLAG_HLINK_FOLLOWS) != 0) {
+		free(fl[idx].link);
+		fl[idx].link = NULL;
+
+		if (!iobuf_alloc(sess, buf, PATH_MAX)) {
+			ERRX1("iobuf_alloc");
+			return 0;
+		}
+	}
+
 	if ((s = calloc(1, sizeof(struct send_dl))) == NULL) {
 		ERR("callloc");
 		return 0;
@@ -819,7 +833,10 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 	 * can just push it directly into the queue and move on.
 	 */
 	if (sess->opts->dry_run != DRY_FULL) {
-		s->dlstate = SDL_META;
+		if (protocol_itemize)
+			s->dlstate = SDL_IFLAGS;
+		else
+			s->dlstate = SDL_META;
 		*mdl = s;
 	} else {
 		s->dlstate = SDL_DONE;
@@ -871,6 +888,87 @@ file_success(void *cookie, const void *data, size_t datasz)
 	return 1;
 }
 
+static int
+sender_finalize(struct sess *sess, const struct fl *fl, struct iobuf *rbuf,
+     int fdin, int fdout)
+{
+	int32_t idx;
+
+	idx = 0;
+	if (!protocol_keepalive) {
+		while (iobuf_get_readsz(rbuf) < sizeof(idx)) {
+			if (!iobuf_fill(sess, rbuf, fdin)) {
+				ERRX1("iobuf_fill on final goodbye");
+				return ERR_PROTOCOL;
+			}
+		}
+
+		iobuf_read_int(rbuf, &idx);
+	} else {
+		size_t needed;
+		int32_t keepalive;
+		enum { NEED_IDX, NEED_KEEPALIVE, DONE } state;
+
+		needed = sizeof(int32_t);
+		state = NEED_IDX;
+		while (state != DONE) {
+			while (iobuf_get_readsz(rbuf) < needed) {
+				if (!iobuf_fill(sess, rbuf, fdin)) {
+					ERRX1("iobuf_fill on final goodbye");
+					break;
+				}
+			}
+
+			switch (state) {
+			case NEED_IDX:
+				iobuf_read_int(rbuf, &idx);
+				if ((uint32_t)idx != fl->sz) {
+					state = DONE;
+					break;
+				}
+
+				state = NEED_KEEPALIVE;
+				needed = sizeof(int16_t);
+
+				break;
+			case NEED_KEEPALIVE:
+				iobuf_read_short(rbuf, &keepalive);
+
+				if (keepalive != IFLAG_NEW) {
+					state = DONE;
+					break;
+				}
+
+				/* Reply to the keepalive ping */
+				if (!io_write_int(sess, fdout, fl->sz)) {
+					ERRX1("io_write_int");
+					state = DONE;
+					break;
+				} else if (!io_write_short(sess, fdout, IFLAG_NEW)) {
+					ERRX1("io_write_short");
+					state = DONE;
+					break;
+				}
+
+				state = NEED_IDX;
+				needed = sizeof(int32_t);
+
+				break;
+			default:
+				assert(state != DONE);
+				break;
+			}
+		}
+	}
+
+	if (idx != -1) {
+		ERRX("read incorrect update complete ack");
+		return ERR_PROTOCOL;
+	}
+
+	return 0;
+}
+
 struct fl *flg = NULL;
 
 /*
@@ -892,7 +990,7 @@ rsync_sender(struct sess *sess, int fdin,
 	struct success_ctx  sctx;
 	struct fl	    fl;
 	const struct flist *f;
-	size_t		    i, phase = 0;
+	size_t		    flinfosz, i, phase = 0;
 	int		    rc = 0, c, metadata_phase = 0, res = 0;
 	int32_t		    idx;
 	struct pollfd	    pfd[3];
@@ -907,6 +1005,18 @@ rsync_sender(struct sess *sess, int fdin,
 	struct timeval	    tv, fb_before, fb_after, fx_before, fx_after;
 	double		    now, rate, sleeptime;
 	int		    max_phase = sess->protocol >= 29 ? 2 : 1;
+
+	/*
+	 * Each time we start a new file, we want to be able to grab at least
+	 * the index and its iflags.  It's safe to assume we'll get at least
+	 * this much even near the end of the transfer, because the goodbye
+	 * indicator is another int32_t -- we'll just accidentally see part of
+	 * the goodbye indicator as available, but we won't over-read into it
+	 * so everything works out.
+	 */
+	flinfosz = sizeof(int32_t);
+	if (protocol_itemize)
+		flinfosz += sizeof(int16_t);
 
 	fl_init(&fl);
 	flg = &fl;
@@ -1092,18 +1202,52 @@ rsync_sender(struct sess *sess, int fdin,
 			}
 		}
 
-		if (READ_AVAIL(pfd, &rbuf) && mdl != NULL) {
-			mdl->blks = blk_recv(sess, fdin, &rbuf,
-			    fl.flp[mdl->idx].path, mdl->blks, &mdl->blkidx,
-			    &mdl->dlstate);
-			if (mdl->dlstate != SDL_META && mdl->blks == NULL) {
-				ERRX1("blk_recv");
-				return 0;
+		if ((pfd[0].revents & POLLIN) != 0 &&
+		    (!sess->mplex_reads || sess->mplex_read_remain > 0)) {
+			if (!iobuf_fill(sess, &rbuf, fdin)) {
+				ERRX1("iobuf_fill");
+				goto out;
 			}
+
+			pfd[0].revents &= ~POLLIN;
+		}
+
+		if (READ_AVAIL(pfd, &rbuf) && mdl != NULL) {
+			int bret;
+
+			switch (mdl->dlstate) {
+			case SDL_IFLAGS:
+				bret = sender_get_iflags(&rbuf, fl.flp, mdl);
+				if (bret < 0) {
+					ERRX1("sender_get_iflags");
+					return 0;
+				} else if (bret == 0) {
+					break;
+				}
+
+				mdl->dlstate = SDL_META;
+				/* FALLTHROUGH */
+			case SDL_META:
+			case SDL_BLOCKS:
+				mdl->blks = blk_recv(sess, fdin, &rbuf,
+				    fl.flp[mdl->idx].path, mdl->blks,
+				    &mdl->blkidx, &mdl->dlstate);
+				if (mdl->dlstate != SDL_META &&
+				    mdl->blks == NULL) {
+					ERRX1("blk_recv");
+					return 0;
+				}
+
+				break;
+			default:
+				break;
+			}
+
 			if (mdl->dlstate == SDL_DONE) {
 				TAILQ_INSERT_TAIL(&sdlq, mdl, entries);
 				mdl = NULL;
 			}
+
 			pfd[0].revents &= ~POLLIN;
 		}
 
@@ -1115,14 +1259,19 @@ rsync_sender(struct sess *sess, int fdin,
 		 */
 
 		if (READ_AVAIL(pfd, &rbuf) && mdl == NULL && !shutdown) {
-			if (iobuf_get_readsz(&rbuf) < sizeof(int32_t) &&
-			    !iobuf_fill(sess, &rbuf, fdin)) {
-				ERRX1("iobuf_fill");
-				goto out;
-			}
+			size_t avail;
 
-			if (iobuf_get_readsz(&rbuf) < sizeof(int32_t))
+			avail = iobuf_get_readsz(&rbuf);
+			if (avail == sizeof(int32_t) &&
+			    iobuf_peek_int(&rbuf) == -1) {
+				/*
+				 * End-of-phase markers won't have any follow-up
+				 * until we ack the end-of-phase, we should just
+				 * pass these through.
+				 */
+			} else if (avail < flinfosz) {
 				continue;
+			}
 
 			iobuf_read_int(&rbuf, &idx);
 
@@ -1153,7 +1302,7 @@ rsync_sender(struct sess *sess, int fdin,
 			assert(mdl == NULL);
 			if (!send_dl_enqueue(sess,
 			    &sdlq, &wbuf, &wbufsz, &wbufmax,
-			    idx, fl.flp, fl.sz, fdin, &mdl)) {
+			    idx, fl.flp, fl.sz, fdin, &rbuf, &mdl)) {
 				ERRX1("send_dl_enqueue");
 				goto out;
 			}
@@ -1380,39 +1529,8 @@ rsync_sender(struct sess *sess, int fdin,
 	}
 
 	/* Final "goodbye" message. */
-
-	if (!protocol_keepalive) {
-		if (!io_read_int(sess, fdin, &idx)) {
-			ERRX1("io_read_int");
-			goto out;
-		}
-	} else {
-		int32_t keepalive;
-		while (1) {
-			if (!io_read_int(sess, fdin, &idx)) {
-				ERRX1("io_read_int");
-				goto out;
-			} else if ((uint32_t)idx != fl.sz) {
-				break;
-			} else if (!io_read_short(sess, fdin, &keepalive)) {
-				ERRX1("io_read_short");
-				goto out;
-			} else if (keepalive != IFLAG_NEW) {
-				break;
-			}
-			/* Reply to the keepalive ping */
-			if (!io_write_int(sess, fdout, fl.sz)) {
-				ERRX1("io_write_int");
-				goto out;
-			} else if (!io_write_short(sess, fdout, IFLAG_NEW)) {
-				ERRX1("io_write_short");
-				goto out;
-			}
-		}
-	}
-	if (idx != -1) {
-		ERRX("read incorrect update complete ack");
-		rc = ERR_PROTOCOL;
+	if ((rc = sender_finalize(sess, &fl, &rbuf, fdin, fdout)) != 0) {
+		ERRX1("sender_finalize");
 		goto out;
 	}
 
