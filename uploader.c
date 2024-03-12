@@ -39,6 +39,14 @@
 
 #include "extern.h"
 
+/*
+ * We're using O_RESOLVE_BENEATH in a couple of places just for some additional
+ * safety on platforms that support it, so it's not a hard requirement.
+ */
+#ifndef O_RESOLVE_BENEATH
+#define	O_RESOLVE_BENEATH	0
+#endif
+
 enum	uploadst {
 	UPLOAD_FIND_NEXT = 0, /* find next to upload to sender */
 	UPLOAD_WRITE, /* wait to write to sender */
