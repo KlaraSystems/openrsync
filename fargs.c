@@ -148,6 +148,8 @@ fargs_is_ssh(const char *prog)
 	base = strrchr(prog, '/');
 	if (base == NULL)
 		base = prog;
+	else
+		base++;
 
 	return strcmp(base, "ssh") == 0;
 }
