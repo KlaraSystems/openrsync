@@ -2490,8 +2490,8 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 		end = del_limit;
 		inc = 1;
 	} else {
-		begin = del_limit - 1;
-		end = -1;
+		begin = flsz - 1;
+		end = begin - del_limit;
 		inc = -1;
 	}
 
