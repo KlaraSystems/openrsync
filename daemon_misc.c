@@ -1500,7 +1500,6 @@ daemon_parse_refuse(struct sess *sess, const char *module)
 				    &shoptlen, &shoptsz,  'a');
 
 				assert(rc != 0);
-				break;
 			}
 		}
 
