@@ -911,7 +911,7 @@ send_rules(struct sess *sess, int fd)
 		len = strlen(r->pattern);
 		postlen = strlen(postfix);
 
-		if (!io_write_int(sess, fd, cmdlen + len + postlen))
+		if (!io_write_int(sess, fd, (int)(cmdlen + len + postlen)))
 			err(ERR_SOCK_IO, "send rules");
 		if (!io_write_buf(sess, fd, cmd, cmdlen))
 			err(ERR_SOCK_IO, "send rules");

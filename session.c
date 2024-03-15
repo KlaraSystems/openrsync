@@ -88,8 +88,8 @@ stats_output(struct sess *sess)
 {
 	char *tbuf[32];
 
-	LOG0("Number of files: %lu", sess->total_files);
-	LOG0("Number of files transferred: %lu", sess->total_files_xfer);
+	LOG0("Number of files: %llu", sess->total_files);
+	LOG0("Number of files transferred: %llu", sess->total_files_xfer);
 	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_size);
 	LOG0("Total file size: %s", (char*)&tbuf);
 	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_xfer_size);

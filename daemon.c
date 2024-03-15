@@ -485,7 +485,7 @@ daemon_read_options(struct sess *sess, const char *module, int fd,
 		sbuf_delete(reqsb);
 	}
 
-	*oargc = argc;
+	*oargc = (int)argc;
 	*oargv = argv;
 	return 0;
 fail:
@@ -946,7 +946,7 @@ daemon_extract_addr(struct sess *sess, struct sockaddr_storage *saddr,
 
 static int
 rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
-    size_t slen)
+    socklen_t slen)
 {
 	struct daemon_role *role;
 	struct opts *client_opts;
@@ -1398,8 +1398,11 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	if (rsync_is_socket(STDIN_FILENO))
 		return rsync_daemon_handler(&sess, STDIN_FILENO, NULL, 0);
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	if (detach && daemon(0, 0) == -1)
 		err(ERR_IPC, "daemon");
+#pragma clang diagnostic pop
 
 	role.dcfg = cfg_parse(&sess, role.cfg_file, 0);
 	if (role.dcfg == NULL)

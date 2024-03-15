@@ -189,7 +189,7 @@ inet_setsockopts(int sock, const char *options)
 				goto out;
 			}
 
-			sockval = strtonum(value, 0, INT_MAX, &converr);
+			sockval = (int)strtonum(value, 0, INT_MAX, &converr);
 			if (converr != NULL) {
 				ERRX("Error parsing value for socket option '%s': %s",
 				    soptdef->so_name, converr);
@@ -922,7 +922,7 @@ rsync_listen(struct sess *sess, rsync_client_handler *handler)
 	}
 
 	for (;;) {
-		if ((c = poll(pfd, bsrcsz, INFTIM)) == -1) {
+		if ((c = poll(pfd, (nfds_t)bsrcsz, INFTIM)) == -1) {
 			if (errno == EINTR)
 				continue;
 			ERR("poll");

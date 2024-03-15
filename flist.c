@@ -148,7 +148,7 @@ flist_cmp29(const void *p1, const void *p2)
 				return strlen(s1) > strlen(s2) ? 1 : -1;
 			}
 			/* Compare the remainder after the common basedir */
-			ret = MIN(sep1 - s1, sep2 - s2) + 1;
+			ret = (int)MIN(sep1 - s1, sep2 - s2) + 1;
 			s1 += ret;
 			s2 += ret;
 			sep1 = strrchr(s1, '/');
@@ -509,7 +509,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			}
 		}
 
-		if (!io_write_int(sess, fdout, sz)) {
+		if (!io_write_int(sess, fdout, (int)sz)) {
 			ERRX1("io_write_int");
 			goto out;
 		} else if (!io_write_buf(sess, fdout, fn, sz)) {
@@ -592,7 +592,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			fn = f->link;
 			sz = strlen(f->link);
 			assert(sz < INT32_MAX);
-			if (!io_write_int(sess, fdout, sz)) {
+			if (!io_write_int(sess, fdout, (int)sz)) {
 				ERRX1("io_write_int");
 				goto out;
 			}
@@ -898,7 +898,7 @@ flist_chmod(const struct sess *sess, struct flist *ff)
 static int
 flist_append_dirs(const char *path, struct fl *fl)
 {
-	char *wbegin;
+	const char *wbegin;
 	char *pos;
 	struct stat st;
 	struct flist *f;
@@ -958,7 +958,7 @@ flist_append(struct sess *sess, const struct stat *st,
 	const char *path, struct fl *fl)
 {
 	struct flist *f;
-	int oldidx;
+	long oldidx;
 
 	if ((oldidx = fl_new_index(fl)) == -1) {
 		ERRX("fl_new failed");
@@ -1414,7 +1414,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	 * order to give receivers flexibility in how they handle it.
 	 */
 	for (size_t i = 0; i < flsz; i++)
-		fl[i].sendidx = i;
+		fl[i].sendidx = (int)i;
 
 	flist_topdirs(sess, fl, flsz);
 
@@ -1447,7 +1447,7 @@ out:
 }
 
 static int
-flist_gen_dirent_file(struct sess *sess, const char *type, char *root,
+flist_gen_dirent_file(struct sess *sess, const char *type, const char *root,
     struct fl *fl, const struct stat *st)
 {
 	/* filter files */
@@ -1503,9 +1503,9 @@ flist_dirent_strip(const char *root)
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
+flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t stripdir)
 {
-	char		*cargv[2];
+	const char	*cargv[2];
 	int		 rc = 0, flag;
 	FTS		*fts;
 	FTSENT		*ent;
@@ -1550,7 +1550,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 				ERR("%s: stat", root);
 				return 0;
 			}
-			if ((ret = readlink(root, buf, sizeof(buf))) == -1) {
+			if ((ret = (int)readlink(root, buf, sizeof(buf))) == -1) {
 				ERR("%s: readlink", root);
 				return 0;
 			}
@@ -1594,7 +1594,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 	 * We'll make sense of it in flist_send.
 	 */
 
-	if ((fts = fts_open(cargv,
+	if ((fts = fts_open((char * const *)cargv,
 		    sess->opts->copy_links ? FTS_LOGICAL: FTS_PHYSICAL |
 		    FTS_NOCHDIR, NULL)) == NULL) {
 		ERR("fts_open");
@@ -1627,7 +1627,7 @@ flist_gen_dirent(struct sess *sess, char *root, struct fl *fl, ssize_t stripdir)
 					ERR("%s: stat", ent->fts_accpath);
 					goto out;
 				}
-				if ((ret = readlink(ent->fts_accpath, buf, sizeof(buf))) == -1) {
+				if ((ret = (int)readlink(ent->fts_accpath, buf, sizeof(buf))) == -1) {
 					ERR("%s: readlink", ent->fts_accpath);
 					continue;
 				}
@@ -2601,7 +2601,7 @@ static int
 fdgets(struct sess *sess, int fd, char *buf, int bufsz)
 {
 	int length = 0;
-	int n = 1;
+	size_t n = 1;
 
 	while (n == 1 && length < bufsz) {
 		n = read(fd, buf + length, 1);
