@@ -117,7 +117,7 @@ platform_flist_modify(const struct sess *sess, struct fl *fl)
 		struct flist *packed;
 		const char *base;
 		char *ppath;
-		int stripdir;
+		ptrdiff_t stripdir;
 
 		f = &fl->flp[i];
 		base = strrchr(f->path, '/');

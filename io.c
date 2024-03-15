@@ -257,7 +257,7 @@ io_write_buf_tagged(struct sess *sess, int fd, const void *buf, size_t sz,
 	 */
 	while (sz > 0) {
 		wsz = (sz < 0xFFFFFF) ? sz : 0xFFFFFF;
-		tag = ((iotag + IOTAG_OFFSET) << 24) + wsz;
+		tag = ((iotag + IOTAG_OFFSET) << 24) + (int)wsz;
 		tagbuf = htole32(tag);
 		if (!io_write_blocking(fd, &tagbuf, sizeof(tagbuf))) {
 			ERRX1("io_write_blocking");

@@ -79,7 +79,7 @@ int	daemon_do_execcmds(struct sess *, const char *);
 int	daemon_finish_prexfer(struct sess *, const char *, const char *,
 	    size_t);
 int	daemon_fill_hostinfo(struct sess *, const char *,
-	    const struct sockaddr *, size_t);
+	    const struct sockaddr *, socklen_t);
 int	daemon_install_symlink_filter(struct sess *, const char *, int);
 int	daemon_limit_verbosity(struct sess *, const char *);
 void	daemon_normalize_path(const char *, size_t, char *);

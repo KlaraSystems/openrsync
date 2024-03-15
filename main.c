@@ -444,7 +444,7 @@ scan_scaled_def(char *maybe_scaled, long long *result, char def)
 {
 	int ret;
 	char *s = NULL;
-	int length;
+	size_t length;
 
 	length = strlen(maybe_scaled);
 	if (length > 0) {
@@ -884,7 +884,8 @@ struct opts *
 rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
     struct sess *sess)
 {
-	long long	 tmpint;
+	long long	 tmplong;
+	int		 tmpint;
 	size_t		 basedir_cnt = 0;
 	const char	*errstr;
 	int		 c, cvs_excl, lidx;
@@ -962,12 +963,12 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.bit8++;
 			break;
 		case 'B':
-			if (scan_scaled(optarg, &tmpint) == -1)
+			if (scan_scaled(optarg, &tmplong) == -1)
 				errx(1, "--block-size=%s: invalid numeric value", optarg);
-			if (tmpint < 0)
+			if (tmplong < 0)
 				errx(1, "--block-size=%s: must be no less than 0", optarg);
 			/* Upper bound checked only if differential transfer is required */
-			opts.block_size = tmpint;
+			opts.block_size = tmplong;
 			break;
 		case 'C':
 			cvs_excl = 1;
@@ -1124,7 +1125,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.address = optarg;
 			break;
 		case OP_CONTIMEOUT:
-			poll_contimeout = strtonum(optarg, 0, 60*60, &errstr);
+			poll_contimeout = (int)strtonum(optarg, 0, 60*60, &errstr);
 			if (errstr != NULL)
 				errx(ERR_SYNTAX, "timeout is %s: %s",
 				    errstr, optarg);
@@ -1136,7 +1137,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.rsync_path = optarg;
 			break;
 		case OP_TIMEOUT:
-			opts_timeout = strtonum(optarg, 0, 60*60, &errstr);
+			opts_timeout = (int)strtonum(optarg, 0, 60*60, &errstr);
 			if (errstr != NULL)
 				errx(ERR_SYNTAX, "timeout is %s: %s",
 				    errstr, optarg);
@@ -1179,7 +1180,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.alt_base_mode = BASE_MODE_COPY;
 			goto basedir;
 		case OP_DAEMON:
-			exit(rsync_daemon((size_t)argc, argv, &opts));
+			exit(rsync_daemon(argc, argv, &opts));
 			break;
 		case OP_DEL:
 			/* nop if a --delete-* option has already been specified. */
@@ -1238,14 +1239,14 @@ basedir:
 			opts.sparse++;
 			break;
 		case OP_MAX_SIZE:
-			if (scan_scaled(optarg, &tmpint) == -1)
+			if (scan_scaled(optarg, &tmplong) == -1)
 				err(1, "bad max-size");
-			opts.max_size = tmpint;
+			opts.max_size = tmplong;
 			break;
 		case OP_MIN_SIZE:
-			if (scan_scaled(optarg, &tmpint) == -1)
+			if (scan_scaled(optarg, &tmplong) == -1)
 				err(1, "bad min-size");
-			opts.min_size = tmpint;
+			opts.min_size = tmplong;
 			break;
 		case OP_NUMERIC_IDS:
 			opts.numeric_ids = NIDS_FULL;
@@ -1284,9 +1285,9 @@ basedir:
 			opts.append++;
 			break;
 		case OP_BWLIMIT:
-			if (scan_scaled_def(optarg, &tmpint, 'k') == -1)
+			if (scan_scaled_def(optarg, &tmplong, 'k') == -1)
 				err(1, "bad bwlimit");
-			opts.bwlimit = tmpint;
+			opts.bwlimit = tmplong;
 			break;
 		case OP_COPY_UNSAFE_LINKS:
 			opts.copy_unsafe_links = 1;
@@ -1296,7 +1297,7 @@ basedir:
 				char *endptr;
 
 				errno = 0;
-				tmpint = strtoll(optarg, &endptr, 0);
+				tmpint = (int)strtoll(optarg, &endptr, 0);
 				if (*endptr != '\0')
 					errx(1, "--checksum-seed=%s: invalid numeric value",
 					     optarg);
@@ -1306,7 +1307,7 @@ basedir:
 				if (tmpint > INT_MAX)
 					errx(1, "--checksum-seed=%s: must be no greater than %d",
 					     optarg, INT_MAX);
-				opts.checksum_seed = (tmpint == 0) ? time(NULL) : tmpint;
+				opts.checksum_seed = (tmpint == 0) ? (int)time(NULL) : tmpint;
 			}
 			break;
 		case OP_CHMOD:
@@ -1354,7 +1355,7 @@ basedir:
 			if (*optarg != '\0') {
 				char *endptr;
 
-				tmpint = strtoll(optarg, &endptr, 0);
+				tmpint = (int)strtoll(optarg, &endptr, 0);
 				if (*endptr != '\0') {
 					errx(1, "--protocol=%s: invalid value",
 					    optarg);
@@ -1390,7 +1391,7 @@ basedir:
 				char *endptr;
 
 				errno = 0;
-				tmpint = strtoll(optarg, &endptr, 0);
+				tmpint = (int)strtoll(optarg, &endptr, 0);
 				if (*endptr != '\0')
 					errx(1, "--compress-level=%s: invalid numeric value",
 					     optarg);
@@ -1425,7 +1426,7 @@ basedir:
 				char *endptr;
 
 				errno = 0;
-				tmpint = strtoll(optarg, &endptr, 0);
+				tmpint = (int)strtoll(optarg, &endptr, 0);
 				if (*endptr != '\0')
 					errx(1, "--max-delete=%s: invalid numeric value",
 					     optarg);

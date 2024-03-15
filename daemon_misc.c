@@ -763,7 +763,7 @@ daemon_do_execcmds_pre(struct sess *sess, const char *module, const char *cmd)
 			 * it here by stuffing it into RSYNC_REQUEST.
 			 */
 			if (i == 0) {
-				ret = strlcpy(envname, "RSYNC_REQUEST",
+				ret = (int)strlcpy(envname, "RSYNC_REQUEST",
 				    sizeof(envname));
 			} else {
 				/* Add it */
@@ -986,7 +986,7 @@ done:
 
 int
 daemon_fill_hostinfo(struct sess *sess, const char *module,
-    const struct sockaddr *addr, size_t slen)
+    const struct sockaddr *addr, socklen_t slen)
 {
 	struct daemon_role *role;
 	int rc;

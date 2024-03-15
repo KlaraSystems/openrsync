@@ -297,7 +297,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 			LOG4("%s: flushing %jd B before %zu B block %zu",
 			    path, (intmax_t)sz,
 			    blk->len, blk->idx);
-			tok = -(blk->idx + 1);
+			tok = (int32_t)-(blk->idx + 1);
 
 			/*
 			 * Write the data we have, then follow it with
@@ -359,10 +359,10 @@ blk_recv_ack(char buf[16], const struct blkset *blocks, int32_t idx)
 	    sizeof(int32_t); /* block remainder */
 	assert(sz == 16);
 
-	io_buffer_int(buf, &pos, sz, blocks->blksz);
-	io_buffer_int(buf, &pos, sz, blocks->len);
-	io_buffer_int(buf, &pos, sz, blocks->csum);
-	io_buffer_int(buf, &pos, sz, blocks->rem);
+	io_buffer_int(buf, &pos, sz, (int)blocks->blksz);
+	io_buffer_int(buf, &pos, sz, (int)blocks->len);
+	io_buffer_int(buf, &pos, sz, (int)blocks->csum);
+	io_buffer_int(buf, &pos, sz, (int)blocks->rem);
 	assert(pos == sz);
 }
 
@@ -584,10 +584,10 @@ blk_send(struct sess *sess, int fd, size_t idx,
 		return 0;
 	}
 
-	io_buffer_int(buf, &pos, sz, p->blksz);
-	io_buffer_int(buf, &pos, sz, p->len);
-	io_buffer_int(buf, &pos, sz, p->csum);
-	io_buffer_int(buf, &pos, sz, p->rem);
+	io_buffer_int(buf, &pos, sz, (int)p->blksz);
+	io_buffer_int(buf, &pos, sz, (int)p->len);
+	io_buffer_int(buf, &pos, sz, (int)p->csum);
+	io_buffer_int(buf, &pos, sz, (int)p->rem);
 
 	for (i = 0; i < p->blksz; i++) {
 		io_buffer_int(buf, &pos, sz, p->blks[i].chksum_short);

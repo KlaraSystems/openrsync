@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <fts.h>
 #include <stdio.h>
@@ -846,7 +847,7 @@ void	iobuf_free(struct iobuf *);
 /* accept(2) callback */
 struct sockaddr_storage;
 typedef int (rsync_client_handler)(struct sess *, int,
-	    struct sockaddr_storage *, size_t);
+	    struct sockaddr_storage *, socklen_t);
 
 /*
  * The option filter should return 1 to allow an option to be processed, 0 to
@@ -877,7 +878,7 @@ int	rsync_is_socket(int);
 int	rsync_password_hash(const char *, const char *, char *, size_t);
 int	rsync_server(struct cleanup_ctx *, const struct opts *, size_t,
 	    char *[]);
-int	rsync_downloader(struct download *, struct sess *, int *, int,
+int	rsync_downloader(struct download *, struct sess *, int *, size_t,
 	    const struct hardlinks *);
 int	rsync_set_metadata(struct sess *, int, int, const struct flist *,
 	    const char *);

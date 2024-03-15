@@ -280,7 +280,7 @@ mktemplate(char **ret, const char *path, int hasdir, int tmp)
 			*ret = NULL;
 		}
 	} else if (hasdir && (cp = strrchr(path, '/')) != NULL) {
-		dirlen = cp - path;
+		dirlen = (int)(cp - path);
 		n = asprintf(ret, "%.*s/.%s.XXXXXXXXXX",
 			dirlen, path, path + dirlen + 1);
 		if (n == -1) {
@@ -340,13 +340,9 @@ mksock(const char *root, char *path)
 		0) {
 		close(fd);
 		return(0);
-	} else {
-		saved_errno = errno;
-		close(fd);
-		errno = saved_errno;
-		return -1;
 	}
-
+	saved_errno = errno;
 	close(fd);
-	return(0);
+	errno = saved_errno;
+	return -1;
 }

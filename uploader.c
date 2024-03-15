@@ -947,8 +947,6 @@ pre_dir(struct upload *p, struct sess *sess)
 static int
 post_dir(struct sess *sess, const struct upload *u, size_t idx)
 {
-	struct timespec	 tv[2];
-	int		 rc;
 	struct stat	 st;
 	const struct flist *f;
 
@@ -1554,7 +1552,7 @@ upload_ack_complete(struct upload *p, struct sess *sess, int fdout)
 
 		if ((fl->flstate & (FLIST_SUCCESS | FLIST_SUCCESS_ACKED)) ==
 		    FLIST_SUCCESS) {
-			if (!io_write_int_tagged(sess, fdout, idx, IT_SUCCESS))
+			if (!io_write_int_tagged(sess, fdout, (int)idx, IT_SUCCESS))
 				break;
 			fl->flstate |= FLIST_SUCCESS_ACKED;
 		}
@@ -1714,7 +1712,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 				u->bufmax = u->bufsz;
 			}
 			u->bufpos = pos = 0;
-			io_buffer_int(u->buf, &pos, u->bufsz, u->idx);
+			io_buffer_int(u->buf, &pos, u->bufsz, (int)u->idx);
 			io_buffer_short(u->buf, &pos, u->bufsz,
 			    u->fl[u->idx].iflags);
 			if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
@@ -1897,10 +1895,10 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			    u->fl[u->idx].link, linklen);
                 }
 	}
-	io_buffer_int(u->buf, &pos, u->bufsz, blk.blksz);
-	io_buffer_int(u->buf, &pos, u->bufsz, blk.len);
-	io_buffer_int(u->buf, &pos, u->bufsz, blk.csum);
-	io_buffer_int(u->buf, &pos, u->bufsz, blk.rem);
+	io_buffer_int(u->buf, &pos, u->bufsz, (int)blk.blksz);
+	io_buffer_int(u->buf, &pos, u->bufsz, (int)blk.len);
+	io_buffer_int(u->buf, &pos, u->bufsz, (int)blk.csum);
+	io_buffer_int(u->buf, &pos, u->bufsz, (int)blk.rem);
 
 	if (!sess->role->append && !sess->opts->whole_file) {
 		for (i = 0; i < blk.blksz; i++) {

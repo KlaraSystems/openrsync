@@ -209,7 +209,7 @@ download_partial_path(struct sess *sess, const struct flist *f,
 		/* Relative path of at least one level, not possible. */
 		assert(dirsep != dir);
 
-		dirlen = dirsep - dir;
+		dirlen = (int)(dirsep - dir);
 	}
 
 	assert(dirlen > 0);
@@ -777,7 +777,7 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 static int
 download_get_iflags(struct sess *sess, int fd, struct flist *fl, int32_t idx)
 {
-	uint16_t iflags;
+	int32_t iflags;
 
 	if (idx < 0) {
 		return 0;
@@ -949,7 +949,7 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 				dectx.avail_in = 5;
 			} else {
 				dectx.next_in = (Bytef *)buf;
-				dectx.avail_in = clen;
+				dectx.avail_in = (uInt)clen;
 				rlen -= clen;
 				clen = 0;
 			}
@@ -1039,7 +1039,7 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 static enum protocol_token_result
 protocol_token_compressed(struct sess *sess, struct download *p)
 {
-	int32_t		 tok = p->curtok;
+	int32_t		 tok = (int32_t)p->curtok;
 	uint8_t		 flag;
 	size_t		 runsize, dsz;
 	bool		 need_count;
@@ -1257,7 +1257,7 @@ protocol_token_raw(struct sess *sess, struct download *p)
  * success (more data to be read from the sender).
  */
 int
-rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
+rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
     const struct hardlinks *hl)
 {
 	int32_t		 idx;
@@ -1347,7 +1347,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, int flsz,
 		if (p->fl[idx].sendidx != idx) {
 			for (size_t flidx = 0; flidx < p->flsz; flidx++) {
 				if (p->fl[flidx].sendidx == idx) {
-					idx = flidx;
+					idx = (int32_t)flidx;
 					break;
 				}
 			}
@@ -1761,7 +1761,7 @@ again:
 		 * dirlen is either 0 and we're at the root, or dirlen is
 		 * non-zero and it includes the trailing slash.
 		 */
-		dirlen = usethis - f->path;
+		dirlen = (int)(usethis - f->path);
 		assert(usethis == f->path || *(usethis - 1) == '/');
 		if (snprintf(buf2, sizeof(buf2), "%.*s.~tmp~",
 		    dirlen, f->path) > (int)sizeof(buf2)) {

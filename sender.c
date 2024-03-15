@@ -183,7 +183,7 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
 		}
 		rlen -= clen;
 		cctx.next_in = (Bytef *)buf;
-		cctx.avail_in = clen;
+		cctx.avail_in = (uInt)clen;
 		cctx.next_out = (Bytef *)cbuf;
 		cctx.avail_out = TOKEN_MAX_DATA;
 		res = deflate(&cctx, Z_INSERT_ONLY);
@@ -243,7 +243,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		}
 
 		cctx.next_in = (Bytef *)sbuf;
-		cctx.avail_in = sz;
+		cctx.avail_in = (uInt)sz;
 		cctx.next_out = (Bytef *)(cbuf + 2);
 		cctx.avail_out = TOKEN_MAX_DATA;
 
@@ -509,7 +509,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			ERRX1("io_lowbuffer_alloc");
 			return 0;
 		}
-		io_lowbuffer_int(sess, *wb, &pos, *wbsz, sz);
+		io_lowbuffer_int(sess, *wb, &pos, *wbsz, (int)sz);
 		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, sz)) {
 			ERRX1("io_lowbuffer_alloc");
 			return 0;
@@ -940,7 +940,7 @@ sender_finalize(struct sess *sess, const struct fl *fl, struct iobuf *rbuf,
 				}
 
 				/* Reply to the keepalive ping */
-				if (!io_write_int(sess, fdout, fl->sz)) {
+				if (!io_write_int(sess, fdout, (int)fl->sz)) {
 					ERRX1("io_write_int");
 					state = DONE;
 					break;
@@ -1417,7 +1417,7 @@ rsync_sender(struct sess *sess, int fdin,
 							/* Time actually expired */
 							- (now - sess->start_time)
 							;
-						usleep((long)sleeptime * 1000 * 1000);
+						usleep(sleeptime * 1000 * 1000);
 					}
 				}
 			}

@@ -410,7 +410,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	char convch;
 	char start[strlen(fmt) + 1];
 	char *dptr;
-	int l;
+	size_t l;
 	char widthstring[8192];
 	int humanlevel = 0;
 
