@@ -1297,17 +1297,17 @@ basedir:
 				char *endptr;
 
 				errno = 0;
-				tmpint = (int)strtoll(optarg, &endptr, 0);
+				tmplong = strtoll(optarg, &endptr, 0);
 				if (*endptr != '\0')
 					errx(1, "--checksum-seed=%s: invalid numeric value",
 					     optarg);
-				if (tmpint < INT_MIN)
+				if (tmplong < INT_MIN)
 					errx(1, "--checksum-seed=%s: must be no less than %d",
 					     optarg, INT_MIN);
-				if (tmpint > INT_MAX)
+				if (tmplong > INT_MAX)
 					errx(1, "--checksum-seed=%s: must be no greater than %d",
 					     optarg, INT_MAX);
-				opts.checksum_seed = (tmpint == 0) ? (int)time(NULL) : tmpint;
+				opts.checksum_seed = (tmplong == 0) ? (int)time(NULL) : (int)tmplong;
 			}
 			break;
 		case OP_CHMOD:
