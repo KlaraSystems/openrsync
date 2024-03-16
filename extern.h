@@ -109,6 +109,10 @@
 /* Maximum auth response size. */
 #define	RSYNCD_MAXAUTHSZ	2048
 
+/* Some daemon values */
+/* In future versions, this may be higher to support flexible digest choices. */
+#define	RSYNCD_CHALLENGE_RESPONSESZ	(MD4_DIGEST_LENGTH * 16)
+
 /*
  * Maximum amount of file data sent over the wire at once.
  */
@@ -874,6 +878,7 @@ int	rsync_listen(struct sess *, rsync_client_handler *);
 int	rsync_setsockopts(int, const char *);
 int	rsync_socket(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
+
 int	rsync_is_socket(int);
 int	rsync_password_hash(const char *, const char *, char *, size_t);
 int	rsync_server(struct cleanup_ctx *, const struct opts *, size_t,
@@ -994,9 +999,10 @@ void             print_filesfrom(char *const *, int, const char *);
 void		 delayed_renames(struct sess *sess);
 
 int		 chmod_parse(const char *arg, struct sess *sess);
-int		 scan_scaled_def(char *, long long *, char);
 
 int		 rsync_humanize(struct sess *, char *, size_t, int64_t);
+
+int		 scan_scaled_def(char *, long long *, char);
 
 static inline int
 sess_is_inplace(struct sess *sess)
