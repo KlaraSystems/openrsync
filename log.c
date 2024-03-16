@@ -18,6 +18,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <libutil.h>
 #include <locale.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -28,7 +29,11 @@
 #include <time.h>
 #include <unistd.h>
 #include <libutil.h>
+#ifdef __APPLE__
+#include <usbuf.h>
+#else
 #include <sys/sbuf.h>
+#endif
 #include <sys/stat.h>
 
 #include "extern.h"
@@ -524,7 +529,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	case 'c': {
 		/* "%c the total size of the block checksums received for the
 		   basis file (only when sending)" */
-		/* 
+		/*
 		 * I don't think smb rsync implements what it says in the
 		 * manpage.
 		 */
@@ -559,7 +564,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 			widthstring[l + 2] = '\0';
 			print_7_or_8_bit(sess, widthstring, fl->path);
 		}
-		break;		
+		break;
 	}
 	case 'G': {
 		/* FIXME this is incorrect since gid 0 is also root */
@@ -652,7 +657,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 
 		if (do_print) {
 			/* 2024/01/30-16:23:29 */
-			strftime(buf, sizeof(buf), "%Y/%m/%d-%H:%M:%S", 
+			strftime(buf, sizeof(buf), "%Y/%m/%d-%H:%M:%S",
 			    localtime(&fl->st.mtime));
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
@@ -750,7 +755,7 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 	for (; *fmt;) {
 		start = fmt;
 		while (fmt < format + len) {
- 			if (fmt[0] == '%') {
+			if (fmt[0] == '%') {
 				if (do_print)
 					fwrite(start, 1, fmt - start,
 					    sess->opts->outfile);

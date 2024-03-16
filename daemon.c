@@ -16,7 +16,11 @@
 #include "config.h"
 
 #include <sys/types.h>
-#include <sys/sbuf.h>	/* XXX */
+#ifdef __APPLE__
+#include <usbuf.h>
+#else
+#include <sys/sbuf.h>
+#endif
 #include <sys/time.h>
 
 #include <assert.h>

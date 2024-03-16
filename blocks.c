@@ -268,7 +268,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 
 	if (st->mapsz && blks->blksz) {
 		if (sess->role->append) {
-			assert((off_t)st->mapsz > blks->size);
+			assert((off_t)st->mapsz >= blks->size);
 			st->offs = blks->size;
 			last = st->offs;
 			goto append;
