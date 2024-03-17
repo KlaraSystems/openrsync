@@ -795,7 +795,7 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 		/* Keep alive packet, do nothing */
 		return 1;
 	} else if ((iflags & IFLAG_TRANSFER) == 0) {
-		return 1;
+		/* We can't return early due to the state machine */
 	} else if (S_ISDIR(fl[idx].st.mode)) {
 		ERRX("blocks requested for "
 			"directory: %s", fl[idx].path);
@@ -839,9 +839,11 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 			s->dlstate = SDL_META;
 		*mdl = s;
 	} else {
-		s->dlstate = SDL_DONE;
-		TAILQ_INSERT_TAIL(q, s, entries);
-		*mdl = NULL;
+		if (protocol_itemize)
+			s->dlstate = SDL_IFLAGS;
+		else
+			s->dlstate = SDL_DONE;
+		*mdl = s;
 	}
 
 	return 1;
@@ -1161,7 +1163,20 @@ rsync_sender(struct sess *sess, int fdin,
 	(((pfd)[0].revents & POLLIN) != 0 || iobuf_get_readsz((iobuf)) != 0)
 		assert(pfd[0].fd != -1);
 
-		if ((c = poll(pfd, 3, poll_timeout)) == -1) {
+		if (iobuf_get_readsz(&rbuf) > 0) {
+			/*
+			 * There is pending data still, read what more is
+			 * available and try to process it rather than
+			 * sleeping in poll();
+			 */
+			c = poll(pfd, 3, 0);
+			if (c == -1) {
+				if (errno == EINTR)
+					continue;
+				ERR("poll");
+				goto out;
+			}
+		} else if ((c = poll(pfd, 3, poll_timeout)) == -1) {
 			if (errno == EINTR)
 				continue;
 			ERR("poll");
@@ -1207,45 +1222,6 @@ rsync_sender(struct sess *sess, int fdin,
 			if (!iobuf_fill(sess, &rbuf, fdin)) {
 				ERRX1("iobuf_fill");
 				goto out;
-			}
-
-			pfd[0].revents &= ~POLLIN;
-		}
-
-		if (READ_AVAIL(pfd, &rbuf) && mdl != NULL) {
-			int bret;
-
-			switch (mdl->dlstate) {
-			case SDL_IFLAGS:
-				bret = sender_get_iflags(&rbuf, fl.flp, mdl);
-				if (bret < 0) {
-					ERRX1("sender_get_iflags");
-					return 0;
-				} else if (bret == 0) {
-					break;
-				}
-
-				mdl->dlstate = SDL_META;
-				/* FALLTHROUGH */
-			case SDL_META:
-			case SDL_BLOCKS:
-				mdl->blks = blk_recv(sess, fdin, &rbuf,
-				    fl.flp[mdl->idx].path, mdl->blks,
-				    &mdl->blkidx, &mdl->dlstate);
-				if (mdl->dlstate != SDL_META &&
-				    mdl->blks == NULL) {
-					ERRX1("blk_recv");
-					return 0;
-				}
-
-				break;
-			default:
-				break;
-			}
-
-			if (mdl->dlstate == SDL_DONE) {
-				TAILQ_INSERT_TAIL(&sdlq, mdl, entries);
-				mdl = NULL;
 			}
 
 			pfd[0].revents &= ~POLLIN;
@@ -1309,6 +1285,57 @@ rsync_sender(struct sess *sess, int fdin,
 
 			if (idx == -1)
 				assert(mdl == NULL);
+
+		}
+
+		if (READ_AVAIL(pfd, &rbuf) && mdl != NULL) {
+			int bret;
+
+			switch (mdl->dlstate) {
+			case SDL_IFLAGS:
+				bret = sender_get_iflags(&rbuf, fl.flp, mdl);
+				if (bret < 0) {
+					ERRX1("sender_get_iflags");
+					return 0;
+				} else if (bret == 0) {
+					break;
+				}
+
+				if ((fl.flp[mdl->idx].iflags & IFLAG_TRANSFER) == 0) {
+					mdl->dlstate = SDL_SKIP;
+					break;
+				} else if (sess->opts->dry_run == DRY_FULL) {
+					mdl->dlstate = SDL_DONE;
+					break;
+				}
+
+				mdl->dlstate = SDL_META;
+				/* FALLTHROUGH */
+			case SDL_META:
+			case SDL_BLOCKS:
+				mdl->blks = blk_recv(sess, fdin, &rbuf,
+				    fl.flp[mdl->idx].path, mdl->blks,
+				    &mdl->blkidx, &mdl->dlstate);
+				if (mdl->dlstate != SDL_META &&
+				    mdl->blks == NULL) {
+					ERRX1("blk_recv");
+					return 0;
+				}
+
+				break;
+			default:
+				break;
+			}
+
+			if (mdl->dlstate == SDL_DONE) {
+				TAILQ_INSERT_TAIL(&sdlq, mdl, entries);
+				mdl = NULL;
+			} else if (mdl->dlstate == SDL_SKIP) {
+				free(mdl);
+				mdl = NULL;
+			}
+
+			pfd[0].revents &= ~POLLIN;
 
 			c = io_read_check(sess, fdin);
 			if (c < 0) {
