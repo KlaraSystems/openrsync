@@ -570,6 +570,7 @@ enum	send_dl_state {
 	SDL_IFLAGS,
 	SDL_BLOCKS,
 	SDL_DONE,
+	SDL_SKIP,
 };
 
 /*
