@@ -1334,7 +1334,8 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			 * so we can always read 64 bits here.
 			 */
 			if (!(FLIST_DEV_SAME & flag)) {
-				if (!io_read_long(sess, fdin, &lval)) {
+				if (!io_read_ulong(sess, fdin,
+				    (unsigned long *)&lval)) {
 					ERRX1("io_read_long");
 					goto out;
 				}
