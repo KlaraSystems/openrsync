@@ -404,13 +404,13 @@ backup_file(int fromdfd, const char *fname, int todfd, const char *tname,
 
 		rc = utimensat(todfd, tname, ts, AT_SYMLINK_NOFOLLOW);
 		if (rc != 0)
-			return rc;
+			ERR("%s: utimensat", tname);
 	}
 
 	if (st.st_mode != dstat->mode) {
 		rc = fchmodat(todfd, tname, dstat->mode, AT_SYMLINK_NOFOLLOW);
 		if (rc != 0)
-			return rc;
+			ERR("%s: fchmodat", tname);
 	}
 
 	if (st.st_uid != dstat->uid || st.st_gid != dstat->gid) {
@@ -420,7 +420,7 @@ backup_file(int fromdfd, const char *fname, int todfd, const char *tname,
 		if (uid != (uid_t)-1 || gid != (gid_t)-1) {
 			rc = fchownat(todfd, tname, uid, gid, AT_SYMLINK_NOFOLLOW);
 			if (rc != 0)
-				return rc;
+				ERR("%s: fchownat", tname);
 		}
 	}
 
