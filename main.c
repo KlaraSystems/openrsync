@@ -696,6 +696,7 @@ enum {
 	OP_MAX_DELETE,
 	OP_STATS,
 	OP_COMPLEVEL,
+	OP_EXECUTABILITY,
 };
 
 const char rsync_shopts[] = "0468B:CDEFHIKLOPRSVWabcde:f:ghklnopqrtuvxyz";
@@ -737,7 +738,7 @@ const struct option	 rsync_lopts[] = {
     { "dry-run",	no_argument,	NULL,			'n' },
     { "exclude",	required_argument, NULL,		OP_EXCLUDE },
     { "exclude-from",	required_argument, NULL,		OP_EXCLUDE_FROM },
-    { "executability",	no_argument,	NULL,			'E' },
+    { "executability",	no_argument,	NULL,			OP_EXECUTABILITY },
     { "existing",	no_argument, NULL,			OP_IGNORE_NON_EXISTING },
 #ifdef __APPLE__
     { "extended-attributes",	no_argument, NULL,		'E' },
@@ -981,11 +982,10 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 		case 'E':
 			opts.extended_attributes = 1;
 			break;
-#else
-		case 'E':
+#endif
+		case OP_EXECUTABILITY:
 			opts.preserve_executability = 1;
 			break;
-#endif
 		case 'F': {
 			const char *new_rule = NULL;
 
