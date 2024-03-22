@@ -363,9 +363,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			cctx.avail_out -= 4;
 		}
 		if (res != Z_OK && res != Z_BUF_ERROR) {
-			ERRX1("final deflate() res=%d", res);
-			free(cbuf);
-			return 0;
+			LOG2("final deflate() res=%d", res);
 		}
 
 		/* Send the end of token marker */
