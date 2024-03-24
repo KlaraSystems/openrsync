@@ -1525,12 +1525,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 			if ((p->fd = mkstempat(TMPDIR_FD, p->fname)) == -1) {
 				ERR("mkstempat: '%s'", p->fname);
-				p->state = DOWNLOAD_READ_REMOTE;
 				sess->total_errors++;
-				return 1;
-			}
-
-			if (p->ofd != -1 &&
+			} else if (p->ofd != -1 &&
 			    !download_fix_metadata(sess, p->fname, p->fd,
 			    &st)) {
 				goto out;
@@ -1549,20 +1545,26 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 		if (sess->opts->no_cache) {
 #if defined(F_NOCACHE)
-			fcntl(p->ofd, F_NOCACHE);
-			fcntl(p->fd, F_NOCACHE);
+			if (p->ofd >= 0)
+				fcntl(p->ofd, F_NOCACHE);
+			if (p->fd >= 0)
+				fcntl(p->fd, F_NOCACHE);
 #elif defined(O_DIRECT)
 			int getfl;
 
-			if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
-				warn("fcntl failed");
-			} else {
-				fcntl(p->ofd, F_SETFL, getfl | O_DIRECT);
+			if (p->ofd >= 0) {
+				if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
+					warn("fcntl failed");
+				} else {
+					fcntl(p->ofd, F_SETFL, getfl | O_DIRECT);
+				}
 			}
-			if ((getfl = fcntl(p->fd, F_GETFL)) < 0) {
-				warn("fcntl failed");
-			} else {
-				fcntl(p->fd, F_SETFL, getfl | O_DIRECT);
+			if (p->fd >= 0) {
+				if ((getfl = fcntl(p->fd, F_GETFL)) < 0) {
+					warn("fcntl failed");
+				} else {
+					fcntl(p->fd, F_SETFL, getfl | O_DIRECT);
+				}
 			}
 #endif
 		}
@@ -1582,22 +1584,26 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 	if (sess->opts->no_cache) {
 #if defined(F_NOCACHE)
-		assert(p->fd >= 0);
-		fcntl(p->ofd, F_NOCACHE);
-		fcntl(p->fd, F_NOCACHE);
+		if (p->ofd >= 0)
+			fcntl(p->ofd, F_NOCACHE);
+		if (p->fd >= 0)
+			fcntl(p->fd, F_NOCACHE);
 #elif defined(O_DIRECT)
 		int getfl;
 
-		assert(p->fd >= 0);
-		if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
-			warn("fcntl failed");
-		} else {
-			fcntl(p->ofd, F_SETFL, getfl | O_DIRECT);
+		if (p->ofd >= 0) {
+			if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
+				warn("fcntl failed");
+			} else {
+				fcntl(p->ofd, F_SETFL, getfl | O_DIRECT);
+			}
 		}
-		if ((getfl = fcntl(p->fd, F_GETFL)) < 0) {
-			warn("fcntl failed");
-		} else {
-			fcntl(p->fd, F_SETFL, getfl | O_DIRECT);
+		if (p->fd >= 0) {
+			if ((getfl = fcntl(p->fd, F_GETFL)) < 0) {
+				warn("fcntl failed");
+			} else {
+				fcntl(p->fd, F_SETFL, getfl | O_DIRECT);
+			}
 		}
 #endif
 	}
