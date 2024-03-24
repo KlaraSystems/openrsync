@@ -546,18 +546,20 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 		assert(p->obufmax);
 		assert(p->obufsz <= p->obufmax);
 		assert(p->obuf != NULL);
-		if (sess->opts->sparse && iszerobuf(p->obuf, p->obufsz)) {
-			if (lseek(p->fd, p->obufsz, SEEK_CUR) == -1) {
-				ERR("%s: lseek", p->fname);
-				return 0;
-			}
-		} else {
-			if ((ssz = write(p->fd, p->obuf, p->obufsz)) < 0) {
-				ERR("%s: write", p->fname);
-				return 0;
-			} else if ((size_t)ssz != p->obufsz) {
-				ERRX("%s: short write", p->fname);
-				return 0;
+		if (p->fd >= 0) {
+			if (sess->opts->sparse && iszerobuf(p->obuf, p->obufsz)) {
+				if (lseek(p->fd, p->obufsz, SEEK_CUR) == -1) {
+					ERR("%s: lseek", p->fname);
+					return 0;
+				}
+			} else {
+				if ((ssz = write(p->fd, p->obuf, p->obufsz)) < 0) {
+					ERR("%s: write", p->fname);
+					return 0;
+				} else if ((size_t)ssz != p->obufsz) {
+					ERRX("%s: short write", p->fname);
+					return 0;
+				}
 			}
 		}
 		p->obufsz = 0;
@@ -568,7 +570,7 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 	 * If we have no pre-write buffer, this is it.
 	 */
 
-	if (sz) {
+	if (sz > 0 && p->fd >= 0) {
 		if ((ssz = write(p->fd, buf, sz)) < 0) {
 			ERR("%s: write", p->fname);
 			return 0;
@@ -1003,7 +1005,7 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 			ERRX1("buf_copy");
 			return TOKEN_ERROR;
 		}
-		if (lseek(p->fd, sz, SEEK_CUR) == -1) {
+		if (p->fd >= 0 && lseek(p->fd, sz, SEEK_CUR) == -1) {
 			ERRX1("lseek");
 			return TOKEN_ERROR;
 		}
@@ -1523,7 +1525,9 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 			if ((p->fd = mkstempat(TMPDIR_FD, p->fname)) == -1) {
 				ERR("mkstempat: '%s'", p->fname);
-				goto out;
+				p->state = DOWNLOAD_READ_REMOTE;
+				sess->total_errors++;
+				return 1;
 			}
 
 			if (p->ofd != -1 &&
@@ -1578,11 +1582,13 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 	if (sess->opts->no_cache) {
 #if defined(F_NOCACHE)
+		assert(p->fd >= 0);
 		fcntl(p->ofd, F_NOCACHE);
 		fcntl(p->fd, F_NOCACHE);
 #elif defined(O_DIRECT)
 		int getfl;
 
+		assert(p->fd >= 0);
 		if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
 			warn("fcntl failed");
 		} else {
@@ -1600,7 +1606,6 @@ again:
 
 	assert(p->state == DOWNLOAD_READ_REMOTE);
 	assert(p->fname != NULL || sess->opts->dry_run);
-	assert(p->fd != -1 || sess->opts->dry_run);
 	assert(p->fdin != -1);
 
 	if (sess->opts->compress)
@@ -1624,7 +1629,7 @@ again:
 		goto out;
 	}
 
-	assert(p->obufsz == 0);
+	assert(p->fd < 0 || p->obufsz == 0);
 	assert(tokres == TOKEN_EOF);
 
 	/*
@@ -1666,7 +1671,7 @@ again:
 	sess->total_xfer_size += f->st.size;
 
 	/* We can still get here with a DRY_XFER in some cases. */
-	if (sess->opts->dry_run)
+	if (p->fd < 0 || sess->opts->dry_run)
 		goto done;
 
 	if (sess->opts->backup) {
