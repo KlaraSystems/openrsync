@@ -581,13 +581,9 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	}
 	if (sess->opts->temp_dir) {
 		tfd = open(sess->opts->temp_dir, O_RDONLY | O_DIRECTORY, 0);
-		if (dfd == -1) {
-			if (!sess->opts->dry_run) {
-				ERR("%s: open", sess->opts->temp_dir);
-				goto out;
-			} else
-				if (!sess->opts->dry_run)
-					WARN("%s: open", sess->opts->temp_dir);
+		if (tfd == -1) {
+			if (!sess->opts->dry_run)
+				WARN("%s: open", sess->opts->temp_dir);
 		}
 	}
 #else
@@ -618,10 +614,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	}
 	if (sess->opts->temp_dir) {
 		if ((tfd = open(sess->opts->temp_dir, O_RDONLY, 0)) == -1) {
-			if (!sess->opts->dry_run) {
-				ERR("%s: open", sess->opts->temp_dir);
-				goto out;
-			} else
+			if (!sess->opts->dry_run)
 				WARN("%s: open", sess->opts->temp_dir);
 		} else if (fstat(tfd, &st) == -1) {
 			if (!sess->opts->dry_run) {
@@ -633,15 +626,10 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				tfd = -1;
 			}
 		} else if (!S_ISDIR(st.st_mode)) {
-			if (!sess->opts->dry_run) {
-				ERRX("%s: not a directory",
-				    sess->opts->temp_dir);
-				goto out;
-			} else {
+			if (!sess->opts->dry_run)
 				WARN("%s: fstat", sess->opts->temp_dir);
-				close(tfd);
-				tfd = -1;
-			}
+			close(tfd);
+			tfd = -1;
 		}
 	}
 #endif

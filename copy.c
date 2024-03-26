@@ -496,6 +496,12 @@ move_file(int fromdfd, const char *fname, int todfd, const char *tname,
 	fromfd = openat(fromdfd, fname, O_RDONLY | O_NOFOLLOW);
 	if (fromfd == -1)
 		return (-1);
+
+	/* Unlink tname if it exists and is not writeable */
+	if (faccessat(todfd, tname, W_OK, AT_RESOLVE_BENEATH) == -1 &&
+	    errno == EACCES)
+		unlinkat(todfd, tname, AT_RESOLVE_BENEATH);
+
 	tofd = openat(todfd, tname, toflags, 0600);
 	if (tofd == -1) {
 		serrno = errno;
@@ -505,7 +511,44 @@ move_file(int fromdfd, const char *fname, int todfd, const char *tname,
 	}
 
 	ret = copy_internal(fromfd, tofd);
+	if (ret == 0) {
+		struct stat fromst, tost;
+		int rc;
 
+		ret = fstat(tofd, &tost);
+		if (ret)
+			goto errout;
+
+		ret = fstat(fromfd, &fromst);
+		if (ret)
+			goto errout;
+
+		if (fromst.st_mode != tost.st_mode) {
+			rc = fchmod(tofd, fromst.st_mode);
+			if (rc == -1)
+				ERR("%s: fchmod", tname);
+		}
+
+		if (fromst.st_uid != tost.st_uid ||
+		    fromst.st_gid != tost.st_gid) {
+			rc = fchown(tofd, fromst.st_uid, fromst.st_gid);
+			if (rc == -1)
+				ERR("%s: fchown", tname);
+		}
+
+		if (fromst.st_atime != tost.st_atime ||
+		    fromst.st_mtime != tost.st_mtime) {
+			struct timespec ts[] = {
+				fromst.st_atim, fromst.st_mtim
+			};
+
+			rc = futimens(tofd, ts);
+			if (rc == -1)
+				ERR("%s: futimens", tname);
+		}
+	}
+
+errout:
 	serrno = errno;
 	close(fromfd);
 	close(tofd);
