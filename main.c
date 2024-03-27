@@ -672,6 +672,7 @@ enum {
 	OP_NO_RELATIVE,
 
 	OP_NO_DIRS,
+	OP_NO_IMPLIED_DIRS,
 	OP_FILESFROM,
 	OP_APPEND,
 	OP_PARTIAL_DIR,
@@ -833,6 +834,7 @@ const struct option	 rsync_lopts[] = {
     { "version",	no_argument,	NULL,			'V' },
     { "dirs",		no_argument,	NULL,			'd' },
     { "no-dirs",	no_argument,	NULL,			OP_NO_DIRS },
+    { "no-implied-dirs", no_argument,	NULL,			OP_NO_IMPLIED_DIRS },
     { "files-from",	required_argument,	NULL,		OP_FILESFROM },
     { "from0",		no_argument,	NULL,			'0' },
     { "out-format",	required_argument,	NULL,		OP_OUTFORMAT },
@@ -1275,6 +1277,9 @@ basedir:
 		case OP_NO_DIRS:
 			opts.dirs = 0;
 			opts_no_dirs++;
+			break;
+		case OP_NO_IMPLIED_DIRS:
+			opts.noimpdirs = 1;
 			break;
 		case OP_FILESFROM:
 			opts.filesfrom = optarg;

@@ -327,6 +327,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--relative");
 	if (sess->opts->dirs > 0)
 		addargs(&args, "--dirs");
+	if (sess->opts->noimpdirs > 0)
+		addargs(&args, "--no-implied-dirs");
 	if (sess->opts->dlupdates > 0)
 		addargs(&args, "--delay-updates");
 	if (sess->opts->copy_links)
