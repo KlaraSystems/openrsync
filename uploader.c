@@ -923,8 +923,14 @@ pre_dir(struct upload *p, struct sess *sess)
 			keep_dirlinks_applies(&st, f, p->rootfd)) {
 			return 0;
 		}
-		ERRX("%s: not a directory", f->path);
-		return -1;
+		/*
+		 * Incoming item is a directory, but there is a non-directory
+		 * in the way, so we need to remove it.
+		 */
+		if (unlinkat(p->rootfd, f->path, 0) == -1) {
+			ERRX("%s: unable to replace file with a directory", f->path);
+			return -1;
+		}
 	} else if (rc != -1) {
 		/*
 		 * FIXME: we should fchmod the permissions here as well,
