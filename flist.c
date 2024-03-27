@@ -958,10 +958,11 @@ out:
 */
 static int
 flist_append(struct sess *sess, const struct stat *st,
-	const char *path, struct fl *fl)
+	const char *path, struct fl *fl, const char *prefix)
 {
 	struct flist *f;
 	long oldidx;
+	size_t prefixlen;
 
 	if ((oldidx = fl_new_index(fl)) == -1) {
 		ERRX("fl_new failed");
@@ -979,10 +980,19 @@ flist_append(struct sess *sess, const struct stat *st,
 	}
 
 	if (!sess->opts->relative) {
-		if ((f->wpath = strrchr(f->path, '/')) == NULL)
+		/* Remove prefix from path, if it is not an exact match */
+		prefixlen = strlen(prefix);
+		if (strcmp(f->path, prefix) == 0) {
+			if ((f->wpath = strrchr(f->path, '/')) == NULL) {
+				f->wpath = f->path;
+			} else {
+				f->wpath++;
+			}
+		} else if (strncmp(f->path, prefix, prefixlen) == 0) {
+			f->wpath = f->path + prefixlen;
+		} else {
 			f->wpath = f->path;
-		else
-			f->wpath++;
+		}
 	} else {
 		if (f->path[0] == '/')
 			f->wpath = f->path + 1;
@@ -1466,7 +1476,7 @@ out:
 
 static int
 flist_gen_dirent_file(struct sess *sess, const char *type, const char *root,
-    struct fl *fl, const struct stat *st)
+    struct fl *fl, const struct stat *st, const char *prefix)
 {
 	/* filter files */
 	if (rules_match(root, S_ISDIR(st->st_mode), FARGS_SENDER, 0) == -1) {
@@ -1477,7 +1487,7 @@ flist_gen_dirent_file(struct sess *sess, const char *type, const char *root,
 	if (sess->opts->ignore_nonreadable && access(root, R_OK) != 0)
 		return 1;
 	/* add it to our world view */
-	if (!flist_append(sess, st, root, fl)) {
+	if (!flist_append(sess, st, root, fl, prefix)) {
 		ERRX1("flist_append");
 		return 0;
 	}
@@ -1521,7 +1531,7 @@ flist_dirent_strip(const char *root)
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t stripdir)
+flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t stripdir, const char *prefix)
 {
 	const char	*cargv[2];
 	int		 rc = 0, flag;
@@ -1546,13 +1556,13 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 
 	if (sess->opts->copy_links)
 		ret = stat(root, &st);
-	else			
+	else
 		ret = lstat(root, &st);
 	if (ret == -1) {
 		ERR("%s: (l)stat", root);
 		return 0;
 	} else if (S_ISREG(st.st_mode)) {
-		return flist_gen_dirent_file(sess, "file", root, fl, &st);
+		return flist_gen_dirent_file(sess, "file", root, fl, &st, prefix);
 	} else if (S_ISLNK(st.st_mode)) {
 		/*
 		 * How does this work?
@@ -1562,8 +1572,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		 * We did an lstat, now we need a stat.
 		 */
 		if (sess->opts->copy_dirlinks ||
-		    sess->opts->copy_unsafe_links ||
-		    sess->opts->safe_links) {
+		    sess->opts->copy_unsafe_links) {
 			if (stat(root, &st2) == -1) {
 				ERR("%s: stat", root);
 				return 0;
@@ -1574,41 +1583,35 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			}
 			buf[ret] = '\0';
 		}
-		if (sess->opts->safe_links &&
-		    is_unsafe_link(buf, root, root)) {
-			LOG1("ignoring unsafe symlink: %s -> %s", root, buf);
-			return 0;
-		}
 		if (sess->opts->copy_dirlinks) {
 			if (S_ISDIR(st2.st_mode)) {
 				if (stripdir == -1)
 					stripdir = flist_dirent_strip(root);
 				snprintf(buf2, sizeof(buf2), "%s/", root);
-				LOG4("symlinks: recursing '%s' -> '%s' '%s'\n",
+				LOG4("symlinks: recursing '%s' -> '%s' '%s'",
 				    root, buf, buf2);
-				flist_gen_dirent(sess, buf2, fl, stripdir);
+				flist_gen_dirent(sess, buf2, fl, stripdir, prefix);
 				return 1;
 			}
 		}
-
 		if (sess->opts->copy_unsafe_links &&
-		    is_unsafe_link(buf, root, root)) {
+		    is_unsafe_link(buf, root, prefix)) {
 			if (S_ISDIR(st2.st_mode)) {
 				if (stripdir == -1)
 					stripdir = flist_dirent_strip(root);
 				snprintf(buf2, sizeof(buf2), "%s/", root);
-				LOG4("symlinks: recursing '%s' -> '%s' '%s'\n",
+				LOG4("symlinks: recursing '%s' -> '%s' '%s'",
 				    root, buf, buf2);
-				flist_gen_dirent(sess, buf2, fl, stripdir);
+				flist_gen_dirent(sess, buf2, fl, stripdir, prefix);
 			} else {
 				return flist_gen_dirent_file(sess, "file",
-				    root, fl, &st2);
+				    root, fl, &st2, prefix);
 			}
 		}
 
-		return flist_gen_dirent_file(sess, "symlink", root, fl, &st);
+		return flist_gen_dirent_file(sess, "symlink", root, fl, &st, prefix);
 	} else if (!S_ISDIR(st.st_mode)) {
-		return flist_gen_dirent_file(sess, "special", root, fl, &st);
+		return flist_gen_dirent_file(sess, "special", root, fl, &st, prefix);
 	}
 
 	if (stripdir == -1)
@@ -1647,8 +1650,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		assert(ent->fts_statp != NULL);
 		if (S_ISLNK(ent->fts_statp->st_mode)) {
 			if (sess->opts->copy_dirlinks ||
-			    sess->opts->copy_unsafe_links ||
-			    sess->opts->safe_links) {
+			    sess->opts->copy_unsafe_links) {
 				/* We did lstat, now we need stat */
 				if (stat(ent->fts_accpath, &st2) == -1) {
 					ERR("%s: stat", ent->fts_accpath);
@@ -1660,15 +1662,12 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				}
 				buf[ret] = '\0';
 			}
-			if (sess->opts->safe_links &&
-			    is_unsafe_link(buf, ent->fts_accpath, root)) {
-				LOG1("ignoring unsafe symlink %s -> %s", ent->fts_accpath, buf);
-				continue;
-			}
-			if (sess->opts->copy_dirlinks) {
+			if (sess->opts->copy_dirlinks ||
+			    (sess->opts->copy_unsafe_links &&
+			    is_unsafe_link(buf, root, prefix))) {
 				if (S_ISDIR(st2.st_mode)) {
 					flist_gen_dirent(sess, ent->fts_path,
-					    fl, stripdir);
+					    fl, stripdir, prefix);
 					continue;
 				}
 			}
@@ -1779,10 +1778,10 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 
 		if (S_ISLNK(ent->fts_statp->st_mode)) {
 			if (sess->opts->copy_unsafe_links &&
-			    is_unsafe_link(buf, ent->fts_path, root)) {
+			    is_unsafe_link(buf, ent->fts_path, prefix)) {
 				flist_copy_stat(f, &st2);
 				LOG3("copy_unsafe_links: converting unsafe "
-				    "link %s -> %s to a regular file\n",
+				    "link %s -> %s to a regular file",
 				    ent->fts_path, buf);
 			} else {
 				f->link = symlink_read(ent->fts_accpath);
@@ -1836,7 +1835,7 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 		if (dname[0] == '\0')
 			dname = ".";
 		rules_base(dname);
-		if (!flist_gen_dirent(sess, dname, fl, -1))
+		if (!flist_gen_dirent(sess, dname, fl, -1, dname))
 			break;
 	}
 
@@ -1912,7 +1911,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 		}
 
 		/* Add this file to our file-system worldview. */
-		if (!flist_append(sess, &st, fname, fl)) {
+		if (!flist_append(sess, &st, fname, fl, fname)) {
 			ERRX1("flist_append");
 			goto out;
 		}

@@ -265,6 +265,11 @@ pre_symlink(struct upload *p, struct sess *sess)
 		WARNX("%s: ignoring symlink", f->path);
 		return 0;
 	}
+	if (sess->opts->safe_links &&
+	    is_unsafe_link(f->link, f->path, f->path)) {
+		LOG1("ignoring unsafe symlink: %s -> %s", f->path, f->link);
+		return 0;
+	}
 	if (sess->opts->dry_run) {
 		log_symlink(sess, f);
 		return 0;
@@ -334,7 +339,6 @@ pre_symlink(struct upload *p, struct sess *sess)
 	 */
 
 	if (rc == -1 || updatelink) {
-		/* XXX does this need an is_unsafe_link() check? */
 		if (sess->opts->inplace) {
 			LOG3("%s: creating symlink in-place: %s", f->path, f->link);
 			if (symlinkat(f->link, p->rootfd, f->path) == -1) {
