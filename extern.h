@@ -701,7 +701,7 @@ extern const char rsync_shopts[];
 extern const struct option rsync_lopts[];
 extern int verbose;
 
-#define	TMPDIR_FD	(sess->opts->temp_dir ? p->tempfd : p->rootfd)
+#define	TMPDIR_FD	(sess->opts->temp_dir && p->tempfd != -1 ? p->tempfd : p->rootfd)
 #define	IS_TMPDIR	(sess->opts->temp_dir != NULL)
 
 #define MINIMUM(a, b) (((a) < (b)) ? (a) : (b))
