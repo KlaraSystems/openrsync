@@ -1591,8 +1591,17 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 
 		if (sess->opts->copy_unsafe_links &&
 		    is_unsafe_link(buf, root, root)) {
-			return flist_gen_dirent_file(sess, "file", root,
-			    fl, &st2);
+			if (S_ISDIR(st2.st_mode)) {
+				if (stripdir == -1)
+					stripdir = flist_dirent_strip(root);
+				snprintf(buf2, sizeof(buf2), "%s/", root);
+				LOG4("symlinks: recursing '%s' -> '%s' '%s'\n",
+				    root, buf, buf2);
+				flist_gen_dirent(sess, buf2, fl, stripdir);
+			} else {
+				return flist_gen_dirent_file(sess, "file",
+				    root, fl, &st2);
+			}
 		}
 
 		return flist_gen_dirent_file(sess, "symlink", root, fl, &st);
