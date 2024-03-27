@@ -464,6 +464,7 @@ struct	opts {
 	int		 ign_non_exist;		/* --ignore-nonexisting */
 	int		 relative;		/* --relative */
 	enum dirmode	 dirs;			/* -d --dirs */
+	int              noimpdirs;             /* --no-implied-dirs */
 	int		 dlupdates;             /* --delay-updates */
 	int		 hard_links;		/* -H --hard-links */
 	int		 remove_source;		/* --remove-source-files */
@@ -961,6 +962,7 @@ int		 is_unsafe_link(const char *, const char *, const char *);
 char		*make_safe_link(const char *);
 
 int		 mkpath(char *);
+int		 mkpathat(int fd, char *);
 int		 mksock(const char *, char *);
 
 int		 mkstempat(int, char *);

@@ -896,6 +896,7 @@ flist_chmod(const struct sess *sess, struct flist *ff)
  * Copy all the elements of path that are directories.
  * We need those for --relative, because we need to
  * restore their stat(2) values.
+ * - unless --no-implied-dirs is given.
  */
 static int
 flist_append_dirs(const char *path, struct fl *fl)
@@ -987,7 +988,8 @@ flist_append(struct sess *sess, const struct stat *st,
 			f->wpath = f->path + 1;
 		else
 			f->wpath = f->path;
-		if (!flist_append_dirs(f->path, fl)) {
+		if (!sess->opts->noimpdirs &&
+		    !flist_append_dirs(f->path, fl)) {
 			ERR("flist_append_dirs");
 			return 0;
 		}

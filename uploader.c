@@ -78,6 +78,7 @@ struct	upload {
 	size_t		    dflmax; /* allocated size of delayed delete list */
 	int		   *newdir; /* non-zero if mkdir'd */
 	int		    phase; /* current uploader phase (transfer, redo) */
+	char               *lastimp; /* Last implied dir (dir cache) */
 };
 
 static int pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode);
@@ -1595,6 +1596,7 @@ upload_free(struct upload *p)
 	free(p->root);
 	free(p->newdir);
 	free(p->buf);
+	free(p->lastimp);
 	free(p);
 }
 
@@ -1654,6 +1656,51 @@ upload_ack_complete(struct upload *p, struct sess *sess, int fdout)
 	}
 
 	p->nextack = idx;
+}
+
+/*
+ * Creates dirs in path with default permissions.
+ * Used when --no-implied-dirs --relative
+ */
+static int
+createdirs(struct upload *u)
+{
+	struct flist *f;
+	char *s;
+	char *next;
+	int retcode = 0;
+
+	f = &u->fl[u->idx];
+	s = strdup(f->path);
+	next = strrchr(s, '/');
+	if (next == NULL)
+		goto out;
+	*next = '\0';
+
+	/* 
+	 * We need to cache this, otherwise
+	 * there would be a system call flood.
+	 */
+	if (u->lastimp == NULL || strcmp(s, u->lastimp)) {
+		if (mkpathat(u->rootfd, s) == -1) {
+			ERR("mkpathat '%s'", s);
+			retcode = -1;
+			/* Invalidate cache */
+			free(u->lastimp);
+			u->lastimp = NULL;
+			goto out;
+		}
+	}
+
+	free(u->lastimp);
+	u->lastimp = strdup(s);
+	if (u->lastimp == NULL) {
+		ERR("strdup in implied dirs");
+		retcode = -1;
+	}
+	out:
+	free(s);
+	return retcode;
 }
 
 /*
@@ -1754,6 +1801,8 @@ rsync_uploader(struct upload *u, int *fileinfd,
 				continue;
 			else if (u->phase == PHASE_DLUPDATES)
 				continue;
+			if (sess->opts->relative && sess->opts->noimpdirs)
+				createdirs(u);
 			if (S_ISDIR(u->fl[u->idx].st.mode))
 				c = pre_dir(u, sess);
 			else if (S_ISLNK(u->fl[u->idx].st.mode))

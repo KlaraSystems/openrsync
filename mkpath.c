@@ -80,3 +80,44 @@ mkpath(char *path)
 
 	return (0);
 }
+
+int
+mkpathat(int fd, char *path)
+{
+	struct stat sb;
+	char *slash;
+	int done;
+
+	slash = path;
+
+	for (;;) {
+		slash += strspn(slash, "/");
+		slash += strcspn(slash, "/");
+
+		done = (*slash == '\0');
+		*slash = '\0';
+
+		if (mkdirat(fd, path, 0777) != 0) {
+			int mkdir_errno = errno;
+
+			if (stat(path, &sb) == -1) {
+				/* Not there; use mkdir()s errno */
+				errno = mkdir_errno;
+				return (-1);
+			}
+			if (!S_ISDIR(sb.st_mode)) {
+				/* Is there, but isn't a directory */
+				errno = ENOTDIR;
+				return (-1);
+			}
+		}
+
+		if (done)
+			break;
+
+		*slash = '/';
+	}
+
+	return (0);
+}
+
