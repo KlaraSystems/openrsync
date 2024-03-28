@@ -856,7 +856,7 @@ usage(int exitcode)
 	    "\t[--compare-dest=dir] [--contimeout] [--copy-dest=dir] [--copy-unsafe-links]\n"
 	    "\t[--del | --delete-after | --delete-before | --delete-during]\n"
 	    "\t[--delay-updates] [--dirs] [--no-dirs]\n"
-	    "\t[--exclude] [--exclude-from=file]\n"
+	    "\t[--exclude] [--exclude-from=file] [--executability]\n"
 #ifdef __APPLE__
 	    "\t[--extended-attributes]\n"
 #endif
@@ -988,6 +988,9 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 		case 'E':
 			opts.extended_attributes = 1;
 			break;
+#else
+		case 'E':
+			/* fallthru */
 #endif
 		case OP_EXECUTABILITY:
 			opts.preserve_executability = 1;
