@@ -196,14 +196,14 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		if (skip)
 			*skip = args.num;
 		addargs(&args, "--server");
-		if (f->mode == FARGS_RECEIVER)
-			addargs(&args, "--sender");
 	} else {
 		fargs_cmdline_prog(&args, rsync_path);
 		addargs(&args, "--server");
 	}
 
 	/* Shared arguments. */
+	if (f->mode == FARGS_RECEIVER)
+		addargs(&args, "--sender");
 
 	if (sess->opts->del) {
 		switch (sess->opts->del) {
@@ -465,7 +465,7 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 			else
 				addargs(&args, "%s", f->sources[j]);
 		}
-	} else {
+	} else if (f->sink != NULL) {
 		if (f->sink[0] == '\0')
 			addargs(&args, ".");
 		else

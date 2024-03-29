@@ -247,26 +247,31 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 	struct fargs	*f = NULL;
 	char		*cp;
 	size_t		 i, j, hostlen = 0;
+	int		 sinkarg;
 
 	/* Allocations. */
 
 	if ((f = calloc(1, sizeof(struct fargs))) == NULL)
 		err(ERR_NOMEM, NULL);
 
-	f->sourcesz = argc - 1;
+	if (argc > 1) {
+		sinkarg = argc - 1;
+		f->sourcesz = argc - 1;
+	} else {
+		sinkarg = argc;
+		f->sourcesz = 1;
+	}
+
 	if (f->sourcesz > 0) {
 		if ((f->sources = calloc(f->sourcesz, sizeof(char *))) == NULL)
 			err(ERR_NOMEM, NULL);
 
-		for (i = 0; i < argc - 1; i++)
+		for (i = 0; i < sinkarg; i++)
 			if ((f->sources[i] = strdup(argv[i])) == NULL)
 				err(ERR_NOMEM, NULL);
-	} else if (opts->read_batch == NULL) {
-		errx(ERR_SYNTAX,
-		    "One argument without --read-batch not yet supported");
 	}
 
-	if ((f->sink = strdup(argv[argc - 1])) == NULL)
+	if (argv[sinkarg] != NULL && (f->sink = strdup(argv[sinkarg])) == NULL)
 		err(ERR_NOMEM, NULL);
 
 	if (opts->read_batch != NULL) {
@@ -282,12 +287,13 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 	 * If the last is a remote host, then we're sending from the
 	 * local to the remote host ("sender" mode).
 	 * If the first, remote to local ("receiver" mode).
-	 * If neither, a local transfer in sender style.
+	 * If neither, a local transfer in sender style unless we're doing an
+	 * implied --list-only.
 	 */
 
-	f->mode = FARGS_SENDER;
+	f->mode = f->sink == NULL ? FARGS_RECEIVER : FARGS_SENDER;
 
-	if (fargs_is_remote(f->sink)) {
+	if (f->sink != NULL && fargs_is_remote(f->sink)) {
 		f->mode = FARGS_SENDER;
 		if ((f->host = strdup(f->sink)) == NULL)
 			err(ERR_NOMEM, NULL);
@@ -355,6 +361,13 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 			errx(ERR_SYNTAX, "empty remote module");
 	}
 
+	/*
+	 * For an implied --list-only transfer, we don't need to verify anything
+	 * here because there's just the one arg.
+	 */
+	if (f->sink == NULL)
+		goto skipverify;
+
 	/* Make sure we have the same "hostspec" for all files. */
 
 	if (!f->remote) {
@@ -397,19 +410,22 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 			}
 	}
 
+skipverify:
 	/*
 	 * If we're not remote and a sender, strip our hostname.
 	 * Then exit if we're a sender or a local connection.
 	 */
-
 	if (!f->remote) {
 		if (f->host == NULL)
 			return f;
 		if (f->mode == FARGS_SENDER) {
 			assert(f->host != NULL);
 			assert(hostlen > 0);
-			j = strlen(f->sink);
-			memmove(f->sink, f->sink + hostlen + 1, j - hostlen);
+			if (f->sink != NULL) {
+				j = strlen(f->sink);
+				memmove(f->sink, f->sink + hostlen + 1,
+				    j - hostlen);
+			}
 			return f;
 		} else if (f->mode != FARGS_RECEIVER)
 			return f;
@@ -421,7 +437,7 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 	if (f->mode == FARGS_RECEIVER) {
 		for (i = 0; i < f->sourcesz; i++)
 			fargs_normalize_spec(f, f->sources[i], hostlen);
-	} else {
+	} else if (f->sink != NULL) {
 		/*
 		 * ssh and local transfers bailed out earlier and stripped the
 		 * host: part as needed.  If we got here, we're connecting to
@@ -1670,13 +1686,8 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	/*
-	 * We've loosened this restriction for --read-batch, but rsync still
-	 * allows just one argument to be specified.  With only one argument,
-	 * it treats that argument as the source and runs in --list-only mode
-	 * instead of doing any copying.
-	 */
-	if (opts.read_batch == NULL && argc < 2)
+	/* One argument means we're doing an implied --list-only. */
+	if (argc < 1)
 		usage(ERR_SYNTAX);
 
 	/*
@@ -1807,6 +1818,8 @@ main(int argc, char *argv[])
 		cleanup_set_session(cleanup_ctx, &sess);
 		cleanup_release(cleanup_ctx);
 
+		if (fargs->sink == NULL)
+			opts.dirs = DIRMODE_REQUESTED;
 		args = fargs_cmdline(&sess, fargs, NULL);
 
 		for (i = 0; args[i] != NULL; i++)
@@ -1824,6 +1837,13 @@ main(int argc, char *argv[])
 	default:
 		cleanup_set_child(cleanup_ctx, child);
 
+		/* Implied --list-only */
+		if (fargs->sink == NULL) {
+			assert(fargs->mode == FARGS_RECEIVER);
+			opts.dirs = DIRMODE_REQUESTED;
+			opts.list_only = 1;
+			fargs->sink = ".";
+		}
 		if (opts.list_only && !opts.dry_run)
 			opts.dry_run = DRY_FULL;
 
