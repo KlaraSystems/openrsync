@@ -21,7 +21,7 @@
 .Nd synchronise local and remote files
 .Sh SYNOPSIS
 .Nm openrsync
-.Op Fl 0468BCDEFHILOPRSTWVabcdghklmnopqrtuvxy
+.Op Fl 0468BCDEFHILOPRSTWVabcdefghiklmnopqrtuvxyz
 .Op Fl e Ar program
 .Op Fl f Ar filter
 .Op Fl -address Ns = Ns Ar sourceaddr
@@ -340,6 +340,15 @@ When used in combination with any one of the above
 options, supplied
 .Fl -exclude
 patterns will not prevent a file from being deleted.
+.It Fl d, -dirs
+Copies directories, which are normally skipped unless
+.Fl -recursive
+is specified.
+Directory contents are not copied, unless the path specified includes a
+trailing slash
+.Po Do dir/ Dc Pc ,
+or is the literal
+.Dq \&. .
 .It Fl -exclude Ar pattern
 Exclude files matching
 .Em pattern .
