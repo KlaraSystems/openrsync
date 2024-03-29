@@ -793,8 +793,6 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 		/* Keep alive packet, do nothing */
 		return 1;
 	}
-	/* Maybe later if (!sess->lateprint) */
-	output(sess, &fl[idx], 1);
 	if ((iflags & IFLAG_TRANSFER) == 0) {
 		/* We can't return early due to the state machine */
 	} else if (S_ISDIR(fl[idx].st.mode)) {
@@ -1345,6 +1343,8 @@ rsync_sender(struct sess *sess, int fdin,
 					break;
 				}
 
+				/* Maybe later if (!sess->lateprint) */
+				output(sess, &fl.flp[mdl->idx], 1);
 				if ((fl.flp[mdl->idx].iflags & IFLAG_TRANSFER) == 0) {
 					mdl->dlstate = SDL_SKIP;
 					break;
