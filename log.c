@@ -611,7 +611,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 			if (S_ISLNK(fl->st.mode))
 				buf[0] = 'c';
 			if (buf[0] == '\0' ) {
-				if (sess->mode == FARGS_SENDER)
+				if (sess->opts->sender)
 					buf[0] = '>';
 				else
 					buf[0] = '<';
