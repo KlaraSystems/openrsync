@@ -67,7 +67,8 @@
 .Op Fl -partial-dir Ns = Ns DIR
 .Op Fl -password-file Ns = Ns Ar pwfile
 .Op Fl -port Ns = Ns Ar service
-.Op Fl -progress
+.Op Fl -progress Ns = Ns Ar VER
+.Op Fl -protocol
 .Op Fl -read-batch Ns = Ns Ar file
 .Op Fl -remove-source-files
 .Op Fl -rsync-path Ns = Ns Ar program
@@ -647,6 +648,12 @@ considered empty.
 Suppress all non-error related informational messages.
 .It Fl -progress
 Periodically report file transfer progress.
+.It Fl -protocol Ns = Ns VER
+Force
+.Nm
+to operate using the specified protocol version.
+Normally the protocol version is negotiated automatically, but an older
+protocol version can be forced with this flag.
 .It Fl r , -recursive
 If
 .Ar source
@@ -1195,7 +1202,7 @@ with the local host running
 .Xr rsyncd 5
 .Sh STANDARDS
 .Nm
-is compatible with rsync protocol version 27
+is compatible with rsync protocol versions 27 - 29
 as supported by the samba.org implementation of rsync.
 .Sh HISTORY
 The
