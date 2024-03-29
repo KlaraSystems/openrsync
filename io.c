@@ -1443,7 +1443,7 @@ iobuf_read_vstring(struct iobuf *buf, struct vstring *vstr)
 		len |= bval;
 
 		vstr->vstring_size = len;
-		vstr->vstring_buffer = malloc(vstr->vstring_size);
+		vstr->vstring_buffer = malloc(vstr->vstring_size + 1);
 		if (vstr->vstring_buffer == NULL) {
 			ERR("malloc");
 			return -1;
@@ -1458,6 +1458,7 @@ iobuf_read_vstring(struct iobuf *buf, struct vstring *vstr)
 
 	iobuf_read_buf(buf, &vstr->vstring_buffer[vstr->vstring_offset], avail);
 	vstr->vstring_offset += avail;
+	vstr->vstring_buffer[vstr->vstring_size] = '\0';
 	return vstr->vstring_offset == vstr->vstring_size ? 1 : 0;
 }
 
