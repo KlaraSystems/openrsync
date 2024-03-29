@@ -790,10 +790,15 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	}
 	case 'o': {
 		/*
-		 * TODO:
 		 * "the operation, which is "send", "recv", or "del." (the
 		 * latter includes the trailing period)"
 		 */
+		if (do_print) {
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			print_7_or_8_bit(sess, widthstring,
+			    sess->opts->sender ? "send" : "recv");
+		}
 		break;
 	}
 	case 'p': {
