@@ -56,6 +56,7 @@
 .Op Fl -max-size Ns = Ns size
 .Op Fl -min-size Ns = Ns size
 .Op Fl -modify-window Ns = Ns sec
+.Op Fl -no-implied-dirs
 .Op Fl -no-motd
 .Op Fl -numeric-ids
 .Op Fl -partial
@@ -627,6 +628,14 @@ files will be removed in a larger batch toward the end of the transfer.
 .It Fl R , -relative
 Normally, pathnames on the commandline omit the directory components.
 This option will include the dir components.
+.It Fl -no-implied-dirs
+Changes the default behavior of
+.Fl -relative
+such that implied directories do not have their attributes modified,
+or are created with default attributes, rather than the source attributes,
+if they do not exist.
+This allows the implied directories to differ, including being a symlink on
+one side and a real directory on the other.
 .It Fl -rsync-path Ns = Ns Ar program
 Run
 .Ar program
