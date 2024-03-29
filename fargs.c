@@ -351,13 +351,17 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--ignore-times");
 	if (f->mode == FARGS_SENDER && sess->opts->fuzzy_basis)
 		addargs(&args, "--fuzzy");
-	/*
-	 * FIXME, this is not working for transmitting outformats
-	 * with spaces to ssh-remote servers.
-	 */
-	if (sess->opts->outformat != NULL) {
-		addargs(&args, "--out-format");
-		addargs(&args, "%s", sess->opts->outformat);
+	if (sess->opts->outformat && f->mode == FARGS_SENDER) {
+		/*
+		 * We don't send the full outformat to the other side,
+		 * but they need to know about %i or %o.
+		 */
+		int printflags = output(sess, NULL, 0);
+		if (printflags & 1) {
+			addargs(&args, "--out-format=%%i");
+		} else if (printflags & 4) {
+			addargs(&args, "--out-format=%%o");
+		}
 	}
 	if (sess->opts->list_only)
 		addargs(&args, "--list-only");

@@ -389,7 +389,10 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			    fl[up->cur->idx].path,
 			    (intmax_t)up->stat.total / 1024,
 			    100.0 * up->stat.dirty / up->stat.total);
-
+		sess->total_files_xfer++;
+		sess->total_xfer_size += fl[up->cur->idx].st.size;
+		if (!sess->opts->server)
+			output(sess, &fl[up->cur->idx], 1);
 		send_up_reset(up);
 		return 1;
 	case BLKSTAT_PHASE:
@@ -452,8 +455,9 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 * BLKSTAT_DONE instead of having it be here.
 		 */
 
-		if (!sess->opts->server)
-			LOG1("%s", fl[up->cur->idx].wpath);
+		if (!sess->opts->server && verbose > 0 &&
+		    !sess->lateprint && !sess->itemize)
+			print_7_or_8_bit(sess, "%s\n", fl[up->cur->idx].wpath);
 
 		send_iflags(sess, wb, wbsz, wbmax, &pos, fl, up->cur->idx);
 
@@ -569,6 +573,8 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			    100.0 * up->stat.dirty / up->stat.total);
 		sess->total_files_xfer++;
 		sess->total_xfer_size += fl[up->cur->idx].st.size;
+		if (!sess->opts->server)
+			output(sess, &fl[up->cur->idx], 1);
 		send_up_reset(up);
 		return 1;
 	case BLKSTAT_PHASE:
@@ -1317,10 +1323,10 @@ rsync_sender(struct sess *sess, int fdin,
 					break;
 				}
 
-				/* Maybe later if (!sess->lateprint) */
-				output(sess, &fl.flp[mdl->idx], 1);
 				if ((fl.flp[mdl->idx].iflags & IFLAG_TRANSFER) == 0) {
 					mdl->dlstate = SDL_SKIP;
+					if (!sess->opts->server)
+						output(sess, &fl.flp[mdl->idx], 1);
 					break;
 				} else if (sess->opts->dry_run == DRY_FULL) {
 					mdl->dlstate = SDL_DONE;

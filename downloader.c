@@ -1676,8 +1676,6 @@ again:
 	sess->total_files_xfer++;
 	sess->total_xfer_size += f->st.size;
 
-	output(sess, f, 1);
-
 	/* We can still get here with a DRY_XFER in some cases. */
 	if (p->fd < 0 || sess->opts->dry_run)
 		goto done;
@@ -1869,6 +1867,9 @@ again:
 
 	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size, true);
 	log_file(sess, p, f);
+	if (!sess->opts->server)
+		output(sess, f, 1);
+
 done:
 	/*
 	 * If we're redoing it, then we need to go ahead and clean up the file

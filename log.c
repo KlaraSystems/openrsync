@@ -401,9 +401,9 @@ print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s)
  * rval is filled with whether there is any argument that requires
  * late printing or whether itemization is requested.
  * 0 = neither
- * 1 = itemize
+ * 1 = %i
  * 2 = late print
- * 3 = both
+ * 4 = %o
  *
  * rval is expected to be initialized to zero before the first call.
  */
@@ -789,6 +789,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		break;
 	}
 	case 'o': {
+		*rval |= 4;
 		/*
 		 * "the operation, which is "send", "recv", or "del." (the
 		 * latter includes the trailing period)"
