@@ -329,13 +329,21 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 
 			memmove(f->host, cp, hostlen + 1 /* NUL */);
 
-			if ((cp = strchr(f->host, '/')) == NULL)
+			if ((cp = strchr(f->host, '/')) == NULL &&
+			    f->sink != NULL) {
 				errx(ERR_SYNTAX,
 				    "rsync protocol requires a module name");
-			*cp++ = '\0';
-			f->module = cp;
-			if ((cp = strchr(f->module, '/')) != NULL)
-				*cp = '\0';
+			}
+
+			if (cp != NULL) {
+				*cp++ = '\0';
+				f->module = cp;
+				if ((cp = strchr(f->module, '/')) != NULL)
+					*cp = '\0';
+			} else {
+				f->module = "";
+			}
+
 			if ((cp = strchr(f->host, ':')) != NULL) {
 				/* host:port --> extract port */
 				*cp++ = '\0';
@@ -355,9 +363,16 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 					*cp = '\0';
 			}
 		}
+
 		if ((hostlen = strlen(f->host)) == 0)
 			errx(ERR_SYNTAX, "empty remote host");
-		if (f->remote && strlen(f->module) == 0)
+
+		/*
+		 * Leaving off the module is fine if we're just requesting a
+		 * listing.
+		 */
+		if (f->remote && (f->module == NULL || strlen(f->module) == 0) &&
+		    f->sink != NULL)
 			errx(ERR_SYNTAX, "empty remote module");
 	}
 
@@ -1764,6 +1779,17 @@ main(int argc, char *argv[])
 	}
 
 	/*
+	 * For implied --list-only mode, we set --dirs up early so that it can
+	 * be inherited by the other paths.  We won't touch opts.list_only yet
+	 * because we don't want to send a spurious --list-only to the reference
+	 * rsync.
+	 */
+	if (fargs->sink == NULL) {
+		assert(fargs->mode == FARGS_RECEIVER);
+		opts.dirs = DIRMODE_REQUESTED;
+	}
+
+	/*
 	 * If we're contacting an rsync:// daemon, then we don't need to
 	 * fork, because we won't start a server ourselves.
 	 * Route directly into the socket code, unless a remote shell
@@ -1818,8 +1844,6 @@ main(int argc, char *argv[])
 		cleanup_set_session(cleanup_ctx, &sess);
 		cleanup_release(cleanup_ctx);
 
-		if (fargs->sink == NULL)
-			opts.dirs = DIRMODE_REQUESTED;
 		args = fargs_cmdline(&sess, fargs, NULL);
 
 		for (i = 0; args[i] != NULL; i++)
@@ -1840,9 +1864,10 @@ main(int argc, char *argv[])
 		/* Implied --list-only */
 		if (fargs->sink == NULL) {
 			assert(fargs->mode == FARGS_RECEIVER);
-			opts.dirs = DIRMODE_REQUESTED;
 			opts.list_only = 1;
-			fargs->sink = ".";
+			fargs->sink = strdup(".");
+			if (fargs->sink == NULL)
+				errx(ERR_NOMEM, NULL);
 		}
 		if (opts.list_only && !opts.dry_run)
 			opts.dry_run = DRY_FULL;

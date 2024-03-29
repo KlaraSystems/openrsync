@@ -318,7 +318,7 @@ struct	fargs {
 	char	  *sink; /* transfer endpoint */
 	enum fmode mode; /* mode of operation */
 	int	   remote; /* uses rsync:// or :: for remote */
-	char	  *module; /* if rsync://, the module */
+	const char	  *module; /* if rsync://, the module */
 };
 
 /*
