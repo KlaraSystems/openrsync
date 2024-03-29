@@ -1325,6 +1325,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	memset(&sess, 0, sizeof(sess));
 	sess.opts = daemon_opts;
 	sess.role = (void *)&role;
+	sess.wbatch_fd = -1;
 
 	role.cfg_file = "/etc/rsyncd.conf";
 	role.client = -1;
