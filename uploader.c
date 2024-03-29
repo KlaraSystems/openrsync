@@ -262,7 +262,8 @@ pre_symlink(struct upload *p, struct sess *sess)
 	assert(S_ISLNK(f->st.mode));
 
 	if (!sess->opts->preserve_links) {
-		WARNX("%s: ignoring symlink", f->path);
+		if (!sess->opts->list_only)
+			WARNX("%s: ignoring symlink", f->path);
 		return 0;
 	}
 	if (sess->opts->safe_links &&
