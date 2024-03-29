@@ -1323,7 +1323,11 @@ pre_file_fuzzy(struct sess *sess, struct upload *p, struct flist *f,
 			f->iflags |= IFLAG_BASIS_FOLLOWS | IFLAG_HLINK_FOLLOWS;
 			f->basis = BASIS_FUZZY;
 			free(f->link);
-			f->link = strdup(pathbuf);
+			if ((f->link = strdup(pathbuf)) == NULL) {
+				ERR("strdup");
+				(void)closedir(dirp);
+				return -1;
+			}
 			LOG4("fuzzy basis selected for %s: %s", f->path, f->link);
 
 			(void)closedir(dirp);
@@ -1654,7 +1658,10 @@ createdirs(struct upload *u)
 	int retcode = 0;
 
 	f = &u->fl[u->idx];
-	s = strdup(f->path);
+	if ((s = strdup(f->path)) == NULL) {
+		ERR("strdup in implied dirs");
+		return -1;
+	}
 	next = strrchr(s, '/');
 	if (next == NULL)
 		goto out;
@@ -1681,7 +1688,7 @@ createdirs(struct upload *u)
 		ERR("strdup in implied dirs");
 		retcode = -1;
 	}
-	out:
+out:
 	free(s);
 	return retcode;
 }
