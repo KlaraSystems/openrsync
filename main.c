@@ -896,7 +896,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 	size_t		 basedir_cnt = 0;
 	const char	*errstr;
 	int		 c, cvs_excl, lidx;
-	int		 implied_recursive = 0;
+	int		 implied_recursive = -1;
 	int		 opts_F = 0, opts_no_relative = 0, opts_no_dirs = 0;
 	int		 opts_only_batch = 0;
 	int		 opts_timeout = -1;
@@ -1026,7 +1026,8 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.omit_dir_times = 1;
 			break;
 		case 'a':
-			implied_recursive = 1;
+			if (implied_recursive < 0)
+				implied_recursive = 1;
 			opts.recursive = 1;
 			opts.preserve_links = 1;
 			opts.preserve_perms = 1;
@@ -1587,7 +1588,7 @@ basedir:
 			opts.relative = 1;
 		if (!opts_no_dirs)
 			opts.dirs = DIRMODE_IMPLIED;
-		if (implied_recursive)
+		if (implied_recursive > 0)
 			opts.recursive = 0;
 	}
 
