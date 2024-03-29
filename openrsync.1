@@ -32,6 +32,7 @@
 .Op Fl -checksum-seed Ns = Ns NUM
 .Op Fl -chmod Ns = Ns MODE
 .Op Fl -compare-dest Ns = Ns Ar directory
+.Op Fl -compress-level Ns = Ns NUM
 .Op Fl -contimeout Ns = Ns Ar seconds
 .Op Fl -copy-dest Ns = Ns Ar directory
 .Op Fl -copy-unsafe-links
@@ -244,6 +245,11 @@ directories may be provided.
 If
 .Ar directory
 is a relative path, it is relative to the destination directory.
+.It Fl z , Fl -compress
+Compress file data during transfer to reduce the amount of data transferred.
+.It Fl -compress-level Ns = Ns NUM
+Set the compression level used by
+.Fl -compress .
 .It Fl -contimeout Ns = Ns Ar seconds
 Set the connection timeout in seconds.
 Exit if no connection established within the specified time.
