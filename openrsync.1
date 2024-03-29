@@ -63,6 +63,7 @@
 .Op Fl -no-motd
 .Op Fl -numeric-ids
 .Op Fl -partial
+.Op Fl -partial-dir Ns = Ns DIR
 .Op Fl -password-file Ns = Ns Ar pwfile
 .Op Fl -port Ns = Ns Ar service
 .Op Fl -progress
@@ -604,6 +605,12 @@ Do not remove partially transferred files if
 .Nm
 is interrupted, which opens up the possibility for them to be easily resumed
 later.
+.It Fl -partial-dir Ns = Ns Ar DIR
+Store all partially transferred files in
+.Ar DIR
+to allow an interrupted transfer to resume without re-transferring files.
+Implies
+.Fl partial .
 .It Fl -password-file Ns = Ns Ar pwfile
 Define a file to read the password from when connecting to an rsync daemon.
 The password should be written on the first line of the file, and may have a
