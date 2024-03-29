@@ -862,8 +862,8 @@ usage(int exitcode)
 #endif
 	    "\t[--existing] [--force] [--ignore-errors]\n"
 	    "\t[--ignore-existing] [--ignore-non-existing] [--include]\n"
-	    "\t[--include-from=file] [--inplace] [--itemize] [--keep-dirlinks]\n"
-	    "\t[--link-dest=dir] [--log-format=fmt]\n"
+	    "\t[--include-from=file] [--inplace] [--itemize-changes]\n"
+	    "\t[--keep-dirlinks] [--link-dest=dir] [--log-format=fmt]\n"
 	    "\t[--max-delete=NUM] [--max-size=SIZE] [--min-size=SIZE]\n"
 	    "\t[--modify-window=sec] [--no-motd] [--numeric-ids]\n"
 	    "\t[--out-format=FMT] [--partial] [--password-file=pwfile] [--port=portnumber]\n"
