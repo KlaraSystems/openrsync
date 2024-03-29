@@ -1527,6 +1527,15 @@ flist_gen_dirent_file(struct sess *sess, const char *type, const char *root,
 	return 1;
 }
 
+static int
+flist_dir_recurse(const char *root)
+{
+	char tc;
+
+	tc = root[strlen(root) - 1];
+	return tc == '/' || tc == '.';
+}
+
 static ssize_t
 flist_dirent_strip(const char *root)
 {
@@ -1646,6 +1655,15 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		return flist_gen_dirent_file(sess, "special", root, fl, &st, prefix);
 	}
 
+	/*
+	 * If we're non-recursive, just --dirs, then we may just need to add the
+	 * entry if it's specified as "foo" and not "foo/".
+	 */
+	if (sess->opts->dirs && !sess->opts->recursive &&
+	    (stripdir != -1 || !flist_dir_recurse(root))) {
+		return flist_gen_dirent_file(sess, "dir", root, fl, &st, prefix);
+	}
+
 	if (stripdir == -1)
 		stripdir = flist_dirent_strip(root);
 
@@ -1665,6 +1683,10 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 
 	errno = 0;
 	while ((ent = fts_read(fts)) != NULL) {
+		if (ent->fts_info == FTS_D && ent->fts_level > 0 &&
+		    !sess->opts->recursive)
+			fts_set(fts, ent, FTS_SKIP);
+
 		if (ent->fts_info == FTS_DP)
 			rules_dir_pop(ent->fts_path, stripdir);
 
@@ -2134,7 +2156,7 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	if (sess->opts->syncfile == NULL) {
 #endif
 	assert(argc > 0);
-	rc = sess->opts->recursive ?
+	rc = sess->opts->recursive || sess->opts->dirs ?
 		flist_gen_dirs(sess, argc, argv, fl) :
 		flist_gen_files(sess, argc, argv, fl);
 #if 0
