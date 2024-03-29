@@ -700,6 +700,7 @@ enum {
 	OP_STATS,
 	OP_COMPLEVEL,
 	OP_EXECUTABILITY,
+	OP_LISTONLY,
 };
 
 const char rsync_shopts[] = "0468B:CDEFHIKLOPRSVWabcde:f:ghiklnopqrtuvxyz";
@@ -766,6 +767,7 @@ const struct option	 rsync_lopts[] = {
     { "ipv6",		no_argument,	NULL,			'6' },
     { "keep-dirlinks",	no_argument,	NULL,			'K' },
     { "links",		no_argument,	NULL,			'l' },
+    { "list-only",	no_argument,	NULL,			OP_LISTONLY },
     { "max-delete",	required_argument, NULL,		OP_MAX_DELETE },
     { "max-size",	required_argument, NULL,		OP_MAX_SIZE },
     { "min-size",	required_argument, NULL,		OP_MIN_SIZE },
@@ -1442,6 +1444,11 @@ basedir:
 			}
 			opts.human_readable++;
 			break;
+		case OP_LISTONLY:
+			if (opts.dirs == DIRMODE_OFF && !opts_no_dirs)
+				opts.dirs = DIRMODE_IMPLIED;
+			opts.list_only = 1;
+			break;
 		case OP_MAX_DELETE:
 			if (*optarg != '\0') {
 				char *endptr;
@@ -1688,6 +1695,9 @@ main(int argc, char *argv[])
 			/* Simplify all future checking of this value */
 			opts.whole_file = 0;
 		}
+
+		if (opts.list_only && !opts.dry_run)
+			opts.dry_run = DRY_FULL;
 		exit(rsync_server(cleanup_ctx, &opts, (size_t)argc, argv));
 	}
 
@@ -1813,6 +1823,9 @@ main(int argc, char *argv[])
 		/* NOTREACHED */
 	default:
 		cleanup_set_child(cleanup_ctx, child);
+
+		if (opts.list_only && !opts.dry_run)
+			opts.dry_run = DRY_FULL;
 
 		close(fds[1]);
 		if (!fargs->remote)

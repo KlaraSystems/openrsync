@@ -56,6 +56,8 @@
 #define	BIGPATH_MAX	(PATH_MAX + 1024)
 #endif
 
+#define	STRMODE_BUFSZ	12	/* Documented size of all strmode calls */
+
 /*
  * This is the rsync protocol version that we support.
  */
@@ -515,6 +517,7 @@ struct	opts {
 	int		 extended_attributes;	/* --extended-attributes */
 #endif
 	int		 ignore_nonreadable;	/* daemon: ignore nonreadable */
+	int		 list_only;		/* --list-only */
 };
 
 enum rule_type {

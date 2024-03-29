@@ -516,7 +516,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	}
 	case 'B': {
 		/* Print mode human-readable */
-		char buf[12]; /* Documented size of all strmode calls */
+		char buf[STRMODE_BUFSZ];
 
 		if (do_print) {
 			our_strmode(fl->st.mode, buf);

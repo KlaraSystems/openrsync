@@ -1073,6 +1073,35 @@ flist_append(struct sess *sess, const struct stat *st,
 	return 1;
 }
 
+static void
+flist_output_one(const struct sess *sess, struct flist *fl)
+{
+	char timebuf[128];
+	char modebuf[STRMODE_BUFSZ];
+	const char *linkdest = NULL;
+
+	if (sess->opts->preserve_links && S_ISLNK(fl->st.mode))
+		linkdest = fl->link;
+
+	our_strmode(fl->st.mode, modebuf);
+
+	strftime(timebuf, sizeof(timebuf) - 1, "%Y/%m/%d %H:%M:%S",
+	    localtime(&fl->st.mtime));
+
+	LOG0("%s %11.0d %s %s%s%s", modebuf, fl->st.size,
+	    timebuf, fl->path,
+	    linkdest != NULL ? " -> " : "",
+	    linkdest != NULL ? linkdest : "");
+}
+
+static void
+flist_output(const struct sess *sess, struct flist *fl, size_t flsz)
+{
+
+	for (size_t i = 0; i < flsz; i++)
+		flist_output_one(sess, &fl[i]);
+}
+
 /*
  * Receive a file list from the wire, filling in length "sz" (which may
  * possibly be zero) and list "flp" on success.
@@ -1462,6 +1491,9 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		idents_remap(sess, 1, gids, gidsz);
 		idents_assign_gid(sess, fl, flsz, gids, gidsz);
 	}
+
+	if (sess->opts->list_only)
+		flist_output(sess, fl, flsz);
 
 	idents_free(gids, gidsz);
 	idents_free(uids, uidsz);
