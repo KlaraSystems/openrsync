@@ -30,6 +30,7 @@
 .Op Fl -bwlimit Ns = Ns limit
 .Op Fl -cache | Fl -no-cache
 .Op Fl -checksum-seed Ns = Ns NUM
+.Op Fl -chmod Ns = Ns MODE
 .Op Fl -compare-dest Ns = Ns Ar directory
 .Op Fl -contimeout Ns = Ns Ar seconds
 .Op Fl -copy-dest Ns = Ns Ar directory
@@ -209,6 +210,27 @@ is randomly generated, but if set to zero directs
 to use
 .Ar time(3)
 as the checksum seed.
+.It Fl -chmod Ns = Ns Ar MODE
+Modify the permissions on files that are transferred, overriding the original source permissions.
+Only has an effect if
+.Fl -perms
+is specified as well.
+The
+.Ar MODE
+string can be a comma separated list of literal
+.Pq 755
+or relative
+.Pq g+w
+permissions.
+.Pp
+.Nm
+also supports two additional extensions to relative permissions, adding a
+.Sq D
+or
+.Sq F
+infront of the relative permissions will apply the changes to only directories
+or files respectively.
+For example: -chmod=Dg+w,Fo-w
 .It Fl -compare-dest Ns = Ns Ar directory
 Use directory as an alternate base directory to compare files against on the
 destination machine.
