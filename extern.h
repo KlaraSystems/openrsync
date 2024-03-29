@@ -344,6 +344,11 @@ struct	flstat {
 #define	FLSTAT_PLATFORM_MASK	0xf0000000
 };
 
+#ifdef __APPLE__
+#define st_atim st_atimespec
+#define st_mtim st_mtimespec
+#endif /* __APPLE__ */
+
 /*
  * Subset of stat(2) information from the original destination
  * file that we need to apply to backup files.
