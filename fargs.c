@@ -359,6 +359,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--out-format");
 		addargs(&args, "%s", sess->opts->outformat);
 	}
+	if (sess->opts->list_only)
+		addargs(&args, "--list-only");
 	if (sess->opts->bit8 > 0)
 		addargs(&args, "-8");
 	if (sess->opts->bwlimit >= 1024) {
