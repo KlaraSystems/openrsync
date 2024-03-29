@@ -74,6 +74,7 @@
 .Op Fl -size-only
 .Op Fl -sockopts Ns = Ns Ar sockopts
 .Op Fl -specials
+.Op Fl -stats
 .Op Fl -suffix Ns = Ns Ar suffix
 .Op Fl -super
 .Op Fl -timeout Ns = Ns Ar seconds
@@ -729,6 +730,10 @@ May not be available on all systems.
 Attempt to efficiently handle sparse files.
 .It Fl -specials
 Also transfer fifo and unix domain socket files.
+.It Fl -stats
+Print verbose statistics about the transfer at the end of the run.
+Provides details about how much data transfer was saved by
+.Nm .
 .It Fl -suffix Ar suffix
 Sets the suffix to be appended to filenames when creating backups on the
 receiver before replacing files.
