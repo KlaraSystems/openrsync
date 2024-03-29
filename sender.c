@@ -849,27 +849,6 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 }
 
 static int
-got_info(void *cookie, const void *data, size_t datasz)
-{
-	struct success_ctx *sctx = cookie;
-	size_t pos = 0;
-	int32_t idx;
-	struct flist *fl;
-
-	io_unbuffer_int(data, &pos, datasz, &idx);
-
-	if (idx < 0 || (size_t)idx >= sctx->fl->sz) {
-		ERRX("info idx %d out of range", idx);
-		return 0;
-	}
-
-	fl = &sctx->fl->flp[idx];
-	output(sctx->sess, fl, 1);
-
-	return 1;
-}
-
-static int
 file_success(void *cookie, const void *data, size_t datasz)
 {
 	struct success_ctx *sctx = cookie;
@@ -1160,11 +1139,6 @@ rsync_sender(struct sess *sess, int fdin,
 
 	sctx.sess = sess;
 	sctx.fl = &fl;
-	if (!io_register_handler(IT_INFO, &got_info, &sctx)) {
-		ERRX("Failed to install IT_INFO handler; exiting");
-		rc = 1;
-		goto out;
-	}
 	if (sess->opts->remove_source) {
 		if (!io_register_handler(IT_SUCCESS, &file_success, &sctx)) {
 			ERRX("Failed to install remove-source-files handler; exiting");
