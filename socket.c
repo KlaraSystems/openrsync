@@ -720,12 +720,14 @@ protocol_auth(struct sess *sess, const char *user, int sd,
  */
 static int
 protocol_line(struct sess *sess, __attribute__((unused)) const char *host,
-    const char *user, int sd, const char *cp)
+    const char *user, int sd, const char *cp, int listonly)
 {
 	int	major, minor;
 
 	if (strncmp(cp, "@RSYNCD: ", 9)) {
-		if (sess->opts->no_motd == 0)
+		if (listonly)
+			LOG0("%s", cp);
+		else if (sess->opts->no_motd == 0)
 			LOG1("%s", cp);
 		return 0;
 	}
@@ -736,7 +738,7 @@ protocol_line(struct sess *sess, __attribute__((unused)) const char *host,
 
 	/* @RSYNCD: OK indicates that we're finished. */
 
-	if (strcmp(cp, "OK") == 0)
+	if (strcmp(cp, "OK") == 0 || strcmp(cp, "EXIT") == 0)
 		return 1;
 
 	if (strncmp(cp, "AUTHREQD", sizeof("AUTHREQ") - 1) == 0) {
@@ -757,7 +759,7 @@ protocol_line(struct sess *sess, __attribute__((unused)) const char *host,
 		return 0;
 	}
 
-	ERRX("rsyncd protocol error: unknown command");
+	ERRX("rsyncd protocol error: unknown command: %s", cp);
 	return -1;
 }
 
@@ -991,7 +993,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 {
 	struct sess	  sess;
 	size_t		  i, skip;
-	int		  c, rc = 1;
+	int		  c, listonly = 0, rc = 1;
 	char		**args, buf[BUFSIZ];
 
 	if (pledge("stdio unix rpath wpath cpath dpath fattr chown getpw unveil",
@@ -1020,11 +1022,21 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		goto out;
 	}
 
-	LOG2("requesting module: %s, %s", f->module, f->host);
+	if (f->module[0] == '\0') {
+		LOG2("requesting module listing from %s", f->host);
 
-	if (!io_write_line(&sess, sd, f->module)) {
-		ERRX1("io_write_line");
-		goto out;
+		listonly = 1;
+		if (!io_write_line(&sess, sd, "#list")) {
+			ERRX1("io_write_line");
+			goto out;
+		}
+	} else {
+		LOG2("requesting module: %s, %s", f->module, f->host);
+
+		if (!io_write_line(&sess, sd, f->module)) {
+			ERRX1("io_write_line");
+			goto out;
+		}
 	}
 
 	/*
@@ -1060,11 +1072,17 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		if (buf[i - 1] == '\r')
 			buf[i - 1] = '\0';
 
-		if ((c = protocol_line(&sess, f->host, f->user, sd, buf)) < 0) {
+		if ((c = protocol_line(&sess, f->host, f->user, sd, buf,
+		    listonly)) < 0) {
 			ERRX1("protocol_line");
 			goto out;
 		} else if (c > 0)
 			break;
+	}
+
+	if (listonly) {
+		rc = 0;
+		goto out;
 	}
 
 	/*
@@ -1076,11 +1094,13 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	 * Emit a standalone newline afterward.
 	 */
 
-	for (i = skip ; args[i] != NULL; i++)
+	for (i = skip ; args[i] != NULL; i++) {
+		LOG2("exec[%zu] = %s", i, args[i]);
 		if (!io_write_line(&sess, sd, args[i])) {
 			ERRX1("io_write_line");
 			goto out;
 		}
+	}
 	if (!io_write_byte(&sess, sd, '\n')) {
 		ERRX1("io_write_line");
 		goto out;
@@ -1129,8 +1149,19 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	    sess.opts->whole_file ? "disabled" : "enabled");
 
 	if (f->mode == FARGS_RECEIVER) {
+		const char *sink = f->sink;
+
 		LOG2("client starting receiver: %s", f->host);
-		if (!rsync_receiver(&sess, cleanup_ctx, sd, sd, f->sink)) {
+		if (sink == NULL) {
+			/*
+			 * --list-only mode, just fake something.
+			 */
+			sink = strdup(".");
+			if (sink == NULL)
+				errx(ERR_NOMEM, NULL);
+		}
+
+		if (!rsync_receiver(&sess, cleanup_ctx, sd, sd, sink)) {
 			ERRX1("rsync_receiver");
 			goto out;
 		}
