@@ -823,7 +823,6 @@ const struct option	 rsync_lopts[] = {
     { "write-batch",	required_argument, NULL,		OP_WRITE_BATCH },
     { "progress",	no_argument,	&opts.progress,		1 },
     { "no-progress",	no_argument,	&opts.progress,		0 },
-    { "backup",		no_argument,	NULL,			'b' },
     { "relative",	no_argument,	NULL,			'R' },
     { "no-R",		no_argument,	NULL,			OP_NO_RELATIVE },
     { "no-relative",	no_argument,	NULL,			OP_NO_RELATIVE },
