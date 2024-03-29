@@ -859,10 +859,6 @@ got_info(void *cookie, const void *data, size_t datasz)
 	struct flist *fl;
 
 	io_unbuffer_int(data, &pos, datasz, &idx);
-	if (pos != datasz) {
-		ERRX("bad info payload size %zu", datasz);
-		return 0;
-	}
 
 	if (idx < 0 || (size_t)idx >= sctx->fl->sz) {
 		ERRX("info idx %d out of range", idx);
