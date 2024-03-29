@@ -1676,6 +1676,8 @@ again:
 	sess->total_files_xfer++;
 	sess->total_xfer_size += f->st.size;
 
+	output(sess, f, 1);
+
 	/* We can still get here with a DRY_XFER in some cases. */
 	if (p->fd < 0 || sess->opts->dry_run)
 		goto done;

@@ -232,18 +232,6 @@ init_blk(struct blk *p, const struct blkset *set, off_t offs,
 }
 
 /*
- * Tell the other side to run output from log-format/itemize.
- * return 0 on success, non-0 otherwise.
- */
-static int
-output_rem(struct sess *sess, struct flist *f, int idx, int fdout)
-{
-	if (!io_write_int_tagged(sess, fdout, idx, IT_INFO))
-		return 1;
-	return 0;
-}
-
-/*
  * Handle a symbolic link.
  * If we encounter directories existing in the symbolic link's place,
  * then try to unlink the directory.
@@ -292,8 +280,6 @@ pre_symlink(struct upload *p, struct sess *sess)
 		} else
 			f->iflags |= IFLAG_NEW;
 	}
-
-	output_rem(sess, f, p->idx, p->fdout);
 
 	if (!sess->opts->ignore_times)
 		if (st.st_mtime != f->st.mtime)
@@ -429,8 +415,6 @@ pre_dev(struct upload *p, struct sess *sess)
 			f->iflags |= IFLAG_NEW;
 	}
 
-	output_rem(sess, f, p->idx, p->fdout);
-
 	if (rc != -1 && !(S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
 		if (force_delete_applicable(p, sess, st.st_mode))
 			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
@@ -543,8 +527,6 @@ pre_fifo(struct upload *p, struct sess *sess)
 			f->iflags |= IFLAG_NEW;
 	}
 
-	output_rem(sess, f, p->idx, p->fdout);
-
 	if (rc != -1 && !S_ISFIFO(st.st_mode)) {
 		if (force_delete_applicable(p, sess, st.st_mode))
 			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
@@ -642,8 +624,6 @@ pre_sock(struct upload *p, struct sess *sess)
 		} else
 			f->iflags |= IFLAG_NEW;
 	}
-
-	output_rem(sess, f, p->idx, p->fdout);
 
 	if (rc != -1 && !S_ISSOCK(st.st_mode)) {
 		if (S_ISDIR(st.st_mode) &&
@@ -962,8 +942,6 @@ pre_dir(struct upload *p, struct sess *sess)
 		} else
 			f->iflags |= IFLAG_NEW;
 	}
-
-	output_rem(sess, f, p->idx, p->fdout);
 
 	if (rc != -1 && !S_ISDIR(st.st_mode)) {
 		if (sess->opts->keep_dirlinks &&
