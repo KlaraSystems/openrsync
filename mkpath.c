@@ -120,4 +120,3 @@ mkpathat(int fd, char *path)
 
 	return (0);
 }
-
