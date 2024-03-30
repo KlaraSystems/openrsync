@@ -1202,6 +1202,15 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (!daemon_apply_ignoreopts(sess, module, client_opts))
 		goto fail;
 
+	/*
+	 * A --log-file-format specified to the daemon overrides the module's
+	 * "log format", so we'll set outformat now so that
+	 * daemon_apply_xferlog() can actually detect that.
+	 */
+	client_opts->outformat = sess->opts->outformat;
+	if (!daemon_apply_xferlog(sess, module, client_opts))
+		goto fail;
+
 	if (!daemon_install_symlink_filter(sess, module, use_chroot))
 		goto fail;
 

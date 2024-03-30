@@ -82,6 +82,7 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("list",		NULL,		"true"),
 	PARAM_DFLT("lock file",		"lockfile",	"/var/run/rsyncd.lock"),
 	PARAM("log file",	"logfile"),
+	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),
 	PARAM_DFLT("max connections",	"maxconnections",	"0"),
 	PARAM_DFLT("max verbosity",	"maxverbosity",	"1"),
 	/* next two defaults are based on chroot. */
@@ -97,13 +98,10 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("strict modes",	"strictmodes",	"true"),
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
 	PARAM_DFLT("timeout",	NULL,	"0"),
+	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
 	PARAM_DFLT("uid",		NULL,		"-2"),
 	PARAM_DFLT("use chroot",	"usechroot",	"true"),
 	PARAM_DFLT("write only",	"writeonly",	"false"),
-
-	/* Not implemented module options */
-	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
-	PARAM_DFLT("log format",	"logformat",		RSYNCD_LOG_FORMAT),
 
 	/* Intentionally omitted options (will warn) */
 	PARAM("dont compress",	"dontcompress"),

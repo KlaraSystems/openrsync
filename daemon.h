@@ -69,6 +69,7 @@ int	daemon_apply_chmod(struct sess *, const char *, struct opts *);
 int	daemon_apply_chrootopts(struct sess *, const char *, struct opts *,
 	    int);
 int	daemon_apply_ignoreopts(struct sess *, const char *, struct opts *);
+int	daemon_apply_xferlog(struct sess *, const char *, struct opts *);
 int	daemon_chuser_setup(struct sess *, const char *);
 int	daemon_chuser(struct sess *, const char *);
 void	daemon_client_error(struct sess *, const char *, ...);
