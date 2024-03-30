@@ -1824,7 +1824,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
 				/* basis flag */
 				u->bufsz += sizeof(int8_t);
-	                }
+			}
 			if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
 				/* vstring len byte */
 				u->bufsz += sizeof(int8_t);
@@ -1850,11 +1850,11 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
 				io_buffer_byte(u->buf, &pos, u->bufsz,
 				    u->fl[u->idx].basis);
-	                }
+			}
 			if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
 				io_buffer_vstring(u->buf, &pos, u->bufsz,
 				    u->fl[u->idx].link, linklen);
-	                }
+			}
 		}
 
 		/*
@@ -1995,7 +1995,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		u->bufsz += sizeof(int16_t); /* iflags */
 		if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
 			u->bufsz += sizeof(int8_t); /* basis flag */
-                }
+}
 		if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
 			u->bufsz += sizeof(int8_t); /* vstring len byte */
 			if ((linklen = strlen(u->fl[u->idx].link)) > 0x7f) {
@@ -2021,11 +2021,11 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		io_buffer_short(u->buf, &pos, u->bufsz, u->fl[u->idx].iflags);
 		if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
 			io_buffer_byte(u->buf, &pos, u->bufsz, u->fl[u->idx].basis);
-                }
+		}
 		if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
 			io_buffer_vstring(u->buf, &pos, u->bufsz,
 			    u->fl[u->idx].link, linklen);
-                }
+		}
 	}
 	io_buffer_int(u->buf, &pos, u->bufsz, (int)blk.blksz);
 	io_buffer_int(u->buf, &pos, u->bufsz, (int)blk.len);
