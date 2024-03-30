@@ -84,9 +84,7 @@ static const struct option	daemon_lopts[] = {
 	{ "ipv6",	no_argument,	NULL,			'6' },
 	{ "help",	no_argument,	NULL,			'h' },
 	{ "log-file",	required_argument,	NULL,		OP_LOG_FILE },
-#if 0
 	{ "log-file-format",	required_argument,	NULL,	OP_LOG_FILE_FORMAT },
-#endif
 	{ "port",	required_argument,	NULL,		OP_PORT },
 	{ "sockopts",	required_argument,	NULL,		OP_SOCKOPTS },
 	{ "verbose",	no_argument,		NULL,		'v' },
@@ -1364,6 +1362,9 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 			break;
 		case OP_LOG_FILE:
 			logfile = optarg;
+			break;
+		case OP_LOG_FILE_FORMAT:
+			daemon_opts->outformat = optarg;
 			break;
 		case OP_PORT:
 			daemon_opts->port = optarg;
