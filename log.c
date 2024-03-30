@@ -372,29 +372,54 @@ isit_human(char *s1, const char *s2)
 	return count;
 }
 
-void __printflike(2, 0)
-print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s)
+/*
+ * Do the 8-bit escaping as needed for `s`.  If `sbuf` is NULL, then the result
+ * will be written to the log file -- otherwise, it'll be stashed in the sbuf
+ * passed in as requested.
+ */
+int __printflike(2, 0)
+print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
+    struct sbuf *sbuf)
 {
 	const char *p;
+	struct sbuf *innerbuf;
 
 	if (sess->opts->bit8) {
-		fprintf(sess->opts->outfile, fmt, s);
-		return;
+		if (sbuf != NULL)
+			sbuf_printf(sbuf, fmt, s);
+		else
+			log_writef(LOG_INFO, fmt, s);
+
+		return 1;
 	}
-	struct sbuf *sbuf;
-	sbuf = sbuf_new_auto();
+
+	innerbuf = sbuf_new_auto();
+	if (innerbuf == NULL) {
+		ERR("sbuf_new_auto");
+		return 0;
+	}
 
 	for (p = s; *p; p++) {
 		if (isprint(*(unsigned char*)p) || *p == '\t') {
-			sbuf_putc(sbuf, *p);
+			sbuf_putc(innerbuf, *p);
 		} else {
-			sbuf_printf(sbuf, "\\#%03o", *(unsigned char*)p);
+			sbuf_printf(innerbuf, "\\#%03o", *(unsigned char*)p);
 		}
 	}
-	sbuf_finish(sbuf);
-	fprintf(sess->opts->outfile, fmt, sbuf_data(sbuf));
 
-	sbuf_delete(sbuf);
+	if (sbuf_finish(innerbuf) != 0) {
+		ERR("sbuf_finish");
+		sbuf_delete(innerbuf);
+		return 0;
+	}
+
+	if (sbuf != NULL)
+		sbuf_printf(sbuf, fmt, sbuf_data(innerbuf));
+	else
+		log_writef(LOG_INFO, fmt, sbuf_data(innerbuf));
+	sbuf_delete(innerbuf);
+
+	return 1;
 }
 
 /*
@@ -409,7 +434,7 @@ print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s)
  */
 static const char * __printflike(1, 0)
 printf_doformat(const char *fmt, int *rval, const struct sess *sess,
-    const struct flist *fl, int do_print)
+    const struct flist *fl, struct sbuf *sbuf)
 {
 	static const char skip1[] = "'-+ 0";
 	char convch;
@@ -479,20 +504,20 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		bytes_transferred = sess->total_read - sess->total_read_lf +
 			sess->total_write - sess->total_write_lf;
 
-		if (do_print) {
+		if (sbuf != NULL) {
 			switch (humanlevel) {
 			case 0:
 				widthstring[l + 1] = 'l';
 				widthstring[l + 2] = 'd';
 				widthstring[l + 3] = '\0';
-				fprintf(sess->opts->outfile, widthstring,
+				sbuf_printf(sbuf, widthstring,
 				    bytes_transferred);
 				break;
 			case 1:
 				widthstring[l + 1] = 'l';
 				widthstring[l + 2] = 'd';
 				widthstring[l + 3] = '\0';
-				fprintf(sess->opts->outfile, widthstring,
+				sbuf_printf(sbuf, widthstring,
 				    bytes_transferred);
 				break;
 			case 2:
@@ -500,7 +525,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				    "", HN_AUTOSCALE, HN_DECIMAL|HN_NOSPACE);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				fprintf(sess->opts->outfile, widthstring, foo);
+				sbuf_printf(sbuf, widthstring, foo);
 				break;
 			case 3:
 				humanize_number(foo, 5, bytes_transferred, "",
@@ -508,7 +533,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				    HN_DECIMAL|HN_NOSPACE|HN_DIVISOR_1000);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				fprintf(sess->opts->outfile, widthstring, foo);
+				sbuf_printf(sbuf, widthstring, foo);
 				break;
 			}
 		}
@@ -518,11 +543,11 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		/* Print mode human-readable */
 		char buf[STRMODE_BUFSZ];
 
-		if (do_print) {
+		if (sbuf != NULL) {
 			our_strmode(fl->st.mode, buf);
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
-			fprintf(sess->opts->outfile, widthstring, buf);
+			sbuf_printf(sbuf, widthstring, buf);
 		}
 		break;
 	}
@@ -559,24 +584,28 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		/*
 		 * "the filename (long form on sender; no trailing "/")"
 		 */
-		if (do_print) {
+		if (sbuf != NULL) {
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
-			print_7_or_8_bit(sess, widthstring, fl->path);
+			if (!print_7_or_8_bit(sess, widthstring, fl->path,
+			    sbuf)) {
+				ERRX("print_7_or_8_bit");
+				return NULL;
+			}
 		}
 		break;
 	}
 	case 'G': {
 		/* FIXME this is incorrect since gid 0 is also root */
-		if (do_print) {
+		if (sbuf != NULL) {
 			if (fl->st.gid) {
 				widthstring[l + 1] = 'd';
 				widthstring[l + 2] = '\0';
-				fprintf(sess->opts->outfile, widthstring, fl->st.gid);
+				sbuf_printf(sbuf, widthstring, fl->st.gid);
 			} else {
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				fprintf(sess->opts->outfile, widthstring, "DEFAULT");
+				sbuf_printf(sbuf, widthstring, "DEFAULT");
 			}
 		}
 		break;
@@ -591,7 +620,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		int32_t ifl;
 
 		*rval |= 1;
-		if (do_print) {
+		if (sbuf != NULL) {
 			ifl = fl->iflags;
 			if (ifl & IFLAG_DELETED) {
 				/*
@@ -684,7 +713,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
-			fprintf(sess->opts->outfile, widthstring, buf);
+			sbuf_printf(sbuf, widthstring, buf);
 		}
 		break;
 	}
@@ -692,13 +721,13 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		/* File length */
 		char foo[8192];
 
-		if (do_print) {
+		if (sbuf != NULL) {
 			switch (humanlevel) {
 			case 0:
 				widthstring[l + 1] = 'l';
 				widthstring[l + 2] = 'd';
 				widthstring[l + 3] = '\0';
-				fprintf(sess->opts->outfile, widthstring, fl->st.size);
+				sbuf_printf(sbuf, widthstring, fl->st.size);
 				break;
 			case 1:
 				/* TODO for 3.x: use a printf with "'" */
@@ -706,21 +735,21 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				widthstring[l + 2] = 'l';
 				widthstring[l + 3] = 'd';
 				widthstring[l + 4] = '\0';
-				fprintf(sess->opts->outfile, widthstring, fl->st.size);
+				sbuf_printf(sbuf, widthstring, fl->st.size);
 				break;
 			case 2:
 				humanize_number(foo, 5, fl->st.size,
 				    "", HN_AUTOSCALE, HN_DECIMAL|HN_NOSPACE);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				fprintf(sess->opts->outfile, widthstring, foo);
+				sbuf_printf(sbuf, widthstring, foo);
 				break;
 			case 3:
 				humanize_number(foo, 5, fl->st.size, "", HN_AUTOSCALE,
 				    HN_DECIMAL|HN_NOSPACE|HN_DIVISOR_1000);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				fprintf(sess->opts->outfile, widthstring, foo);
+				sbuf_printf(sbuf, widthstring, foo);
 				break;
 			}
 		}
@@ -738,17 +767,25 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		 */
 		*rval |= 2;
 
-		if (do_print) {
+		if (sbuf != NULL) {
 			if (fl->iflags & IFLAG_HLINK_FOLLOWS) {
 				snprintf(buf, sizeof(buf), " => %s", fl->link);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				print_7_or_8_bit(sess, widthstring, buf);
+				if (!print_7_or_8_bit(sess, widthstring, buf,
+				    sbuf)) {
+					ERRX("print_7_or_8_bit");
+					return NULL;
+				}
 			} else if (fl->link != NULL) {
 				snprintf(buf, sizeof(buf), " -> %s", fl->link);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				print_7_or_8_bit(sess, widthstring, buf);
+				if (!print_7_or_8_bit(sess, widthstring, buf,
+				    sbuf)) {
+					ERRX("print_7_or_8_bit");
+					return NULL;
+				}
 			}
 
 		}
@@ -762,13 +799,13 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		/* Modification time of item */
 		char buf[8192];
 
-		if (do_print) {
+		if (sbuf != NULL) {
 			/* 2024/01/30-16:23:29 */
 			strftime(buf, sizeof(buf), "%Y/%m/%d-%H:%M:%S",
 			    localtime(&fl->st.mtime));
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
-			fprintf(sess->opts->outfile, widthstring, buf);
+			sbuf_printf(sbuf, widthstring, buf);
 		}
 		break;
 	}
@@ -776,7 +813,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		/* Alternate file name print */
 		char buf[8192];
 
-		if (do_print) {
+		if (sbuf != NULL) {
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
 			/* "(short form; trailing "/" on dir)" */
@@ -784,7 +821,11 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				snprintf(buf, sizeof(buf), "%s/", fl->wpath);
 			else
 				snprintf(buf, sizeof(buf), "%s", fl->wpath);
-			print_7_or_8_bit(sess, widthstring, buf);
+			if (!print_7_or_8_bit(sess, widthstring, buf,
+			    sbuf)) {
+				ERRX("print_7_or_8_bit");
+				return NULL;
+			}
 		}
 		break;
 	}
@@ -794,21 +835,24 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		 * "the operation, which is "send", "recv", or "del." (the
 		 * latter includes the trailing period)"
 		 */
-		if (do_print) {
+		if (sbuf != NULL) {
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
-			print_7_or_8_bit(sess, widthstring,
-			    sess->opts->sender ? "send" : "recv");
+			if (!print_7_or_8_bit(sess, widthstring,
+			    sess->opts->sender ? "send" : "recv", sbuf)) {
+				ERRX("print_7_or_8_bit");
+				return NULL;
+			}
 		}
 		break;
 	}
 	case 'p': {
 		/* PID as a number */
-		if (do_print) {
+		if (sbuf != NULL) {
 			widthstring[l + 1] = 'd';
 			widthstring[l + 2] = '\0';
 			/* TODO: capture top-level pid in main() */
-			fprintf(sess->opts->outfile, widthstring, getpid());
+			sbuf_printf(sbuf, widthstring, getpid());
 		}
 		break;
 	}
@@ -821,13 +865,13 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		char buf[8192];
 		time_t now;
 
-		if (do_print) {
+		if (sbuf != NULL) {
 			time(&now);
 			strftime(buf, sizeof(buf), "%Y/%m/%d-%H:%M:%S",
 			    localtime(&now));
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
-			fprintf(sess->opts->outfile, widthstring, buf);
+			sbuf_printf(sbuf, widthstring, buf);
 		}
 		break;
 	}
@@ -837,15 +881,15 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	}
 	case 'U': {
 		/* FIXME this is incorrect since uid 0 is also root */
-		if (do_print) {
+		if (sbuf != NULL) {
 			if (fl->st.uid) {
 				widthstring[l + 1] = 'd';
 				widthstring[l + 2] = '\0';
-				fprintf(sess->opts->outfile, widthstring, fl->st.uid);
+				sbuf_printf(sbuf, widthstring, fl->st.uid);
 			} else {
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				fprintf(sess->opts->outfile, widthstring, "DEFAULT");
+				sbuf_printf(sbuf, widthstring, "DEFAULT");
 			}
 		}
 		break;
@@ -861,9 +905,19 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 	int end, rval = 0;
 	const char *start;
 	const char *fmt, *format;
+	struct sbuf *sbuf;
 
 	if (sess->opts->outformat == NULL)
 		return 0;
+
+	sbuf = NULL;
+	if (do_print) {
+		sbuf = sbuf_new_auto();
+		if (sbuf == NULL) {
+			ERR("sbuf_new_auto");
+			return 0;
+		}
+	}
 
 	fmt = format = sess->opts->outformat;
 	len = strlen(fmt);
@@ -874,16 +928,15 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 		while (fmt < format + len) {
 			if (fmt[0] == '%') {
 				if (do_print)
-					fwrite(start, 1, fmt - start,
-					    sess->opts->outfile);
+					sbuf_bcat(sbuf, start, fmt - start);
 				if (fmt[1] == '%') {
 					/* %% prints a % */
 					if (do_print)
-						fputc('%', sess->opts->outfile);
+						sbuf_putc(sbuf, '%');
 					fmt += 2;
 				} else {
 					fmt = printf_doformat(fmt, &rval, sess,
-					    fl, do_print);
+					    fl, sbuf);
 					if (fmt == NULL || *fmt == '\0')
 						goto out;
 					end = 0;
@@ -894,15 +947,29 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 		}
 		if (end == 1) {
 			ERRX("missing format character");
+			if (sbuf != NULL)
+				sbuf_delete(sbuf);
 			return rval;
 		}
 		if (do_print)
-			fwrite(start, 1, fmt - start, sess->opts->outfile);
+			sbuf_bcat(sbuf, start, fmt - start);
 	}
 
 	out:
-	if (do_print)
-		fputc('\n', sess->opts->outfile);
+	if (do_print) {
+		sbuf_putc(sbuf, '\n');
+
+		if (sbuf_finish(sbuf) != 0) {
+			ERR("sbuf_finish");
+			sbuf_delete(sbuf);
+			return 0;
+		}
+
+		log_writef(LOG_INFO, "%s", sbuf_data(sbuf));
+		sbuf_delete(sbuf);
+	} else {
+		assert(sbuf == NULL);
+	}
 
 	sess->total_read_lf = sess->total_read;
 	sess->total_write_lf = sess->total_write;

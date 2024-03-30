@@ -488,7 +488,6 @@ struct	opts {
 	char            *filesfrom;             /* --files-from */
 	int		 from0;			/* -0 */
 	char            *outformat;             /* --out-format */
-	FILE            *outfile;               /* --out-format and -v */
 	const char	*sockopts;		/* --sockopts */
 	off_t		 bwlimit;		/* --bwlimit */
 	int		 size_only;		/* --size-only */
@@ -1042,8 +1041,10 @@ sess_is_inplace(struct sess *sess)
 #define S_ISTXT S_ISVTX
 #endif
 
+struct sbuf;
 int output(struct sess *sess, const struct flist *fl, int do_print);
 void our_strmode(mode_t mode, char *p);
-void print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s);
+int print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
+    struct sbuf *);
 
 #endif /*!EXTERN_H*/

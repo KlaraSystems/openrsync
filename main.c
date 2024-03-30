@@ -945,7 +945,6 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 	opts.max_size = opts.min_size = -1;
 	opts.compression_level = Z_DEFAULT_COMPRESSION;
 	opts.whole_file = -1;
-	opts.outfile = stderr;
 #ifdef __APPLE__
 	opts.no_cache = 1;
 #endif
