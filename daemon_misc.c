@@ -143,6 +143,40 @@ daemon_apply_ignoreopts(struct sess *sess, const char *module, struct opts *opts
 	return 1;
 }
 
+int
+daemon_apply_xferlog(struct sess *sess, const char *module, struct opts *opts)
+{
+	struct daemon_role *role;
+	int logging;
+
+	role = (void *)sess->role;
+	if (cfg_param_bool(role->dcfg, module, "transfer logging",
+	    &logging) != 0) {
+		daemon_client_error(sess, "%s: 'transfer logging' invalid");
+		return 0;
+	}
+
+	if (!logging) {
+		opts->outformat = NULL;
+	} else if (opts->outformat == NULL) {
+		int rc;
+
+		rc = cfg_param_str(role->dcfg, module, "log format", &opts->outformat);
+		assert(rc == 0);
+	}
+
+	if (opts->outformat != NULL) {
+		int printflags;
+
+		printflags = output(sess, NULL, 0);
+		if ((printflags & 1) != 0)
+			sess->itemize = 1;
+		if ((printflags & 2) != 0)
+			sess->lateprint = 1;
+	}
+	return 1;
+}
+
 static int
 daemon_chuser_resolve_name(const char *name, bool is_gid, id_t *oid)
 {
