@@ -391,7 +391,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			    100.0 * up->stat.dirty / up->stat.total);
 		sess->total_files_xfer++;
 		sess->total_xfer_size += fl[up->cur->idx].st.size;
-		if (!sess->opts->server)
+		if (!sess->opts->server || sess->opts->daemon)
 			output(sess, &fl[up->cur->idx], 1);
 		send_up_reset(up);
 		return 1;
@@ -578,7 +578,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			    100.0 * up->stat.dirty / up->stat.total);
 		sess->total_files_xfer++;
 		sess->total_xfer_size += fl[up->cur->idx].st.size;
-		if (!sess->opts->server)
+		if (!sess->opts->server || sess->opts->daemon)
 			output(sess, &fl[up->cur->idx], 1);
 		send_up_reset(up);
 		return 1;
@@ -1335,7 +1335,7 @@ rsync_sender(struct sess *sess, int fdin,
 
 				if ((fl.flp[mdl->idx].iflags & IFLAG_TRANSFER) == 0) {
 					mdl->dlstate = SDL_SKIP;
-					if (!sess->opts->server)
+					if (!sess->opts->server || sess->opts->daemon)
 						output(sess, &fl.flp[mdl->idx], 1);
 					break;
 				} else if (sess->opts->dry_run == DRY_FULL) {

@@ -428,6 +428,7 @@ void fl_print(const char *id, struct fl *fl);
 struct	opts {
 	int		 sender;		/* --sender */
 	int		 server;		/* --server */
+	int		 daemon;		/* --daemon (fake) */
 	int		 protocol;		/* --protocol */
 	int		 append;		/* --append */
 	int		 checksum;		/* -c --checksum */
@@ -487,7 +488,7 @@ struct	opts {
 	char		*basedir[MAX_BASEDIR];
 	char            *filesfrom;             /* --files-from */
 	int		 from0;			/* -0 */
-	char            *outformat;             /* --out-format */
+	const char	*outformat;             /* --out-format */
 	const char	*sockopts;		/* --sockopts */
 	off_t		 bwlimit;		/* --bwlimit */
 	int		 size_only;		/* --size-only */

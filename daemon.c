@@ -1148,6 +1148,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (client_opts == NULL)
 		goto fail;	/* Should have been logged. */
 
+	client_opts->daemon = 1;
+
 	argc -= optind;
 	argv += optind;
 
