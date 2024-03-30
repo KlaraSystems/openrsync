@@ -456,8 +456,13 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 */
 
 		if (!sess->opts->server && verbose > 0 &&
-		    !sess->lateprint && !sess->itemize)
-			print_7_or_8_bit(sess, "%s\n", fl[up->cur->idx].wpath);
+		    !sess->lateprint && !sess->itemize) {
+			if (!print_7_or_8_bit(sess, "%s\n",
+			    fl[up->cur->idx].wpath, NULL)) {
+				ERRX1("print_7_or_8_bit");
+				return 0;
+			}
+		}
 
 		send_iflags(sess, wb, wbsz, wbmax, &pos, fl, up->cur->idx);
 
@@ -637,8 +642,13 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		 */
 
 		if (!sess->opts->server && verbose > 0 &&
-		    !sess->lateprint && !sess->itemize)
-			print_7_or_8_bit(sess, "%s\n", fl[up->cur->idx].wpath);
+		    !sess->lateprint && !sess->itemize) {
+			if (!print_7_or_8_bit(sess, "%s\n",
+			    fl[up->cur->idx].wpath, NULL)) {
+				ERRX1("print_7_or_8_bit");
+				return 0;
+			}
+		}
 
 		send_iflags(sess, wb, wbsz, wbmax, &pos, fl, up->cur->idx);
 
