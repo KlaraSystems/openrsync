@@ -286,9 +286,24 @@ pre_symlink(struct upload *p, struct sess *sess)
 			f->iflags |= IFLAG_TIME;
 
 	if (rc != -1 && (sess->opts->inplace || !S_ISLNK(st.st_mode))) {
-		if (force_delete_applicable(p, sess, st.st_mode))
-			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
+		if (force_delete_applicable(p, sess, st.st_mode) &&
+		    S_ISDIR(st.st_mode)) {
+			struct flist   *dfl = NULL;
+			struct flist	bf;
+			size_t		dflsz = 0;
+
+			memcpy(&bf, f, sizeof(bf));
+			bf.st.flags |= FLSTAT_TOP_DIR;
+			bf.st.mode = st.st_mode;
+			if (!flist_gen_dels(sess, p->root, &dfl, &dflsz, &bf, 1)) {
+				ERRX1("flist_gen_dels symlink");
 				return -1;
+			}
+			if (!flist_del(sess, p->rootfd, dfl, dflsz)) {
+				ERRX1("flist_del symlink");
+				return -1;
+			}
+		}
 		if ((sess->opts->inplace || S_ISDIR(st.st_mode)) &&
 		    unlinkat(p->rootfd, f->path,
 		    S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0) == -1) {
