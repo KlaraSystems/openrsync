@@ -730,7 +730,7 @@ daemon_do_execcmds_pre(struct sess *sess, const char *module, const char *cmd)
 	 * why.  We'll keep the transfer process's environment clean to match
 	 * the post-xfer exec handling until we come up with a compelling reason
 	 * to do otherwise (e.g., config vars that might expect RSYNC_PID to be
-	 * populated -- this version of rsync deos not yet do var expansion).
+	 * populated -- this version of rsync does not yet do var expansion).
 	 */
 	daemon_do_execcmds_num_env("RSYNC_PID", ppid);
 	daemon_do_execcmds_common_env(role, module);
@@ -1496,6 +1496,9 @@ daemon_parse_refuse(struct sess *sess, const char *module)
 			 */
 			for (const char *shoptchk = "rlptgoD"; *shoptchk != '\0';
 			    shoptchk++) {
+				if (strchr(shopts, *shoptchk) == NULL)
+					continue;
+
 				rc = daemon_add_short_refuse(sess, &shopts,
 				    &shoptlen, &shoptsz,  'a');
 
