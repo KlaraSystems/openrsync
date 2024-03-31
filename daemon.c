@@ -999,6 +999,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if (daemon_read_hello(sess, fd, &module) < 0)
 		goto fail;	/* Error already logged. */
 
+	role->module = module;
+
 	/* XXX PROTOCOL_MIN, etc. */
 	if (sess->rver < RSYNC_PROTOCOL_MIN) {
 		daemon_client_error(sess,

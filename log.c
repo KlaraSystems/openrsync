@@ -492,8 +492,35 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	fmt++;
 
 	switch (convch) {
-	case 'a': {
-		/* TODO: server address */
+	case 'a':	/* Server address (daemon) */
+	case 'h': {	/* Remote host (daemon) */
+		if (!sess->opts->daemon)
+			break;	/* Nop in non-daemon mode. */
+		/* FALLTHROUGH */
+	}
+	case 'm':	/* Module */
+	case 'P':	/* Module path */
+	case 'u': {	/* Auth username */
+		const char *rolestr = NULL;
+
+		/*
+		 * These are also effectively daemon-only, but we'll still
+		 * render a blank string for clients.  All of them are delegated
+		 * to the role.
+		 */
+		if (sess->role->role_fetch_outfmt != NULL) {
+			rolestr = sess->role->role_fetch_outfmt(sess,
+			    sess->role->role_fetch_outfmt_cookie, convch);
+		}
+		if (rolestr == NULL)
+			rolestr = "";
+
+		if (sbuf != NULL) {
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			sbuf_printf(sbuf, widthstring, rolestr);
+		}
+
 		break;
 	}
 	case 'b': {
@@ -608,10 +635,6 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				sbuf_printf(sbuf, widthstring, "DEFAULT");
 			}
 		}
-		break;
-	}
-	case 'h': {
-		/* TODO Remote host name, when daemon */
 		break;
 	}
 	case 'i': {
@@ -791,10 +814,6 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		}
 		break;
 	}
-	case 'm': {
-		/* TODO: module name.  Even in client mode */
-		break;
-	}
 	case 'M': {
 		/* Modification time of item */
 		char buf[8192];
@@ -856,10 +875,6 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		}
 		break;
 	}
-	case 'P': {
-		/* TODO: module path */
-		break;
-	}
 	case 't': {
 		/* Current machine time */
 		char buf[8192];
@@ -873,10 +888,6 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 			widthstring[l + 2] = '\0';
 			sbuf_printf(sbuf, widthstring, buf);
 		}
-		break;
-	}
-	case 'u': {
-		/* TODO: auth username */
 		break;
 	}
 	case 'U': {

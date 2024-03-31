@@ -50,6 +50,7 @@ struct daemon_role {
 	char			*auth_user;	/* (f) auth user */
 	const char		*cfg_file;	/* (c) daemon config file */
 	char			*motd_file;	/* (f) client motd */
+	const char		*module;	/* (c) module */
 	const char		*module_path;	/* (c) module path */
 	struct daemon_cfg	*dcfg;		/* (f) daemon config */
 	const char		*pid_file;	/* (c) daemon pidfile path */

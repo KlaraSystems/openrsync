@@ -1055,6 +1055,14 @@ rsync_sender(struct sess *sess, int fdin,
 	memset(&sender, 0, sizeof(sender));
 	sender.append = sess->opts->append;
 	sender.phase = &metadata_phase;
+
+	/* Fields propagated from the parent role, if any */
+	if (sess->role != NULL) {
+		sender.role_fetch_outfmt = sess->role->role_fetch_outfmt;
+		sender.role_fetch_outfmt_cookie =
+		    sess->role->role_fetch_outfmt_cookie;
+	}
+
 	sess->role = &sender;
 
 	memset(&up, 0, sizeof(struct send_up));
