@@ -433,8 +433,8 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * Server receives exclusions if delete is on, unless we're deleting
 	 * excluded files, too.
 	 */
-	if (sess->opts->server && sess->opts->del &&
-	    (!sess->opts->del_excl || protocol_delrules))
+	if (sess->opts->server && (sess->opts->prune_empty_dirs ||
+	    (sess->opts->del && (!sess->opts->del_excl || protocol_delrules))))
 		recv_rules(sess, fdin);
 
 	/*

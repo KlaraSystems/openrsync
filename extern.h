@@ -518,6 +518,7 @@ struct	opts {
 #endif
 	int		 ignore_nonreadable;	/* daemon: ignore nonreadable */
 	int		 list_only;		/* --list-only */
+	int		 prune_empty_dirs;	/* --prune-empty-dirs */
 };
 
 enum rule_type {

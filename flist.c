@@ -288,6 +288,101 @@ flist_dedupe(const struct opts *opts, struct flist **fl, size_t *sz)
 	return 1;
 }
 
+static int
+flist_prune_is_empty(struct flist *fl, size_t idx, size_t flsz)
+{
+	struct flist *chk, *f = &fl[idx];
+	const char *prefix = f->path;
+	size_t prefixlen;
+	int isdot;
+
+	/* Does a rule prevent it? */
+	if (rules_match(f->wpath, 1, FARGS_RECEIVER, 0) == -1)
+		return 0;
+
+	prefixlen = strlen(prefix);
+	isdot = strcmp(prefix, ".") == 0;
+
+	/*
+	 * In the sorted list, the contents will never come before the
+	 * directory itself, so we just start processing from here.  This is
+	 * perhaps a bit inefficient, but for the sake of being a bit easier to
+	 * audit.
+	 */
+	for (size_t i = idx + 1; i < flsz; i++) {
+		chk = &fl[i];
+
+		/* Encountered a sibling first -- empty. */
+		if (!isdot && (strncmp(prefix, chk->path, prefixlen) != 0 ||
+		    chk->path[prefixlen] != '/'))
+			return 1;
+
+		/* Non-directory in tree -- not empty. */
+		if (!S_ISDIR(chk->st.mode))
+			return 0;
+
+		/* Protected directory in tree -- not empty. */
+		if (rules_match(f->wpath, 1, FARGS_RECEIVER, 0) == -1)
+			return 0;
+
+		/*
+		 * Unprotected directory, we have to keep traversing to make
+		 * sure it's empty before we know for sure.
+		 */
+	}
+
+	/* Directory at the end of the list -- empty. */
+	return 1;
+}
+
+/*
+ * Prune empty directories from our flist before further processing.  At this
+ * point we've sorted the flist and assigned sendidx to entries so that we don't
+ * get confused when requesting files, so we can freely move the flist around to
+ * avoid holes.
+ */
+static void
+flist_prune_empty(struct sess *sess, struct flist *fl, size_t *flsz)
+{
+	struct flist *f;
+	size_t cursz = *flsz;
+
+	assert(cursz <= SSIZE_MAX);
+	for (ssize_t i = 0; i < cursz; i++) {
+		struct flist *nf;
+		size_t next, prefixlen;
+
+		f = &fl[i];
+
+		if (!S_ISDIR(f->st.mode))
+			continue;
+		if (!flist_prune_is_empty(fl, i, cursz))
+			continue;
+
+		prefixlen = strlen(f->path);
+
+		/* Figure out how many we need to skip. */
+		for (next = i + 1; next < cursz; next++) {
+			nf = &fl[next];
+
+			if (strncmp(f->path, nf->path, prefixlen) != 0)
+				break;
+			if (nf->path[prefixlen] != '/')
+				break;
+		}
+
+		/* Delete it. */
+		if (next < cursz)
+			memmove(&fl[i], &fl[next], (cursz - next) * sizeof(*fl));
+		cursz -= next - i;
+
+		/* Rewind one to avoid skipping. */
+		i--;
+	}
+
+	*flsz = cursz;
+}
+
 /*
  * We're now going to find our top-level directories.
  * This only applies to recursive mode.
@@ -1465,6 +1560,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	} else {
 		qsort(fl, flsz, sizeof(struct flist), flist_cmp);
 	}
+
 	/*
 	 * It's important that we keep track of the send index now, because we
 	 * may want to trim or dedupe the flist before we proceed.  openrsync
@@ -1473,6 +1569,9 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	 */
 	for (size_t i = 0; i < flsz; i++)
 		fl[i].sendidx = (int)i;
+
+	if (sess->opts->prune_empty_dirs)
+		flist_prune_empty(sess, fl, &flsz);
 
 	flist_topdirs(sess, fl, flsz);
 
