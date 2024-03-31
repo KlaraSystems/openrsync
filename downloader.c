@@ -1306,23 +1306,24 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 		if (!io_read_int(sess, p->fdin, &idx)) {
 			ERRX1("io_read_int");
 			return -1;
-		} else if (idx >= 0 && (size_t)idx >= p->flsz) {
-			ERRX("index out of bounds");
-			return -1;
 		} else if (idx < 0) {
 			LOG3("downloader: phase complete");
 			return 0;
 		}
+
 		/*
-		 * `idx` is a sendidx, translate it back into our local file index since
-		 * we may have, e.g., trimmed duplicates.
+		 * `idx` is a sendidx, translate it back into our local file
+		 * index since we may have, e.g., trimmed duplicates.
 		 */
-		for (int flidx = 0; flidx < p->flsz; flidx++) {
-			if (p->fl[flidx].sendidx == idx) {
-				idx = flidx;
-				break;
+		if ((size_t)idx > flsz || p->fl[idx].sendidx != idx) {
+			for (size_t flidx = 0; flidx < p->flsz; flidx++) {
+				if (p->fl[flidx].sendidx == idx) {
+					idx = (int32_t)flidx;
+					break;
+				}
 			}
 		}
+
 		if (!download_get_iflags(sess, p->fdin, p->fl, idx)) {
 			ERRX("get_iflags");
 			return 0;
@@ -1341,19 +1342,6 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 		 */
 		if (sess->opts->dry_run && sess->wbatch_fd == -1)
 			return 1;
-
-		/*
-		 * `idx` is a sendidx, translate it back into our local file
-		 * index since we may have, e.g., trimmed duplicates.
-		 */
-		if (p->fl[idx].sendidx != idx) {
-			for (size_t flidx = 0; flidx < p->flsz; flidx++) {
-				if (p->fl[flidx].sendidx == idx) {
-					idx = (int32_t)flidx;
-					break;
-				}
-			}
-		}
 
 		/*
 		 * Now get our block information.
