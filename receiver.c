@@ -380,6 +380,14 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	memset(&receiver, 0, sizeof(receiver));
 	receiver.append = sess->opts->append;
 	receiver.phase = NULL;
+
+	/* Fields propagated from the parent role, if any */
+	if (sess->role != NULL) {
+		receiver.role_fetch_outfmt = sess->role->role_fetch_outfmt;
+		receiver.role_fetch_outfmt_cookie =
+		    sess->role->role_fetch_outfmt_cookie;
+	}
+
 	sess->role = &receiver;
 
 	/*

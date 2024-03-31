@@ -597,12 +597,18 @@ enum	send_dl_state {
 	SDL_SKIP,
 };
 
+typedef const char *(role_fetch_outfmt_fn)(const struct sess *, void *, char);
+
 /*
  * Context for the role (sender/receiver).  The role may embed this into their
  * own context struct.
  */
 struct	role {
 	int		 append;		/* Append mode active */
+
+	/* Propagated between successive roles */
+	role_fetch_outfmt_fn	*role_fetch_outfmt;	/* --out-format field */
+	void			*role_fetch_outfmt_cookie;
 
 	/*
 	 * We basically track two different forms of phase: the metadata phase,

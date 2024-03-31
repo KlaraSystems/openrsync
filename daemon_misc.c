@@ -143,6 +143,30 @@ daemon_apply_ignoreopts(struct sess *sess, const char *module, struct opts *opts
 	return 1;
 }
 
+static const char *
+daemon_fetch_outfmt(const struct sess *sess, void *cookie, char field)
+{
+	struct daemon_role *role;
+
+	role = cookie;
+	switch (field) {
+	case 'a':
+		return role->client_addr;
+	case 'h':
+		return role->client_host;
+	case 'm':
+		return role->module;
+	case 'P':
+		return role->module_path;
+	case 'u':
+		return role->auth_user;
+	default:
+		break;
+	}
+
+	return NULL;
+}
+
 int
 daemon_apply_xferlog(struct sess *sess, const char *module, struct opts *opts)
 {
@@ -173,6 +197,9 @@ daemon_apply_xferlog(struct sess *sess, const char *module, struct opts *opts)
 			sess->itemize = 1;
 		if ((printflags & 2) != 0)
 			sess->lateprint = 1;
+
+		sess->role->role_fetch_outfmt = daemon_fetch_outfmt;
+		sess->role->role_fetch_outfmt_cookie = sess->role;
 	}
 	return 1;
 }
