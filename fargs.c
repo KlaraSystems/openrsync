@@ -433,6 +433,9 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 
 	/* extra options for the receiver (local is sender) */
 	if (f->mode == FARGS_SENDER) {
+		if (sess->opts->prune_empty_dirs)
+			addargs(&args, "--prune-empty-dirs");
+
 		if (sess->opts->write_batch != NULL &&
 		    sess->opts->dry_run == DRY_XFER) {
 			addargs(&args, "--only-write-batch=%s",

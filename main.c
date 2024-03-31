@@ -734,7 +734,7 @@ enum {
 	OP_LISTONLY,
 };
 
-const char rsync_shopts[] = "0468B:CDEFHIKLOPRSVWabcde:f:ghiklnopqrtuvxyz";
+const char rsync_shopts[] = "0468B:CDEFHIKLOPRSVWabcde:f:ghiklmnopqrtuvxyz";
 const struct option	 rsync_lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
@@ -820,6 +820,7 @@ const struct option	 rsync_lopts[] = {
     { "no-perms",	no_argument,	&opts.preserve_perms,	0 },
     { "no-p",		no_argument,	&opts.preserve_perms,	0 },
     { "port",		required_argument, NULL,		OP_PORT },
+    { "prune-empty-dirs",	no_argument, NULL,		'm' },
     { "protocol",	required_argument, NULL,		OP_PROTOCOL },
     { "quiet",		no_argument,	NULL,			'q' },
     { "read-batch",	required_argument, NULL,		OP_READ_BATCH },
@@ -1101,6 +1102,9 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			break;
 		case 'L':
 			opts.copy_links = 1;
+			break;
+		case 'm':
+			opts.prune_empty_dirs = 1;
 			break;
 		case 'n':
 			opts.dry_run = DRY_FULL;
