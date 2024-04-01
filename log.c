@@ -650,7 +650,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				 * TODO - this is not filled in by
 				 * mainline code yet.  Never gets here.
 				 */
-				strncpy(buf, "*deleted", sizeof(buf));
+				strlcpy(buf, "*deleted", sizeof(buf));
 				break;
 			}
 			bzero(buf, sizeof(buf));
@@ -966,7 +966,7 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 			sbuf_bcat(sbuf, start, fmt - start);
 	}
 
-	out:
+out:
 	if (do_print) {
 		sbuf_putc(sbuf, '\n');
 
