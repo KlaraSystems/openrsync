@@ -903,10 +903,10 @@ usage(int exitcode)
 	    "\t[--max-delete=NUM] [--max-size=SIZE] [--min-size=SIZE]\n"
 	    "\t[--modify-window=sec] [--no-implied-dirs] [--no-motd] [--numeric-ids]\n"
 	    "\t[--out-format=FMT] [--partial] [--partial-dir] [--password-file=pwfile]\n"
-	    "\t[--port=portnumber] [--progress] [--protocol=NUM] [--read-batch=file]\n"
-	    "\t[--remove-source-files] [--rsync-path=program] [--safe-links]\n"
-	    "\t[--size-only] [--sockopts=sockopts] [--specials] [--stats] [--suffix]\n"
-	    "\t[--super] [--timeout=seconds]\n"
+	    "\t[--port=portnumber] [--progress] [--protocol=NUM] [--prune-empty-dirs]\n"
+	    "\t[--read-batch=file] [--remove-source-files] [--rsync-path=program]\n"
+	    "\t[--safe-links] [--size-only] [--sockopts=sockopts] [--specials]\n"
+	    "\t[--stats] [--suffix] [--super] [--timeout=seconds]\n"
 	    "\t[--only-write-batch=file | --write-batch=file]\n"
 	    "\tsource ... directory\n",
 	    getprogname());
