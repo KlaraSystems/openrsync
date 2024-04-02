@@ -228,8 +228,6 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		sz = MINIMUM(MAX_CHUNK,
 			up->stat.mapsz - up->stat.curpos);
 		sbuf = up->stat.map + up->stat.curpos;
-
-		assert(comp_state = COMPRESS_RUN);
 		cbuf = malloc(TOKEN_MAX_BUF);
 		if (cbuf == NULL) {
 			ERRX1("malloc");
@@ -242,6 +240,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			return 0;
 		}
 
+		assert(comp_state == COMPRESS_RUN);
 		cctx.next_in = (Bytef *)sbuf;
 		cctx.avail_in = (uInt)sz;
 		cctx.next_out = (Bytef *)(cbuf + 2);

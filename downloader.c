@@ -1098,7 +1098,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			return TOKEN_ERROR;
 		}
 
-		assert(dec_state = COMPRESS_RUN);
+		assert(dec_state == COMPRESS_RUN);
 		dectx.next_in = (Bytef *)buf;
 		dectx.avail_in = bufsz;
 		dectx.next_out = (Bytef *)dbuf;
