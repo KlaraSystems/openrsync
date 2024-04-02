@@ -1731,8 +1731,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				snprintf(buf2, sizeof(buf2), "%s/", root);
 				LOG4("symlinks: recursing '%s' -> '%s' '%s'",
 				    root, buf, buf2);
-				flist_gen_dirent(sess, buf2, fl, stripdir, prefix);
-				return 1;
+				return flist_gen_dirent(sess, buf2, fl, stripdir, prefix);
 			}
 		}
 		if (sess->opts->copy_unsafe_links &&
@@ -1743,7 +1742,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				snprintf(buf2, sizeof(buf2), "%s/", root);
 				LOG4("symlinks: recursing '%s' -> '%s' '%s'",
 				    root, buf, buf2);
-				flist_gen_dirent(sess, buf2, fl, stripdir, prefix);
+				return flist_gen_dirent(sess, buf2, fl, stripdir, prefix);
 			} else {
 				return flist_gen_dirent_file(sess, "file",
 				    root, fl, &st2, prefix);
@@ -1820,8 +1819,13 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			    (sess->opts->copy_unsafe_links &&
 			    is_unsafe_link(buf, root, prefix))) {
 				if (S_ISDIR(st2.st_mode)) {
-					flist_gen_dirent(sess, ent->fts_path,
+					rc = flist_gen_dirent(sess, ent->fts_path,
 					    fl, stripdir, prefix);
+					if (!rc) {
+						ERRX1("flist_gen_dirent");
+						goto out;
+					}
+
 					continue;
 				}
 			}
