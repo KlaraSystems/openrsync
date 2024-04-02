@@ -342,6 +342,7 @@ cfg_free(struct daemon_cfg *dcfg)
 {
 	struct daemon_cfg_module *module;
 
+	assert(dcfg != NULL);
 	while (!STAILQ_EMPTY(&dcfg->modules)) {
 		module = STAILQ_FIRST(&dcfg->modules);
 		STAILQ_REMOVE_HEAD(&dcfg->modules, entry);

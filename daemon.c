@@ -970,7 +970,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	motd_file = role->motd_file;
 	role->motd_file = NULL;
 
-	fclose(role->pidfp);
+	if (role->pidfp != NULL)
+		fclose(role->pidfp);
 	cfg_free(role->dcfg);
 	role->dcfg = NULL;
 
@@ -979,7 +980,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	(void)rsync_setsockopts(fd, sess->opts->sockopts);
 
 	if (!daemon_extract_addr(sess, saddr, slen))
-		goto fail;
+		return ERR_IPC;
 
 	sess->lver = sess->protocol = RSYNC_PROTOCOL;
 
@@ -988,7 +989,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	if ((flags = fcntl(fd, F_GETFL, 0)) == -1 ||
 	    fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
 		daemon_client_error(sess, "failed to set non-blocking");
-		goto fail;
+		return ERR_IPC;
 	}
 
 	role->dcfg = cfg_parse(sess, role->cfg_file, 1);
@@ -1329,6 +1330,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	long long tmpint;
 	const char *cfg_motd, *logfile;
 	int c, opt_daemon = 0, detach = 1, rc;
+	bool socket_initiator;
 
 	/* Start with a fresh session / opts */
 	memset(&role, 0, sizeof(role));
@@ -1415,12 +1417,14 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 
 	poll_timeout = -1;
 
-	if (rsync_is_socket(STDIN_FILENO))
-		return rsync_daemon_handler(&sess, STDIN_FILENO, NULL, 0);
+	/*
+	 * We'll act on this after we pick up the initial config.
+	 */
+	socket_initiator = rsync_is_socket(STDIN_FILENO);
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	if (detach && daemon(0, 0) == -1)
+	if (!socket_initiator && detach && daemon(0, 0) == -1)
 		err(ERR_IPC, "daemon");
 #pragma clang diagnostic pop
 
@@ -1428,7 +1432,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	if (role.dcfg == NULL)
 		return ERR_IPC;
 
-	if (daemon_do_pidfile(&sess, role.dcfg) != 0)
+	if (!socket_initiator && daemon_do_pidfile(&sess, role.dcfg) != 0)
 		return ERR_IPC;
 
 	if (daemon_opts->address == NULL) {
@@ -1458,6 +1462,18 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	if (daemon_opts->sockopts == NULL)
 		get_global_cfgstr(role.dcfg, "socket options",
 		    &daemon_opts->sockopts);
+
+	if (socket_initiator) {
+		struct sockaddr_storage saddr;
+		socklen_t slen;
+
+		slen = sizeof(saddr);
+		if (getpeername(STDIN_FILENO, (struct sockaddr *)&saddr,
+		    &slen) == -1)
+			err(ERR_IPC, "getpeername");
+
+		return rsync_daemon_handler(&sess, STDIN_FILENO, &saddr, slen);
+	}
 
 	LOG0("openrsync listening on port '%s'", daemon_opts->port);
 
