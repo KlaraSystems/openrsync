@@ -1564,6 +1564,8 @@ daemon_parse_refuse(struct sess *sess, const char *module)
 				    &shoptlen, &shoptsz,  'a');
 
 				assert(rc != 0);
+				/* We only need to refuse -a once */
+				break;
 			}
 		}
 
