@@ -154,6 +154,10 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
 	/* Don't touch p->rootfd. */
 	/* Don't touch p->tempfd. */
 	/* Don't touch p->fdin. */
+	/* Don't touch p->obufsz. */
+	/* Don't touch p->obufmax. */
+	/* Don't touch p->needredo. */
+	p->curtok = 0;
 	MD4_Update(&p->ctx, &seed, sizeof(int32_t));
 }
 
