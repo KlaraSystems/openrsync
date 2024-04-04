@@ -846,13 +846,13 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 	dectx.avail_out = MAX_CHUNK_BUF;
 	res = inflate(&dectx, Z_SYNC_FLUSH);
 	if (res != Z_OK && res != Z_BUF_ERROR) {
-		ERR("inflate protocol_token_cflush");
+		ERRX("inflate protocol_token_cflush");
 		return TOKEN_ERROR;
 	}
 	dsz = MAX_CHUNK_BUF - dectx.avail_out;
 	if (dsz != 0 && res != Z_BUF_ERROR) {
 		if (!buf_copy(dbuf, dsz, p, sess)) {
-			ERR("buf_copy dbuf");
+			ERRX("buf_copy dbuf");
 			return TOKEN_ERROR;
 		}
 		MD4_Update(&p->ctx, dbuf, dsz);
@@ -861,7 +861,7 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 	 * Check for compressor sync: 0x00 0x00 0xff 0xff
 	 */
 	if (!inflateSyncPoint(&dectx)) {
-		ERR("inflateSyncPoint");
+		ERRX("inflateSyncPoint");
 		return TOKEN_ERROR;
 	}
 	dectx.avail_in = 4;
@@ -889,7 +889,7 @@ decompress_reinit(void)
 		dectx.next_out = NULL;
 		dectx.avail_out = 0;
 		if (inflateInit2(&dectx, -15) != Z_OK) {
-			ERR("inflateInit2");
+			ERRX("inflateInit2");
 			return 0;
 		}
 		dec_state = COMPRESS_RUN;
@@ -966,7 +966,7 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 		dectx.avail_out = MAX_CHUNK_BUF;
 		res = inflate(&dectx, Z_SYNC_FLUSH);
 		if (res != Z_OK) {
-			ERR("inflate ff res=%d", res);
+			ERRX("inflate ff res=%d", res);
 			free(dbuf);
 			return TOKEN_ERROR;
 		}
@@ -1008,7 +1008,7 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 	if (download_is_inplace(sess, p, true) && p->total == off) {
 		/* Flush any pending data before we seek ahead. */
 		if (!sess->opts->dry_run && !buf_copy(NULL, 0, p, sess)) {
-			ERRX1("buf_copy");
+			ERRX("buf_copy");
 			return TOKEN_ERROR;
 		}
 		if (p->fd >= 0 && lseek(p->fd, sz, SEEK_CUR) == -1) {
@@ -1016,11 +1016,11 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 			return TOKEN_ERROR;
 		}
 	} else if (!buf_copy(buf, sz, p, sess)) {
-		ERRX1("buf_copy");
+		ERRX("buf_copy");
 		return TOKEN_ERROR;
 	}
 	if (!sess->opts->dry_run && !buf_copy(NULL, 0, p, sess)) {
-		ERRX1("buf_copy");
+		ERRX("buf_copy");
 		return TOKEN_ERROR;
 	}
 	if (sess->opts->compress) {
@@ -1113,7 +1113,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		while (dectx.avail_in != 0 && (res = inflate(&dectx, Z_NO_FLUSH)) == Z_OK) {
 			dsz = MAX_CHUNK_BUF - dectx.avail_out;
 			if (!buf_copy(dbuf, dsz, p, sess)) {
-				ERR("buf_copy dbuf");
+				ERRX("buf_copy dbuf");
 				free(buf);
 				free(dbuf);
 				return TOKEN_ERROR;
@@ -1126,7 +1126,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			dectx.avail_out = MAX_CHUNK_BUF;
 		}
 		if (res != Z_OK && res != Z_BUF_ERROR) {
-			ERR("inflate res=%d", res);
+			ERRX("inflate res=%d", res);
 			free(buf);
 			free(dbuf);
 			return TOKEN_ERROR;
@@ -1135,7 +1135,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		dsz = MAX_CHUNK_BUF - dectx.avail_out;
 		if (dsz != 0) {
 			if (!buf_copy(dbuf, dsz, p, sess)) {
-				ERR("buf_copy dbuf");
+				ERRX("buf_copy dbuf");
 				free(buf);
 				free(dbuf);
 				return TOKEN_ERROR;
@@ -1227,7 +1227,7 @@ protocol_token_raw(struct sess *sess, struct download *p)
 			free(buf);
 			return TOKEN_ERROR;
 		} else if (!buf_copy(buf, sz, p, sess)) {
-			ERRX1("buf_copy");
+			ERRX("buf_copy");
 			free(buf);
 			return TOKEN_ERROR;
 		}
@@ -1625,7 +1625,7 @@ again:
 	}
 
 	if (!sess->opts->dry_run && !buf_copy(NULL, 0, p, sess)) {
-		ERRX1("buf_copy");
+		ERRX("buf_copy");
 		goto out;
 	}
 
