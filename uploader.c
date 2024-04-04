@@ -1397,8 +1397,10 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	*filefd = -1;
 
 	rc = check_file(p->rootfd, f, &st, sess, hl, false);
-	if (rc == -1)
-		return -1;
+	if (rc == -1) {
+		sess->total_errors++;
+		return 0;
+	}
 	if (rc == 4)
 		return 0;
 	if (rc == 2 && !S_ISREG(st.st_mode)) {
@@ -1445,8 +1447,28 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 
 		if (fix_metadata &&
 		    !rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {
-			ERRX1("rsync_set_metadata");
-			return -1;
+			if (errno != EACCES && errno != EPERM) {
+				ERRX1("rsync_set_metadata");
+				sess->total_errors++;
+				return 0;
+			}
+
+			/* Before unlinking the file check to see if it can
+			 * be opened for read.  If not, then increment the
+			 * error count in order to reproduce rsync's
+			 * exit code semantics.
+			 */
+			if (faccessat(p->rootfd, f->path, R_OK, 0) == -1 &&
+			    errno == EACCES)
+				sess->total_errors++;
+
+			if (unlinkat(p->rootfd, f->path, 0) == -1) {
+				ERR("%s: unlinkat", f->path);
+				sess->total_errors++;
+				return 0;
+			}
+
+			rc = 3;
 		}
 
 		if (rc == 0) {
@@ -1505,6 +1527,16 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		*size = psize;
 		*filefd = openat(pdfd, download_partial_filepath(f),
 		    O_RDONLY | O_NOFOLLOW);
+		if (*filefd == -1 && (errno == EACCES || errno == EPERM)) {
+			sess->total_errors++;
+			if (pdfd != -1)
+				close(pdfd);
+			if (unlinkat(p->rootfd, download_partial_filepath(f), 0) == -1) {
+				ERR("%s: unlinkat", download_partial_filepath(f));
+				return 0;
+			}
+			return 1;
+		}
 
 		if (*filefd != -1)
 			f->pdfd = pdfd;
@@ -1517,6 +1549,14 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		assert(pdfd == -1);
 		*size = st.st_size;
 		*filefd = openat(p->rootfd, f->path, O_RDONLY | O_NOFOLLOW);
+		if (*filefd == -1 && (errno == EACCES || errno == EPERM)) {
+			sess->total_errors++;
+			if (unlinkat(p->rootfd, f->path, 0) == -1) {
+				ERR("%s: unlinkat", f->path);
+				return 0;
+			}
+			return 1;
+		}
 	}
 	/* If there is a symlink in our way, we will get EMLINK */
 	if (*filefd == -1 && errno != ENOENT && errno != EMLINK) {
