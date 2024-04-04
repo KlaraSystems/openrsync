@@ -131,6 +131,9 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	LOG2("Delta transmission %s for this transfer",
 	    sess.opts->whole_file ? "disabled" : "enabled");
 
+	for (int i = 0; argv[i] != NULL; i++)
+		LOG2("exec[%d] = %s", i, argv[i]);
+
 	if (sess.opts->sender) {
 		LOG2("server starting sender");
 
@@ -139,18 +142,26 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		 * argument of the command line.
 		 * Let's make it a requirement until I figure out when
 		 * that differs.
-		 / rsync [flags] "." <source> <...>
+		 * rsync [flags] "." <source> <...>
 		 */
 
-		if (strcmp(argv[0], ".")) {
-			ERRX("first argument must be a standalone period");
-			goto out;
-		}
-		argv++;
-		argc--;
 		if (argc == 0) {
 			ERRX("must have arguments");
 			goto out;
+		} else if (strcmp(argv[0], ".")) {
+			ERRX("first argument must be a standalone period");
+			goto out;
+		} else if (argc == 1) {
+			/*
+			 * rsync 2.x can send "" as the source, in which case
+			 * an implied "." is intended and must be fabricated.
+			 * rsync 3.x always sends the implied "."
+			 * If we only have 1 argv, reuse it to avoid making a
+			 * new allocation.
+			 */
+		} else {
+			argv++;
+			argc--;
 		}
 
 		if (sess.opts->remove_source)
@@ -166,17 +177,32 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		 * I don't understand why this calling convention
 		 * exists, but we must adhere to it.
 		 * rsync [flags] "." <destination>
+		 * destination might be "" in which case a . is implied.
 		 */
 
-		if (argc != 2) {
-			ERRX("server receiver mode requires two argument");
+		if (argc == 0) {
+			ERRX("must have arguments");
 			goto out;
 		} else if (strcmp(argv[0], ".")) {
 			ERRX("first argument must be a standalone period");
 			goto out;
+		} else if (argc == 1) {
+			/*
+			 * rsync 2.x can send "" as the dest, in which case
+			 * an implied "." is intended and must be fabricated.
+			 * rsync 3.x always sends the implied "."
+			 * If we only have 1 argv, reuse it to avoid making a
+			 * new allocation.
+			 */
+		} else if (argc != 2) {
+			ERRX("server receiver mode requires two argument");
+			goto out;
+		} else {
+			argv++;
+			argc--;
 		}
 
-		if (!rsync_receiver(&sess, cleanup_ctx, fdin, fdout, argv[1])) {
+		if (!rsync_receiver(&sess, cleanup_ctx, fdin, fdout, argv[0])) {
 			ERRX1("rsync_receiver");
 			goto out;
 		}
