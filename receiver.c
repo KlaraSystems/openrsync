@@ -489,8 +489,8 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		ERRX1("io_read_int");
 		goto out;
 	} else if (ioerror != 0) {
-		ERRX1("io_error is non-zero");
-		goto out;
+		LOG2("Got ioerror=%d", ioerror);
+		sess->total_errors++;
 	}
 
 	if (flsz == 0 && !sess->opts->server) {
