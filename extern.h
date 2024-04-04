@@ -420,6 +420,7 @@ struct flist *fl_new(struct fl *); /* Returns pointer to new element */
 struct flist *fl_atindex(struct fl *, size_t idx);
 long fl_curridx(struct fl *); /* Current size */
 void fl_print(const char *id, struct fl *fl);
+void fl_pop(struct fl *);
 
 /*
  * Options passed into the command line.

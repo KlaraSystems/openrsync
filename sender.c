@@ -1142,10 +1142,11 @@ rsync_sender(struct sess *sess, int fdin,
 	if (!flist_send(sess, fdin, fdout, fl.flp, fl.sz)) {
 		ERRX1("flist_send");
 		goto out;
-	} else if (!io_write_int(sess, fdout, 0)) {
+	} else if (!io_write_int(sess, fdout, sess->total_errors > 0 ? 1 : 0)) {
 		ERRX1("io_write_int");
 		goto out;
 	}
+
 	gettimeofday(&fx_after, NULL);
 	timersub(&fx_after, &fx_before, &tv);
 	sess->flist_xfer = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);

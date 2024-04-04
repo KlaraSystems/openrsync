@@ -442,7 +442,15 @@ flist_fts_check(struct sess *sess, FTSENT *ent, enum fmode fmode)
 	} else if (ent->fts_info == FTS_ERR) {
 		errno = ent->fts_errno;
 		WARN("%s", ent->fts_path);
-	} else if (ent->fts_info == FTS_SL || ent->fts_info == FTS_SLNONE) {
+	} else if (ent->fts_info == FTS_SLNONE) {
+		if (sess->opts->copy_links || sess->opts->safe_links ||
+		    sess->opts->copy_unsafe_links) {
+			sess->total_errors++;
+			return 0;
+		} else {
+			return sess->opts->preserve_links != 0;
+		}
+	} else if (ent->fts_info == FTS_SL) {
 		/*
 		 * If we're the receiver, we need to skip symlinks unless we're
 		 * doing --preserve-links or --copy-dirlinks.  If we're the
@@ -465,6 +473,7 @@ flist_fts_check(struct sess *sess, FTSENT *ent, enum fmode fmode)
 		WARNX("%s: skipping special", ent->fts_path);
 	} else if (ent->fts_info == FTS_NS) {
 		errno = ent->fts_errno;
+		sess->total_errors++;
 		WARN("%s: could not stat", ent->fts_path);
 	}
 
@@ -929,6 +938,13 @@ fl_new(struct fl *fl)
 	if (index == -1)
 		return NULL;
 	return &(fl->flp[index]);
+}
+
+void
+fl_pop(struct fl *fl)
+{
+	assert(fl->sz > 0);
+	fl->sz--;
 }
 
 void
@@ -1807,10 +1823,12 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				/* We did lstat, now we need stat */
 				if (stat(ent->fts_accpath, &st2) == -1) {
 					ERR("%s: stat", ent->fts_accpath);
-					goto out;
+					sess->total_errors++;
+					continue;
 				}
 				if ((ret = (int)readlink(ent->fts_accpath, buf, sizeof(buf))) == -1) {
 					ERR("%s: readlink", ent->fts_accpath);
+					sess->total_errors++;
 					continue;
 				}
 				buf[ret] = '\0';
@@ -1819,12 +1837,10 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			    (sess->opts->copy_unsafe_links &&
 			    is_unsafe_link(buf, root, prefix))) {
 				if (S_ISDIR(st2.st_mode)) {
-					rc = flist_gen_dirent(sess, ent->fts_path,
+					ret = flist_gen_dirent(sess, ent->fts_path,
 					    fl, stripdir, prefix);
-					if (!rc) {
-						ERRX1("flist_gen_dirent");
-						goto out;
-					}
+					if (!ret)
+						sess->total_errors++;
 
 					continue;
 				}
@@ -1945,7 +1961,9 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				f->link = symlink_read(ent->fts_accpath);
 				if (f->link == NULL) {
 					ERRX1("symlink_read");
-					goto out;
+					sess->total_errors++;
+					fl_pop(fl);
+					continue;
 				}
 			}
 		}
@@ -1954,8 +1972,10 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		    S_ISREG(f->st.mode) && f->st.size > 0) {
 			rc = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
 			if (rc) {
-				ERRX1("hash_file_by_path");
-				goto out;
+				ERR("%s: hash_file_by_path", f->path);
+				sess->total_errors++;
+				fl_pop(fl);
+				continue;
 			}
 		}
 
