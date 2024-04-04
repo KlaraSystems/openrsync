@@ -846,12 +846,13 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 	dectx.avail_out = MAX_CHUNK_BUF;
 	res = inflate(&dectx, Z_SYNC_FLUSH);
 	if (res != Z_OK && res != Z_BUF_ERROR) {
+		ERR("inflate protocol_token_cflush");
 		return TOKEN_ERROR;
 	}
 	dsz = MAX_CHUNK_BUF - dectx.avail_out;
 	if (dsz != 0 && res != Z_BUF_ERROR) {
 		if (!buf_copy(dbuf, dsz, p, sess)) {
-			ERRX1("buf_copy dbuf");
+			ERR("buf_copy dbuf");
 			return TOKEN_ERROR;
 		}
 		MD4_Update(&p->ctx, dbuf, dsz);
@@ -860,6 +861,7 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 	 * Check for compressor sync: 0x00 0x00 0xff 0xff
 	 */
 	if (!inflateSyncPoint(&dectx)) {
+		ERR("inflateSyncPoint");
 		return TOKEN_ERROR;
 	}
 	dectx.avail_in = 4;
@@ -887,7 +889,7 @@ decompress_reinit(void)
 		dectx.next_out = NULL;
 		dectx.avail_out = 0;
 		if (inflateInit2(&dectx, -15) != Z_OK) {
-			ERRX1("inflateInit2");
+			ERR("inflateInit2");
 			return 0;
 		}
 		dec_state = COMPRESS_RUN;
@@ -964,7 +966,7 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 		dectx.avail_out = MAX_CHUNK_BUF;
 		res = inflate(&dectx, Z_SYNC_FLUSH);
 		if (res != Z_OK) {
-			ERRX1("inflate ff res=%d", res);
+			ERR("inflate ff res=%d", res);
 			free(dbuf);
 			return TOKEN_ERROR;
 		}
@@ -1111,7 +1113,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		while (dectx.avail_in != 0 && (res = inflate(&dectx, Z_NO_FLUSH)) == Z_OK) {
 			dsz = MAX_CHUNK_BUF - dectx.avail_out;
 			if (!buf_copy(dbuf, dsz, p, sess)) {
-				ERRX1("buf_copy dbuf");
+				ERR("buf_copy dbuf");
 				free(buf);
 				free(dbuf);
 				return TOKEN_ERROR;
@@ -1124,7 +1126,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			dectx.avail_out = MAX_CHUNK_BUF;
 		}
 		if (res != Z_OK && res != Z_BUF_ERROR) {
-			ERRX1("inflate res=%d", res);
+			ERR("inflate res=%d", res);
 			free(buf);
 			free(dbuf);
 			return TOKEN_ERROR;
@@ -1133,7 +1135,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		dsz = MAX_CHUNK_BUF - dectx.avail_out;
 		if (dsz != 0) {
 			if (!buf_copy(dbuf, dsz, p, sess)) {
-				ERRX1("buf_copy dbuf");
+				ERR("buf_copy dbuf");
 				free(buf);
 				free(dbuf);
 				return TOKEN_ERROR;

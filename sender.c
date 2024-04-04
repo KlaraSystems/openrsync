@@ -122,7 +122,7 @@ compress_reinit(struct sess *sess)
 		cctx.avail_out = 0;
 		if (deflateInit2(&cctx, sess->opts->compression_level,
 		    Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
-			ERRX1("deflateInit2");
+			ERR("deflateInit2");
 			return 0;
 		}
 		comp_state = COMPRESS_RUN;
@@ -188,7 +188,7 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
 		cctx.avail_out = TOKEN_MAX_DATA;
 		res = deflate(&cctx, Z_INSERT_ONLY);
 		if (res != Z_OK || cctx.avail_in != 0) {
-			ERRX1("deflate ff res=%d", res);
+			ERR("deflate ff res=%d", res);
 			free(cbuf);
 			return 0;
 		}
@@ -252,7 +252,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 				break;
 			}
 			if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, ssz + 2)) {
-				ERRX1("io_lowbuffer_alloc");
+				ERR("io_lowbuffer_alloc");
 				free(cbuf);
 				return 0;
 			}
@@ -269,7 +269,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			}
 		}
 		if (res != Z_OK && res != Z_BUF_ERROR) {
-			ERRX1("deflate res=%d", res);
+			ERR("deflate res=%d", res);
 			free(cbuf);
 			return 0;
 		}
@@ -347,7 +347,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			ssz -= 4; /* Trim off the trailer bytes */
 			if (ssz != 0 && res != Z_BUF_ERROR) {
 				if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, ssz + 2)) {
-					ERRX1("io_lowbuffer_alloc");
+					ERR("io_lowbuffer_alloc");
 					free(cbuf);
 					return 0;
 				}
@@ -367,7 +367,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 
 		/* Send the end of token marker */
 		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, 1)) {
-			ERRX1("io_lowbuffer_alloc");
+			ERR("io_lowbuffer_alloc");
 			free(cbuf);
 			return 0;
 		}
