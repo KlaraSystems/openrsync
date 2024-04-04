@@ -266,6 +266,8 @@ typedef int (io_tag_handler_fn)(void *, const void *, size_t sz);
 
 enum	zlib_state {
 	COMPRESS_INIT = 0,
+	COMPRESS_READY,
+	COMPRESS_SEQUENCE,
 	COMPRESS_RUN,
 	COMPRESS_DONE,
 };

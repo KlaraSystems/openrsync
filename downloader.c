@@ -842,11 +842,18 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 	size_t		 dsz;
 	char		 tbuf[4];
 
+	if (dectx.next_out == NULL) {
+		return TOKEN_NEXT;
+	}
+
 	dectx.avail_in = 0;
 	dectx.avail_out = MAX_CHUNK_BUF;
 	res = inflate(&dectx, Z_SYNC_FLUSH);
 	if (res != Z_OK && res != Z_BUF_ERROR) {
 		ERRX("inflate protocol_token_cflush res=%d", res);
+		if (dectx.msg) {
+			ERRX("inflate error: %s", dectx.msg);
+		}
 		return TOKEN_ERROR;
 	}
 	dsz = MAX_CHUNK_BUF - dectx.avail_out;
@@ -860,8 +867,8 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 	/*
 	 * Check for compressor sync: 0x00 0x00 0xff 0xff
 	 */
-	if (!inflateSyncPoint(&dectx)) {
-		ERRX("inflateSyncPoint");
+	if ((res = inflateSyncPoint(&dectx)) != 1) {
+		ERRX("inflateSyncPoint res=%d", res);
 		return TOKEN_ERROR;
 	}
 	dectx.avail_in = 4;
@@ -881,6 +888,7 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 static int
 decompress_reinit(void)
 {
+	int ret;
 
 	if (dec_state == COMPRESS_INIT) {
 		dectx.zalloc = NULL;
@@ -889,18 +897,20 @@ decompress_reinit(void)
 		dectx.avail_in = 0;
 		dectx.next_out = NULL;
 		dectx.avail_out = 0;
-		if (inflateInit2(&dectx, -15) != Z_OK) {
-			ERRX("inflateInit2");
+		if ((ret = inflateInit2(&dectx, -15)) != Z_OK) {
+			ERRX("inflateInit2 res=%d", ret);
 			return 0;
 		}
-		dec_state = COMPRESS_RUN;
+		LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_READY);
+		dec_state = COMPRESS_READY;
 	} else if (dec_state >= COMPRESS_DONE) {
 		dectx.next_in = NULL;
 		dectx.avail_in = 0;
 		dectx.next_out = NULL;
 		dectx.avail_out = 0;
 		inflateReset(&dectx);
-		dec_state = COMPRESS_RUN;
+		LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_READY);
+		dec_state = COMPRESS_READY;
 	}
 
 	return 1;
@@ -926,15 +936,14 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 	off = tok * p->blk.len;
 	buf = p->map + off;
 
-	dbuf = malloc(MAX_CHUNK_BUF);
-	if (dbuf == NULL) {
-		ERRX1("malloc");
+	if (!decompress_reinit()) {
+		ERRX("decompress_reinit");
 		return TOKEN_ERROR;
 	}
 
-	if (!decompress_reinit()) {
-		ERRX1("decompress_reinit");
-		free(dbuf);
+	dbuf = malloc(MAX_CHUNK_BUF);
+	if (dbuf == NULL) {
+		ERRX1("malloc");
 		return TOKEN_ERROR;
 	}
 
@@ -968,6 +977,9 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 		res = inflate(&dectx, Z_SYNC_FLUSH);
 		if (res != Z_OK) {
 			ERRX("inflate ff res=%d", res);
+			if (dectx.msg) {
+				ERRX("inflate error: %s", dectx.msg);
+			}
 			free(dbuf);
 			return TOKEN_ERROR;
 		}
@@ -1059,14 +1071,6 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		ERRX1("io_read_byte");
 		return TOKEN_ERROR;
 	}
-	if (flag == 0) {
-		dec_state = COMPRESS_DONE;
-		if (protocol_token_cflush(sess, p, dbuf) != TOKEN_NEXT) {
-			ERRX1("protocol_token_cflush");
-			return TOKEN_ERROR;
-		}
-		return TOKEN_EOF;
-	}
 
 	need_count = false;
 	if ((flag & TOKEN_RUN_RELATIVE) == TOKEN_DEFLATED) {
@@ -1079,6 +1083,13 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			return TOKEN_ERROR;
 		}
 		bufsz = ((flag & ~TOKEN_DEFLATED) << 8) | sizelo;
+		LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_RUN);
+		dec_state = COMPRESS_RUN;
+
+		if (!decompress_reinit()) {
+			ERRX("decompress_reinit");
+			return TOKEN_ERROR;
+		}
 
 		buf = malloc(bufsz);
 		if (buf == NULL) {
@@ -1093,13 +1104,6 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			return TOKEN_ERROR;
 		}
 
-		if (!decompress_reinit()) {
-			ERRX1("decompress_reinit");
-			free(buf);
-			free(dbuf);
-			return TOKEN_ERROR;
-		}
-
 		if (!io_read_buf(sess, p->fdin, buf, bufsz)) {
 			ERRX1("io_read_buf");
 			free(buf);
@@ -1107,7 +1111,7 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			return TOKEN_ERROR;
 		}
 
-		assert(dec_state == COMPRESS_RUN);
+		assert(dec_state > COMPRESS_INIT && dec_state < COMPRESS_DONE);
 		dectx.next_in = (Bytef *)buf;
 		dectx.avail_in = bufsz;
 		dectx.next_out = (Bytef *)dbuf;
@@ -1130,6 +1134,9 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		}
 		if (res != Z_OK && res != Z_BUF_ERROR) {
 			ERRX("inflate res=%d", res);
+			if (dectx.msg) {
+				ERRX("inflate error: %s", dectx.msg);
+			}
 			free(buf);
 			free(dbuf);
 			return TOKEN_ERROR;
@@ -1152,7 +1159,25 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		free(dbuf);
 		assert(dectx.avail_in == 0);
 
+		LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_DONE);
+		dec_state = COMPRESS_DONE;
+
 		return TOKEN_RETRY;
+	} else if (dec_state == COMPRESS_DONE) {
+		LOG4("decompress_state: flushing end of stream");
+		if ((res = protocol_token_cflush(sess, p, dbuf)) != TOKEN_NEXT) {
+			ERRX("protocol_token_cflush=%d", res);
+			return TOKEN_ERROR;
+		}
+		LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_READY);
+		dec_state = COMPRESS_READY;
+	}
+
+	if (flag == 0) {
+		LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_INIT);
+		dec_state = COMPRESS_INIT;
+
+		return TOKEN_EOF;
 	} else if (flag & TOKEN_RELATIVE) {
 		/*
 		 * Matches both TOKEN_RELATIVE and TOKEN_RUN_RELATIVE.
@@ -1164,20 +1189,12 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		tok += (flag & ~TOKEN_RUN_RELATIVE);
 		flag >>= 6;
 		need_count = (flag & 1);
-		if (protocol_token_cflush(sess, p, dbuf) != TOKEN_NEXT) {
-			ERRX1("protocol_token_cflush");
-			return TOKEN_ERROR;
-		}
 	} else if ((flag & TOKEN_LONG) != 0) {
 		if (!io_read_int(sess, p->fdin, &tok)) {
 			ERRX1("io_read_int");
 			return TOKEN_ERROR;
 		}
 		need_count = (flag & 1);
-		if (protocol_token_cflush(sess, p, dbuf) != TOKEN_NEXT) {
-			ERRX1("protocol_token_cflush");
-			return TOKEN_ERROR;
-		}
 	}
 
 	runsize = 0;
@@ -1198,11 +1215,17 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 
 		runsize |= part << 8;
 
+		LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_SEQUENCE);
+		dec_state = COMPRESS_SEQUENCE;
 	}
 
 	for (dsz = 0; dsz < runsize + 1; dsz++) {
+		if (dsz == runsize) {
+			LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_READY);
+			dec_state = COMPRESS_READY;
+		}
 		if ((res = protocol_token_ff(sess, p, tok++)) != TOKEN_RETRY) {
-			ERRX1("protocol_token_ff res=%d", res);
+			ERRX("protocol_token_ff res=%d", res);
 			return res;
 		}
 	}
