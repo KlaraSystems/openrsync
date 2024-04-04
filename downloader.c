@@ -846,7 +846,7 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 	dectx.avail_out = MAX_CHUNK_BUF;
 	res = inflate(&dectx, Z_SYNC_FLUSH);
 	if (res != Z_OK && res != Z_BUF_ERROR) {
-		ERRX("inflate protocol_token_cflush");
+		ERRX("inflate protocol_token_cflush res=%d", res);
 		return TOKEN_ERROR;
 	}
 	dsz = MAX_CHUNK_BUF - dectx.avail_out;
@@ -872,6 +872,7 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 	tbuf[3] = 0xff;
 	res = inflate(&dectx, Z_SYNC_FLUSH);
 	/* res not checked on purpose, this is only to sync state */
+	(void)res;
 
 	return TOKEN_NEXT;
 }
@@ -1060,8 +1061,10 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 	}
 	if (flag == 0) {
 		dec_state = COMPRESS_DONE;
-		protocol_token_cflush(sess, p, dbuf);
-
+		if (protocol_token_cflush(sess, p, dbuf) != TOKEN_NEXT) {
+			ERRX1("protocol_token_cflush");
+			return TOKEN_ERROR;
+		}
 		return TOKEN_EOF;
 	}
 
@@ -1161,14 +1164,20 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		tok += (flag & ~TOKEN_RUN_RELATIVE);
 		flag >>= 6;
 		need_count = (flag & 1);
-		protocol_token_cflush(sess, p, dbuf);
+		if (protocol_token_cflush(sess, p, dbuf) != TOKEN_NEXT) {
+			ERRX1("protocol_token_cflush");
+			return TOKEN_ERROR;
+		}
 	} else if ((flag & TOKEN_LONG) != 0) {
 		if (!io_read_int(sess, p->fdin, &tok)) {
 			ERRX1("io_read_int");
 			return TOKEN_ERROR;
 		}
 		need_count = (flag & 1);
-		protocol_token_cflush(sess, p, dbuf);
+		if (protocol_token_cflush(sess, p, dbuf) != TOKEN_NEXT) {
+			ERRX1("protocol_token_cflush");
+			return TOKEN_ERROR;
+		}
 	}
 
 	runsize = 0;
