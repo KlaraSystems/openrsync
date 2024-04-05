@@ -63,6 +63,7 @@ enum	downloadst {
 
 static enum zlib_state	 dec_state; /* decompression state */
 static z_stream		 dectx; /* decompression context */
+static int decompress_reinit(void);
 
 /*
  * Like struct upload, but used to keep track of what we're downloading.
@@ -159,6 +160,7 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
 	/* Don't touch p->needredo. */
 	p->curtok = 0;
 	MD4_Update(&p->ctx, &seed, sizeof(int32_t));
+	decompress_reinit();
 }
 
 static inline bool
@@ -1085,11 +1087,6 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		bufsz = ((flag & ~TOKEN_DEFLATED) << 8) | sizelo;
 		LOG4("decompress_state transition %d -> %d", dec_state, COMPRESS_RUN);
 		dec_state = COMPRESS_RUN;
-
-		if (!decompress_reinit()) {
-			ERRX("decompress_reinit");
-			return TOKEN_ERROR;
-		}
 
 		buf = malloc(bufsz);
 		if (buf == NULL) {
