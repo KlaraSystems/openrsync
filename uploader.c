@@ -1724,7 +1724,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	void		   *mbuf, *bufp;
 	ssize_t		    msz;
 	size_t		    i, pos, sz;
-	size_t		    linklen;
+	size_t		    linklen = 0;
 	off_t		    offs, filesize;
 	int		    c;
 
@@ -2010,7 +2010,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		u->bufsz += sizeof(int16_t); /* iflags */
 		if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
 			u->bufsz += sizeof(int8_t); /* basis flag */
-}
+		}
 		if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
 			u->bufsz += sizeof(int8_t); /* vstring len byte */
 			if ((linklen = strlen(u->fl[u->idx].link)) > 0x7f) {
