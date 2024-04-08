@@ -195,7 +195,7 @@ enum dryrun {
 #define TOKEN_RELATIVE		0x80	/* Token number is relative */
 #define TOKEN_RUN_RELATIVE	0xc0	/* Run count is 16-bit */
 
-#define TOKEN_MAX_DATA		MAX_COMP_CHUNK	/* reserve 2 bits for flags */
+#define TOKEN_MAX_DATA		MAX_COMP_CHUNK	/* reserve 2 bytes for flags */
 #define TOKEN_MAX_BUF		(TOKEN_MAX_DATA + 2)
 
 /* Forward declarations */
