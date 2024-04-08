@@ -1367,7 +1367,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	struct flist *f;
 	const char *matchdir = NULL, *partialdir = NULL;
 	struct stat st;
-	size_t psize;
+	size_t psize = 0;
 	int i, pdfd = -1, rc, ret;
 
 	f = &p->fl[p->idx];
