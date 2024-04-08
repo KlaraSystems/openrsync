@@ -995,7 +995,7 @@ out:
 int
 rsync_humanize(struct sess *sess, char *buf, size_t len, int64_t val)
 {
-	size_t res;
+	size_t res = 0;
 	char tbuf[32];
 
 	switch (sess->opts->human_readable) {
