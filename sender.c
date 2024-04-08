@@ -331,7 +331,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 * Flush the end of the compressed stream.
 		 */
 
-		cbuf = malloc(TOKEN_MAX_DATA);
+		cbuf = malloc(TOKEN_MAX_BUF);
 		if (cbuf == NULL) {
 			ERRX1("malloc");
 			return 0;
