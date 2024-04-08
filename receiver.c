@@ -554,7 +554,6 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				rpath = strdup(wpath);
 				if (rpath == NULL) {
 					ERR("strdup");
-					free(derived_root);
 					rc = 1;
 					goto out;
 				}
