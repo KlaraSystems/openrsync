@@ -202,6 +202,16 @@ matching engine that functions much like
 Hostnames are matched against a reverse lookup of the client when it initially
 connects.
 .El
+.It Dq ignore errors
+Functionally equivalent to the
+.Xr -ignore-errors
+option to
+.Xr rsync 1 .
+.It Dq ignore nonreadable
+Instructs
+.Xr rsync 1
+to completely ignore files that it can't read from the module path.
+This may be useful for, e.g., a public archive that has mixed ownership.
 .It Dq list
 Indicates if the module will be named when a listing is requested.
 This defaults to true, making all modules visible to any connected rsync client
