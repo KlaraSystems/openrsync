@@ -238,6 +238,11 @@ Limit number of connections to the module at any given time to the named
 number.
 This is enforced using a range lock on the
 .Dq lock file .
+.It Dq max verbosity
+Specifies the max amount of verbosity that a client can request when it
+connects.
+Defaults to 1, to allow at most a single
+.Fl v .
 .It Dq log file
 Names a path on the filesystem to use instead of syslog for logging.
 If the value is not set, empty, or we fail to open the logfile, then
