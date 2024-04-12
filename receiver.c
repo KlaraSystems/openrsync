@@ -508,7 +508,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * This uses our current umask: we might set the permissions on
 	 * this directory in post_dir().
 	 */
-	if (!sess->opts->dry_run) {
+	if (!sess->opts->dry_run && flsz > 0) {
 		bool implied_dir = false;
 
 		if (flsz > 1)
@@ -601,7 +601,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 #ifdef O_DIRECTORY
 	dfd = open(root, O_RDONLY | O_DIRECTORY, 0);
 	if (dfd == -1) {
-		if (!sess->opts->dry_run) {
+		if (!sess->opts->dry_run && flsz != 0) {
 			ERR("%s: open", root);
 			goto out;
 		} else
@@ -617,28 +617,30 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	}
 #else
 	if ((dfd = open(root, O_RDONLY, 0)) == -1) {
-		if (!sess->opts->dry_run) {
+		if (!sess->opts->dry_run && flsz != 0) {
 			ERR("%s: open", root);
 			goto out;
 		} else
 			WARN("%s: open", root);
-	} else if (fstat(dfd, &st) == -1) {
-		if (!sess->opts->dry_run) {
-			ERR("%s: fstat", root);
-			goto out;
-		} else {
-			WARN("%s: fstat", root);
-			close(dfd);
-			dfd = -1;
-		}
-	} else if (!S_ISDIR(st.st_mode)) {
-		if (!sess->opts->dry_run) {
-			ERRX("%s: not a directory", root);
-			goto out;
-		} else {
-			WARN("%s: fstat", root);
-			close(dfd);
-			dfd = -1;
+	} else if (dfd != -1) {
+		if (fstat(dfd, &st) == -1) {
+			if (!sess->opts->dry_run) {
+				ERR("%s: fstat", root);
+				goto out;
+			} else {
+				WARN("%s: fstat", root);
+				close(dfd);
+				dfd = -1;
+			}
+		} else if (!S_ISDIR(st.st_mode)) {
+			if (!sess->opts->dry_run) {
+				ERRX("%s: not a directory", root);
+				goto out;
+			} else {
+				WARN("%s: fstat", root);
+				close(dfd);
+				dfd = -1;
+			}
 		}
 	}
 	if (sess->opts->temp_dir) {
@@ -668,7 +670,8 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * available in our destination.
 	 */
 	/* XXX --dirs should also do deletion of dirs whose contents are copied. */
-	if (sess->opts->del == DMODE_BEFORE && sess->opts->recursive) {
+	if (sess->opts->del == DMODE_BEFORE && sess->opts->recursive &&
+	    dfd != -1) {
 		if (!flist_gen_dels(sess, root, &dfl, &dflsz, fl, flsz)) {
 			ERRX1("flist_gen_local");
 			goto out;
@@ -826,7 +829,8 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * Following transfers, we'll take care of --delete-after.
 	 */
 	/* XXX --dirs should also do deletion of dirs whose contents are copied. */
-	if (sess->opts->del == DMODE_AFTER && sess->opts->recursive) {
+	if (sess->opts->del == DMODE_AFTER && sess->opts->recursive &&
+	    dfd != -1) {
 		if (!flist_gen_dels(sess, root, &dfl, &dflsz, fl, flsz)) {
 				ERRX1("flist_gen_local");
 				goto out;

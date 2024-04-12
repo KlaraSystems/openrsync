@@ -2358,7 +2358,6 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 	 * command line.
 	 */
 
-	assert(wflsz > 0);
 	for (i = 0; i < wflsz; i++)
 		if (FLSTAT_TOP_DIR & wfl[i].st.flags)
 			cargvs++;
