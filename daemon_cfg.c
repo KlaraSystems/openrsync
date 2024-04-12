@@ -71,7 +71,7 @@ static struct rsync_daemon_param {
 	PARAM("exclude",	NULL),
 	PARAM("exclude from",	"excludefrom"),
 	PARAM("filter",		NULL),
-	PARAM_DFLT("gid",		NULL,		"-2"),
+	PARAM("gid",		NULL),
 	PARAM("hosts allow",	"hostsallow"),
 	PARAM("hosts deny",	"hostsdeny"),
 	PARAM_DFLT("ignore errors",	"ignoreerrors",	"false"),
@@ -99,7 +99,7 @@ static struct rsync_daemon_param {
 	PARAM_DFLT("syslog facility",	"syslogfacility",	"daemon"),
 	PARAM_DFLT("timeout",	NULL,	"0"),
 	PARAM_DFLT("transfer logging",	"transferlogging",	"false"),
-	PARAM_DFLT("uid",		NULL,		"-2"),
+	PARAM_DFLT("uid",		NULL,		"nobody"),
 	PARAM_DFLT("use chroot",	"usechroot",	"true"),
 	PARAM_DFLT("write only",	"writeonly",	"false"),
 
