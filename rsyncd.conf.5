@@ -169,6 +169,10 @@ or
 .Dq "+ "
 to specify the rule and, e.g., get rule ordering correct.
 These rules take precedence over any client-specified rules.
+.It Do gid Dc , Do uid Dc
+The group and user names or IDs to use for transfer processes.
+Once a client connected, privileges are dropped as soon as we possibly can
+before the transfer begins.
 .It Dq list
 Indicates if the module will be named when a listing is requested.
 This defaults to true, making all modules visible to any connected rsync client
