@@ -173,6 +173,35 @@ These rules take precedence over any client-specified rules.
 The group and user names or IDs to use for transfer processes.
 Once a client connected, privileges are dropped as soon as we possibly can
 before the transfer begins.
+.It Do hosts allow Dc , Do hosts deny Dc
+Specifies a list of host patterns that are either allowed or denied from using
+the module.
+Incoming connections must match at least one of the
+.Dq hosts allow
+patterns, if specified.
+Conversely, incoming connections must not match any
+.Dq hosts deny
+pattern, if specified.
+If both options are specified, then the
+.Dq hosts allow
+rule is processed first, followed by a potential rejection if the allowed host
+matches one of the
+.Dq hosts deny
+patterns.
+.Pp
+The pattern may be:
+.Bl -bullet
+.It
+A single IPv4 or IPv6 address
+.It
+address/<mask> or address/<mask address> notation
+.It
+Hostname with optional wildcards, which are processed with the internal pattern
+matching engine that functions much like
+.Xr fnmatch 3 .
+Hostnames are matched against a reverse lookup of the client when it initially
+connects.
+.El
 .It Dq list
 Indicates if the module will be named when a listing is requested.
 This defaults to true, making all modules visible to any connected rsync client
