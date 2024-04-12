@@ -223,6 +223,21 @@ Resulting incoming or outgoing files are given the requested mode.
 Indicates if the module will be named when a listing is requested.
 This defaults to true, making all modules visible to any connected rsync client
 that requests a listing.
+.It Dq lock file
+Names the path on the filesystem that
+.Xr rsync 1
+will use for counting connections towards the
+.Dq max connections
+limit.
+Segments of this file will be rangelocked with
+.Xr fcntl 2
+.Va F_SETLK
+as needed to determine if we have any connection slots left open to grant.
+.It Dq max connections
+Limit number of connections to the module at any given time to the named
+number.
+This is enforced using a range lock on the
+.Dq lock file .
 .It Dq path
 Names the path on the filesystem that
 .Xr rsync 1
