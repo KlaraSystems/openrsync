@@ -260,15 +260,32 @@ daemon_chuser_setup(struct sess *sess, const char *module)
 		return 0;
 	}
 
-	rc = cfg_param_str(role->dcfg, module, "gid", &gidstr);
-	assert(rc == 0);
-	if (!daemon_chuser_resolve_name(gidstr, true, &role->gid)) {
-		daemon_client_error(sess, "%s: gid '%s' invalid",
-		    module, gidstr);
-		return 0;
+	if (cfg_has_param(role->dcfg, module, "gid")) {
+		/* Group specified - it must resolve. */
+		rc = cfg_param_str(role->dcfg, module, "gid", &gidstr);
+		assert(rc == 0);
+		if (!daemon_chuser_resolve_name(gidstr, true, &role->gid)) {
+			daemon_client_error(sess, "%s: gid '%s' invalid",
+			    module, gidstr);
+			return 0;
+		}
+
+		return 1;
 	}
 
-	return 1;
+	/*
+	 * No group specified; try "nobody", then "nogroup", before erroring
+	 * out.
+	 */
+	if (daemon_chuser_resolve_name("nobody", true, &role->gid))
+		return 1;
+	else if (daemon_chuser_resolve_name("nogroup", true, &role->gid))
+		return 1;
+
+	daemon_client_error(sess, "%s: no gid specified, cannot find one to use",
+	    module);
+
+	return 0;
 }
 
 int
