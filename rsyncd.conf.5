@@ -151,6 +151,12 @@ appear in the order of desired precedence.
 When a username is presented, the
 .Dq secrets file
 is consulted for the secret to authenticate with.
+.It Dq comment
+Comment to use when a module listing is requested.
+.It Dq list
+Indicates if the module will be named when a listing is requested.
+This defaults to true, making all modules visible to any connected rsync client
+that requests a listing.
 .It Dq path
 Names the path on the filesystem that
 .Xr rsync 1
