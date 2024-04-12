@@ -238,6 +238,16 @@ Limit number of connections to the module at any given time to the named
 number.
 This is enforced using a range lock on the
 .Dq lock file .
+.It Dq log file
+Names a path on the filesystem to use instead of syslog for logging.
+If the value is not set, empty, or we fail to open the logfile, then
+.Xr rsync 1
+will fallback to using syslog anyways.
+.It Dq log format
+Functionally equivalent to the
+.Fl -out-format
+option to
+.Xr rsync 1 .
 .It Dq path
 Names the path on the filesystem that
 .Xr rsync 1
@@ -272,6 +282,12 @@ Instructs
 to enforce stricter modes on the secrets file.
 Namely, the secrets file must not be other-readable.
 This is enabled by default.
+.It Dq syslog facility
+The syslog facility to use when
+.Xr rsync 1
+writes to the syslog.
+Defaults to
+.Dq daemon .
 .It Dq use chroot
 Boolean value describing whether
 .Xr rsync 1
