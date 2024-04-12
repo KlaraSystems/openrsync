@@ -153,6 +153,22 @@ When a username is presented, the
 is consulted for the secret to authenticate with.
 .It Dq comment
 Comment to use when a module listing is requested.
+.It Do exclude Dc , Do exclude from Dc , Do filter Dc , Do include Dc , \
+Do include from Dc
+These options correspond to the
+.Xr rsync
+command-line option equivalents.
+The
+.Dq exclude ,
+.Dq filter ,
+and
+.Dq include
+values are space-separated, and may contain a leading
+.Dq "- "
+or
+.Dq "+ "
+to specify the rule and, e.g., get rule ordering correct.
+These rules take precedence over any client-specified rules.
 .It Dq list
 Indicates if the module will be named when a listing is requested.
 This defaults to true, making all modules visible to any connected rsync client
