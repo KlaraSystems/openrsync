@@ -212,6 +212,13 @@ Instructs
 .Xr rsync 1
 to completely ignore files that it can't read from the module path.
 This may be useful for, e.g., a public archive that has mixed ownership.
+.It Do incoming chmod Dc , Do outgoing chmod Dc
+Functionally equivalent to splitting the
+.Fl -chmod
+option to
+.Xr rsync 1
+into sender and receiver chmod options.
+Resulting incoming or outgoing files are given the requested mode.
 .It Dq list
 Indicates if the module will be named when a listing is requested.
 This defaults to true, making all modules visible to any connected rsync client
