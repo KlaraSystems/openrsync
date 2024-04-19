@@ -276,6 +276,14 @@ to traverse outside of the module path will be stripped.
 This option is enabled by default when
 .Dq chroot
 is disabled.
+.It Dq numeric ids
+Nearly functionally equivalent to the
+.Fl -numeric-ids
+option to
+.Xr rsync 1 .
+When operating in a chroot,
+.Dq numeric ids
+will be silently enabled on the daemon-side.
 .It Dq path
 Names the path on the filesystem that
 .Xr rsync 1
