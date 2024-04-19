@@ -824,9 +824,6 @@ daemon_do_execcmds_pre(struct sess *sess, const char *module, const char *cmd)
 		narg = args = penv;
 
 		for (size_t i = 0; penvsz != 0; i++) {
-			if (i > 512)
-				__builtin_trap();
-
 			/*
 			 * This should always be NUL-terminated, so we shouldn't
 			 * have anything remaining if we hit endp == NULL.
