@@ -227,6 +227,16 @@ that requests a listing.
 Names the path on the filesystem that
 .Xr rsync 1
 will use for counting connections towards the
+.It Dq log file
+Names a path on the filesystem to use instead of syslog for logging.
+If the value is not set, empty, or we fail to open the logfile, then
+.Xr rsync 1
+will fallback to using syslog anyways.
+.It Dq log format
+Functionally equivalent to the
+.Fl -out-format
+option to
+.Xr rsync 1 .
 .Dq max connections
 limit.
 Segments of this file will be rangelocked with
@@ -243,16 +253,6 @@ Specifies the max amount of verbosity that a client can request when it
 connects.
 Defaults to 1, to allow at most a single
 .Fl v .
-.It Dq log file
-Names a path on the filesystem to use instead of syslog for logging.
-If the value is not set, empty, or we fail to open the logfile, then
-.Xr rsync 1
-will fallback to using syslog anyways.
-.It Dq log format
-Functionally equivalent to the
-.Fl -out-format
-option to
-.Xr rsync 1 .
 .It Dq path
 Names the path on the filesystem that
 .Xr rsync 1
