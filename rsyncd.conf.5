@@ -253,6 +253,29 @@ Specifies the max amount of verbosity that a client can request when it
 connects.
 Defaults to 1, to allow at most a single
 .Fl v .
+.It Dq munge symlinks
+Munges symlinks received or sent by the daemon as appropriate to render them
+safe to follow.
+If this option is enabled, then
+.Xr rsync 1
+will prepend
+.Pa /rsyncd-munge/
+to the target of any symlink received.
+For symlinks sent, it will strip the
+.Pa /rsyncd-munge/
+prefix to restore the symlink's target.
+.Pp
+If this option is disabled and
+.Dq chroot
+is also disabled, then symlinks may be irreversibly damaged to render them safe
+for the daemon.
+Notably, any path components that may cause
+.Xr rsync 1
+to traverse outside of the module path will be stripped.
+.Pp
+This option is enabled by default when
+.Dq chroot
+is disabled.
 .It Dq path
 Names the path on the filesystem that
 .Xr rsync 1
