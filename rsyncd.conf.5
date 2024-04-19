@@ -340,6 +340,12 @@ For abnormal termination,
 .Dv -1
 will be passed as the exit status.
 .El
+.It Dq read only
+Indicates whether the module is read only or not.
+This is only checked when a client attempts to send a file to the
+.Xr rsync 1
+daemon.
+This is enabled by default.
 .It Dq secrets file
 Names the path on the filesystem that
 .Xr rsync 1
@@ -395,6 +401,12 @@ This fallback does not happen if
 is explicitly set to true
 in
 .Nm .
+.It Dq write only
+Indicates whether the module is write only or not.
+This is only checked when a client attempts to receive a file to the
+.Xr rsync 1
+daemon.
+This is disabled by default.
 .El
 .Pp
 .Dq path
