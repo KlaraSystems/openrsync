@@ -288,6 +288,58 @@ will be silently enabled on the daemon-side.
 Names the path on the filesystem that
 .Xr rsync 1
 will serve files for this module from.
+.It Do post-xfer exec Dc , Dq pre-xfer exec
+Commands to execute before and after the transfer.
+.Xr rsync 1
+will not do any word-splitting of these options.
+The following environment variables will be available to the execution
+environment:
+.Bl -tag -width Ds
+.It Ev RSYNC_MODULE_NAME
+The name of the requested module.
+.It Ev RSYNC_MODULE_PATH
+The
+.Dq path
+for the requested module.
+.It Ev RSYNC_HOST_ADDR
+The client's network address.
+.It Ev RSYNC_HOST_NAME
+The client's host name, as determined from a reverse DNS lookup.
+.It Ev RSYNC_USER_NAME
+The username the client has sent along for authentication purposes.
+.It Ev RSYNC_PID
+The PID of the process that will be handling or did handle the transfer.
+.It Ev RSYNC_ARG#
+Only available for
+.Dq pre-xfer exec ,
+each of the arguments provided by the client are passed in via the environment.
+.Ev RSYNC_ARG0
+will be set to
+.Dq rsyncd
+by convention.
+Options are terminated by a single
+.Dq . ,
+after which paths will be present.
+Paths will have the module/ part stripped.
+.It Ev RSYNC_REQUEST
+Only available for
+.Dq pre-xfer exec ,
+this essentially contains the entirety of the path portion of the arguments as
+they were sent by the client, with the module/ prefix left intact if provided.
+.It Ev RSYNC_RAW_STATUS
+Only available for
+.Dq post-xfer exec ,
+the raw numeric exit status of the process that handled the transfer.
+This includes any flag bits set that may indicate, e.g., that the process was
+terminated by signal.
+.It Ev RSYNC_EXIT_STATUS
+Only available for
+.Dq post-xfer exec ,
+this is the exit status of the child if it did terminate normally.
+For abnormal termination,
+.Dv -1
+will be passed as the exit status.
+.El
 .It Dq secrets file
 Names the path on the filesystem that
 .Xr rsync 1
