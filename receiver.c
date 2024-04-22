@@ -327,19 +327,44 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	/*
 	 * How does the hardlink handling work?
 	 * The first file with identical device/inode is written
-	 * to disk.  Every subsequent one is not is not written
+	 * to disk.  Every subsequent one is not written
 	 * and later hardlinked.
 	 * For this function that means we return NULL when "our"
-	 * flist entry is the first with same device/inode.  If it isn't
+	 * flist entry is the first with same device/inode.  If it isn't then
 	 * that first one is returned.  We don't ever mess with subsequent
 	 * ones.
 	 */
 	int i;
 	int n_seen = 0;
 	const struct flist *returnthis = NULL;
+	struct info_for_hardlink searchfor;
+	struct info_for_hardlink *found;
 
-	/* TODO: use binary search here, it is already sorted */
-	for (i = 0; i < hl->n; i++) {
+	/*
+	 * bsearch(3) will return an unspecified match when multiple
+	 * matches are found.  We always have at least one match
+	 * and we are interested in multiple matches.  So we use
+	 * bsearch(3), then go backwards to the first match, then go
+	 * forward to the second (if any) match.
+	 */
+	searchfor.device = this->st.device;
+	searchfor.inode = this->st.inode;
+	found = bsearch(&searchfor, hl->infos, hl->n,
+		sizeof(struct info_for_hardlink), info_for_hardlink_compare);
+	if (found == NULL)
+		return NULL;
+
+	assert(found->device == this->st.device);
+	assert(found->inode == this->st.inode);
+
+	i = ((void *)found - (void *)hl->infos) /
+		sizeof(struct info_for_hardlink);
+	/* Go back to the first match */
+	while (i > 0 && this->st.inode == hl->infos[i - 1].inode &&
+	    this->st.device == hl->infos[i - 1].device) {
+		i--;
+	}
+	for (; i < hl->n; i++) {
 		if (this->st.inode == hl->infos[i].inode &&
 			this->st.device == hl->infos[i].device) {
 			n_seen++;
