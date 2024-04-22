@@ -346,6 +346,36 @@ This is only checked when a client attempts to send a file to the
 .Xr rsync 1
 daemon.
 This is enabled by default.
+.It Dq refuse options
+Options to refuse from the client, if provided.
+Refused options cause the
+.Xr rsync 1
+daemon to abort the operation before any files are transferred.
+Options are provided as a space delimited list of patterns to refuse.
+These patterns, like those used in filter rules and the above
+.Dq hosts allow
+and
+.Dq hosts deny ,
+are simple patterns that support globbing as in
+.Xr fnmatch 3 .
+The pattern may match either the short option name or the long option name for a
+given option
+.Pp
+Refusing the
+.Fl a
+option will refuse all of the options that make up the
+.Fl a
+option, unless the option is matched by wildcard.
+Refusing any component of
+.Fl a
+will also refuse the
+.Fl a
+option.
+.Pp
+Refusing
+.Dq delete
+will also implicitly refuse
+.Fl -remove-source-files .
 .It Dq secrets file
 Names the path on the filesystem that
 .Xr rsync 1
