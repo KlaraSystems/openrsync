@@ -417,6 +417,18 @@ Functionally equivalent to the
 .Fl -timeout
 option to
 .Xr rsync 1 .
+.It Dq transfer logging
+Enable FTP-style logging of the transactions that take place during this
+transfer.
+The relevant log lines honor the format specified by the
+.Dq log format
+option, which defaults to
+.Dq %o %h [%a] %m (%u) %f %l
+for
+.Dq transfer logging
+purposes.
+.Pp
+This option is disabled by default.
 .It Dq use chroot
 Boolean value describing whether
 .Xr rsync 1
