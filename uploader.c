@@ -1331,6 +1331,7 @@ pre_file_fuzzy(struct sess *sess, struct upload *p, struct flist *f,
 			if ((fd = openat(p->rootfd, pathbuf, O_RDONLY |
 			    O_NOFOLLOW | O_RESOLVE_BENEATH)) == -1) {
 				ERR("%s: pre_file_fuzzy: openat", pathbuf);
+				sess->total_errors++;
 				continue;
 			}
 			*stp = st;
@@ -1343,7 +1344,7 @@ pre_file_fuzzy(struct sess *sess, struct upload *p, struct flist *f,
 				(void)closedir(dirp);
 				return -1;
 			}
-			LOG4("fuzzy basis selected for %s: %s", f->path, f->link);
+			LOG3("fuzzy basis selected for %s: %s", f->path, f->link);
 
 			(void)closedir(dirp);
 			return 0;
