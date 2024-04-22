@@ -153,6 +153,21 @@ When a username is presented, the
 is consulted for the secret to authenticate with.
 .It Dq comment
 Comment to use when a module listing is requested.
+.It Dq dont compress
+This option is accepted for compatibility with the reference rsync, but it has
+no effect in openrsync.
+Traditionally, the value of
+.Dq dont compress
+is a space delimited list of patterns describing filenames that should not be
+compressed.
+.Pp
+In earlier versions of rsync, only zlib is supported for compression and
+per-file compression levels cannot be set.
+The first file matching a pattern in this list could inadvertently disable
+compression for the entire transfer rather than just the already-compressed
+files.
+This implementation chose to favor lower bandwidth over potentially wasted
+CPU cycles for the time being.
 .It Do exclude Dc , Do exclude from Dc , Do filter Dc , Do include Dc , \
 Do include from Dc
 These options correspond to the
