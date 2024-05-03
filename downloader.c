@@ -854,6 +854,8 @@ protocol_token_cflush(struct sess *sess, struct download *p, char *dbuf)
 		return TOKEN_NEXT;
 	}
 
+	assert(dbuf != NULL);
+
 	dectx.avail_in = 0;
 	dectx.avail_out = MAX_CHUNK_BUF;
 	res = inflate(&dectx, Z_SYNC_FLUSH);
@@ -947,10 +949,17 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 		return TOKEN_ERROR;
 	}
 
-	dbuf = malloc(MAX_CHUNK_BUF);
-	if (dbuf == NULL) {
-		ERRX1("malloc");
-		return TOKEN_ERROR;
+	dbuf = sess->token_dbuf;
+	if (sess->token_dbufsz < MAX_CHUNK_BUF) {
+		dbuf = malloc(MAX_CHUNK_BUF);
+		if (dbuf == NULL) {
+			ERRX1("malloc");
+			return TOKEN_ERROR;
+		}
+
+		free(sess->token_dbuf);
+		sess->token_dbuf = dbuf;
+		sess->token_dbufsz = MAX_CHUNK_BUF;
 	}
 
 	dectx.avail_in = 0;
@@ -986,14 +995,12 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 			if (dectx.msg) {
 				ERRX("inflate error: %s", dectx.msg);
 			}
-			free(dbuf);
 			return TOKEN_ERROR;
 		}
 		if (dectx.avail_out == 0) {
 			break;
 		}
 	}
-	free(dbuf);
 
 	return TOKEN_NEXT;
 }
@@ -1078,6 +1085,19 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		return TOKEN_ERROR;
 	}
 
+	dbuf = sess->token_dbuf;
+	if (sess->token_dbufsz < MAX_CHUNK_BUF) {
+		dbuf = malloc(MAX_CHUNK_BUF);
+		if (dbuf == NULL) {
+			ERRX1("malloc");
+			return TOKEN_ERROR;
+		}
+
+		free(sess->token_dbuf);
+		sess->token_dbuf = dbuf;
+		sess->token_dbufsz = MAX_CHUNK_BUF;
+	}
+
 	need_count = false;
 	if ((flag & TOKEN_RUN_RELATIVE) == TOKEN_DEFLATED) {
 		uint16_t bufsz;
@@ -1089,23 +1109,22 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			return TOKEN_ERROR;
 		}
 		bufsz = ((flag & ~TOKEN_DEFLATED) << 8) | sizelo;
-		buf = malloc(bufsz);
-		if (buf == NULL) {
-			ERRX1("malloc");
-			return TOKEN_ERROR;
-		}
 
-		dbuf = malloc(MAX_CHUNK_BUF);
-		if (dbuf == NULL) {
-			ERRX1("malloc");
-			free(buf);
-			return TOKEN_ERROR;
+		buf = sess->token_buf;
+		if (sess->token_bufsz < bufsz) {
+			buf = malloc(bufsz);
+			if (buf == NULL) {
+				ERRX1("malloc");
+				return TOKEN_ERROR;
+			}
+
+			free(sess->token_buf);
+			sess->token_buf = buf;
+			sess->token_bufsz = bufsz;
 		}
 
 		if (!io_read_buf(sess, p->fdin, buf, bufsz)) {
 			ERRX1("io_read_buf");
-			free(buf);
-			free(dbuf);
 			return TOKEN_ERROR;
 		}
 
@@ -1119,8 +1138,6 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			dsz = MAX_CHUNK_BUF - dectx.avail_out;
 			if (!buf_copy(dbuf, dsz, p, sess)) {
 				ERRX("buf_copy dbuf");
-				free(buf);
-				free(dbuf);
 				return TOKEN_ERROR;
 			}
 			MD4_Update(&p->ctx, dbuf, dsz);
@@ -1135,8 +1152,6 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 			if (dectx.msg) {
 				ERRX("inflate error: %s", dectx.msg);
 			}
-			free(buf);
-			free(dbuf);
 			return TOKEN_ERROR;
 		}
 		/* We have exhausted the input stream, write out the remaining data */
@@ -1144,8 +1159,6 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		if (dsz != 0) {
 			if (!buf_copy(dbuf, dsz, p, sess)) {
 				ERRX("buf_copy dbuf");
-				free(buf);
-				free(dbuf);
 				return TOKEN_ERROR;
 			}
 			MD4_Update(&p->ctx, dbuf, dsz);
@@ -1153,8 +1166,6 @@ protocol_token_compressed(struct sess *sess, struct download *p)
 		p->total += dsz;
 		p->downloaded += bufsz;
 		sess->total_unmatched += dsz;
-		free(buf);
-		free(dbuf);
 		assert(dectx.avail_in == 0);
 
 		dec_state_change(COMPRESS_DONE);
@@ -1243,17 +1254,23 @@ protocol_token_raw(struct sess *sess, struct download *p)
 
 	if (rawtok > 0) {
 		sz = rawtok;
-		if ((buf = malloc(sz)) == NULL) {
-			ERR("malloc");
-			return TOKEN_ERROR;
+		buf = sess->token_buf;
+		if (sess->token_bufsz < sz) {
+			buf = malloc(sz);
+			if (buf == NULL) {
+				ERRX1("malloc");
+				return TOKEN_ERROR;
+			}
+
+			free(sess->token_buf);
+			sess->token_buf = buf;
+			sess->token_bufsz = sz;
 		}
 		if (!io_read_buf(sess, p->fdin, buf, sz)) {
 			ERRX1("io_read_buf");
-			free(buf);
 			return TOKEN_ERROR;
 		} else if (!buf_copy(buf, sz, p, sess)) {
 			ERRX("buf_copy");
-			free(buf);
 			return TOKEN_ERROR;
 		}
 		p->total += sz;
@@ -1261,7 +1278,6 @@ protocol_token_raw(struct sess *sess, struct download *p)
 		sess->total_unmatched += sz;
 		LOG4("%s: received %zu B block", p->fname, sz);
 		MD4_Update(&p->ctx, buf, sz);
-		free(buf);
 
 		/* Fast-track more reads as they arrive. */
 

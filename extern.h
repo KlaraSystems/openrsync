@@ -685,6 +685,12 @@ struct	sess {
 	long		   total_deleted; /* Total files deleted */
 	bool		   err_del_limit; /* --max-delete limit exceeded */
 	int		   protocol; /* negotiated protocol version */
+	char              *token_buf; /* used for protocol token processing */
+	size_t             token_bufsz; /* used for protocol token processing */
+	char              *token_cbuf; /* used for protocol token processing */
+	size_t             token_cbufsz; /* used for protocol token processing */
+	char              *token_dbuf; /* used for protocol token processing */
+	size_t             token_dbufsz; /* used for protocol token processing */
 };
 
 /*
