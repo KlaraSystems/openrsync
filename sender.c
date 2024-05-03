@@ -162,14 +162,21 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
 	off = tok * up->cur->blks->len;
 	buf = up->stat.map + off;
 
-	cbuf = malloc(MAX_CHUNK_BUF);
-	if (cbuf == NULL) {
-		ERRX1("malloc");
-		return 0;
+	cbuf = sess->token_cbuf;
+	if (sess->token_cbufsz < MAX_CHUNK_BUF) {
+		cbuf = malloc(MAX_CHUNK_BUF);
+		if (cbuf == NULL) {
+			ERRX1("malloc");
+			return 0;
+		}
+
+		free(sess->token_cbuf);
+		sess->token_cbuf = cbuf;
+		sess->token_cbufsz = MAX_CHUNK_BUF;
 	}
+
 	if (!compress_reinit(sess)) {
 		ERRX1("decompress_reinit");
-		free(cbuf);
 		return 0;
 	}
 
@@ -189,12 +196,10 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
 		res = deflate(&cctx, Z_INSERT_ONLY);
 		if (res != Z_OK || cctx.avail_in != 0) {
 			ERRX("deflate ff res=%d", res);
-			free(cbuf);
 			return 0;
 		}
 		buf += clen;
 	}
-	free(cbuf);
 
 	return 1;
 }
@@ -228,15 +233,22 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		sz = MINIMUM(MAX_CHUNK,
 			up->stat.mapsz - up->stat.curpos);
 		sbuf = up->stat.map + up->stat.curpos;
-		cbuf = malloc(TOKEN_MAX_BUF);
-		if (cbuf == NULL) {
-			ERRX1("malloc");
-			return 0;
+
+		cbuf = sess->token_cbuf;
+		if (sess->token_cbufsz < TOKEN_MAX_BUF) {
+			cbuf = malloc(TOKEN_MAX_BUF);
+			if (cbuf == NULL) {
+				ERRX1("malloc");
+				return 0;
+			}
+
+			free(sess->token_cbuf);
+			sess->token_cbuf = cbuf;
+			sess->token_cbufsz = TOKEN_MAX_BUF;
 		}
 
 		if (!compress_reinit(sess)) {
 			ERRX1("decompress_reinit");
-			free(cbuf);
 			return 0;
 		}
 
@@ -253,7 +265,6 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			}
 			if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, ssz + 2)) {
 				ERRX("io_lowbuffer_alloc");
-				free(cbuf);
 				return 0;
 			}
 			cbuf[0] = (TOKEN_DEFLATED + (ssz >> 8)) & 0xff;
@@ -270,10 +281,8 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		}
 		if (res != Z_OK && res != Z_BUF_ERROR) {
 			ERRX("deflate res=%d", res);
-			free(cbuf);
 			return 0;
 		}
-		free(cbuf);
 		up->stat.curpos += sz;
 		if (up->stat.curpos == up->stat.mapsz) {
 			up->stat.curst = BLKSTAT_FLUSH;
@@ -331,11 +340,19 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 * Flush the end of the compressed stream.
 		 */
 
-		cbuf = malloc(TOKEN_MAX_BUF);
-		if (cbuf == NULL) {
-			ERRX1("malloc");
-			return 0;
+		cbuf = sess->token_cbuf;
+		if (sess->token_cbufsz < TOKEN_MAX_BUF) {
+			cbuf = malloc(TOKEN_MAX_BUF);
+			if (cbuf == NULL) {
+				ERRX1("malloc");
+				return 0;
+			}
+
+			free(sess->token_cbuf);
+			sess->token_cbuf = cbuf;
+			sess->token_cbufsz = TOKEN_MAX_BUF;
 		}
+
 		cctx.avail_in = 0;
 		cctx.next_in = NULL;
 		cctx.next_out = (Bytef *)(cbuf + 2);
@@ -348,7 +365,6 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			if (ssz != 0 && res != Z_BUF_ERROR) {
 				if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, ssz + 2)) {
 					ERRX("io_lowbuffer_alloc");
-					free(cbuf);
 					return 0;
 				}
 				cbuf[0] = (TOKEN_DEFLATED + (ssz >> 8)) & 0xff;
@@ -368,11 +384,9 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		/* Send the end of token marker */
 		if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, 1)) {
 			ERRX("io_lowbuffer_alloc");
-			free(cbuf);
 			return 0;
 		}
 		io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
-		free(cbuf);
 		comp_state = COMPRESS_DONE;
 		up->stat.curst = BLKSTAT_HASH;
 		return 1;
