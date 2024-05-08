@@ -1,0 +1,168 @@
+#! /bin/sh
+
+# Test that the --compress/-z option works as expected.
+
+set -e
+set -u
+
+. ${tstdir-.}/lib.sh
+. ${tstdir-.}/conf.sh
+
+# Create the source tree consisting of a number of highly compressed,
+# somewhat compressed, and highly compressible files of varying sizes:
+#
+rm -rf src
+mkdir src
+
+for i in 1 17 131 523 1025 ; do
+    for reps in $((1024 * i)) ; do
+	jot ${reps} $i > src/file-${reps}-$i
+	xz -c -3 src/file-${reps}-$i > src/file-${reps}-$i-3.xz
+	xz -c -7 src/file-${reps}-$i > src/file-${reps}-$i-7.xz
+    done
+done
+
+
+# Very simple compression test for non-existent dest dir:
+#
+for opt in "" "--fuzzy" ; do
+    rm -rf dst
+    rsync -az ${opt} -- src/ dst/
+    compare_trees -t src dst
+done
+
+
+# Rename all the files in the dest dir such that they can be
+# selected as fuzzy basis files:
+#
+ls dst | xargs -n1 -I{} mv dst/{} dst/{}-fuzzy
+rsync -az --fuzzy --delete-after -- src/ dst/
+compare_trees -t src dst
+
+
+# Create three source files (one sparse, one filled with random data,
+# and one filled with highly compressible text), then iterate over
+# various offsets and block sizes and modify the data in the source
+# files at those offsets and sizes (note that the changes to the
+# source files accumulate over each iteration):
+#
+rm -rf src dst
+mkdir src dst
+dd if=/dev/zero of=src/file0 oseek=$((32768*1024)) bs=1 count=1 > /dev/null 2>&1
+dd if=/dev/random of=src/filez bs=1024k count=9 > /dev/null 2>&1
+jot 1000000 > src/filej
+cp -a src/file? dst/
+
+for i in $(seq 1 17 119) ; do
+    dd if=/dev/random of=src/file0 conv=notrunc bs=$i oseek=$((i-1)) count=1 > /dev/null 2>&1
+    dd if=/dev/zero of=src/filez conv=notrunc bs=$i oseek=$((i-1)) count=1 > /dev/null 2>&1
+    dd if=/dev/random of=src/filej conv=notrunc bs=$i oseek=$((i-1)) count=1 > /dev/null 2>&1
+
+    cp -a src/file0 dst/file0-fuzzy
+    cp -a src/filez dst/filez-fuzzy
+    cp -a src/filej dst/filej-fuzzy
+    rsync -az -I --fuzzy --delete-after -- src/ dst/
+    compare_trees -t src dst
+
+    rm -f dst/*
+    rsync -az -- src/ dst/
+    compare_trees -t src dst
+done
+
+
+# Create two source files (one random/uncompressible and one highly
+# compressible), then iterate over various block sizes, modifying the
+# source and or dest files at various block offsets and run lengths:
+#
+rm -rf src dst
+mkdir src dst
+dd if=/dev/random of=filez.orig bs=1025k count=9 > /dev/null 2>&1
+jot 1000000 > filej.orig
+
+for bs in 337 1701 4096 131071 131072 ; do
+    cp -a filez.orig src/filez
+    cp -a filej.orig src/filej
+
+    # rsync with given block size + compression where dest file does not exist:
+    #
+    rm -f dst/*
+    rsync -az --block-size=${bs} -- src/ dst/
+    compare_trees -t src dst
+
+    # rsync with given block size + compression + fuzzy where dest file
+    # does not exist:
+    #
+    rm -f dst/*
+    cp src/filez dst/filez-fuzzy
+    cp src/filej dst/filej-fuzzy
+    rsync -az --block-size=${bs} -I --fuzzy --delete-after -- src/ dst/
+    compare_trees -t src dst
+
+    for count in $(seq 1 2 5) ; do
+	cp -a filez.orig src/filez
+	cp -a filej.orig src/filej
+
+	cp src/filez dst/filez-fuzzy
+	cp src/filej dst/filej-fuzzy
+
+	# Permute the source files:
+	#
+	for oseek in $(seq 0 7 63) ; do
+	    dd if=/dev/zero of=src/filez conv=notrunc bs=${bs} oseek=${oseek} count=${count} > /dev/null 2>&1
+	    dd if=/dev/random of=src/filej conv=notrunc bs=${bs} oseek=${oseek} count=${count} > /dev/null 2>&1
+	done
+
+	# rsync with given block size + compression + fuzzy where dest and
+	# fuzzy files exist but all files are different:
+	#
+	rsync -az --block-size=${bs} -I --fuzzy --delete-after -- src/ dst/
+	compare_trees -t src dst
+
+
+	# Permute the dest files:
+	#
+	for oseek in $(seq 0 7 63) ; do
+	    dd if=/dev/zero of=dst/filez conv=notrunc bs=${bs} oseek=${oseek} count=${count} > /dev/null 2>&1
+	    dd if=/dev/random of=dst/filej conv=notrunc bs=${bs} oseek=${oseek} count=${count} > /dev/null 2>&1
+	done
+
+	# rsync with given block size + compression + fuzzy where dest and
+	# fuzzy files exist but all files are different:
+	#
+	touch src/*
+	cp dst/filez dst/filez-fuzzy
+	cp dst/filej dst/filej-fuzzy
+	rsync -az --block-size=${bs} -I --fuzzy --delete-after -- src/ dst/
+	compare_trees -t src dst
+    done
+
+    # Same as above, but without fuzzy files:
+    #
+    for count in $(seq 1 2 5) ; do
+	cp -a filez.orig src/filez
+	cp -a filej.orig src/filej
+
+	# Permute the source files:
+	#
+	for oseek in $(seq 0 7 63) ; do
+	    dd if=/dev/zero of=src/filez conv=notrunc bs=${bs} oseek=${oseek} count=${count} > /dev/null 2>&1
+	    dd if=/dev/random of=src/filej conv=notrunc bs=${bs} oseek=${oseek} count=${count} > /dev/null 2>&1
+	done
+
+	rsync -az --block-size=${bs} -I -- src/ dst/
+	compare_trees -t src dst
+
+
+	# Permute the dest files:
+	#
+	for oseek in $(seq 0 7 63) ; do
+	    dd if=/dev/zero of=dst/filez conv=notrunc bs=${bs} oseek=${oseek} count=${count} > /dev/null 2>&1
+	    dd if=/dev/random of=dst/filej conv=notrunc bs=${bs} oseek=${oseek} count=${count} > /dev/null 2>&1
+	done
+
+	touch src/*
+	rsync -az --block-size=${bs} -I -- src/ dst/
+	compare_trees -t src dst
+    done
+done
+
