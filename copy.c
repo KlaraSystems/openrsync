@@ -244,18 +244,21 @@ is_unsafe_link(const char *link, const char *src, const char *root)
 		return 1;
 	}
 
-	rootlen = strlen(root);
-	if (strncmp(src, root, rootlen) == 0) {
-		/* Make src relative to root */
-		src += rootlen;
-		if (*src == '/') {
-			src++;
+	if (root != NULL) {
+		rootlen = strlen(root);
+		if (strncmp(src, root, rootlen) == 0) {
+			/* Make src relative to root */
+			src += rootlen;
+			if (*src == '/') {
+				src++;
+			}
+		} else {
+			/* src is outside of the root, this is unsafe */
+			WARNX("%s: is_unsafe_link: src file is outside of the root: %s\n", src, root);
+			return 1;
 		}
-	} else {
-		/* src is outside of the root, this is unsafe */
-		WARNX("%s: is_unsafe_link: src file is outside of the root: %s\n", src, root);
-		return 1;
 	}
+
 	srcdepth = count_dir_depth(src, 0, 0);
 	if (srcdepth < 0) {
 		/* src escapes the root, this in unsafe */

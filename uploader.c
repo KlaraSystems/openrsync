@@ -255,7 +255,7 @@ pre_symlink(struct upload *p, struct sess *sess)
 		return 0;
 	}
 	if (sess->opts->safe_links &&
-	    is_unsafe_link(f->link, f->path, f->path)) {
+	    is_unsafe_link(f->link, f->path, NULL)) {
 		LOG1("ignoring unsafe symlink: %s -> %s", f->path, f->link);
 		return 0;
 	}
