@@ -16,6 +16,7 @@
 #include "config.h"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -88,8 +89,8 @@ stats_output(struct sess *sess)
 {
 	char *tbuf[32];
 
-	LOG0("Number of files: %llu", sess->total_files);
-	LOG0("Number of files transferred: %llu", sess->total_files_xfer);
+	LOG0("Number of files: %" PRIu64, sess->total_files);
+	LOG0("Number of files transferred: %" PRIu64, sess->total_files_xfer);
 	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_size);
 	LOG0("Total file size: %s", (char*)&tbuf);
 	rsync_humanize(sess, (char*)&tbuf, sizeof(tbuf), sess->total_xfer_size);
@@ -220,4 +221,21 @@ sess_stats_recv(struct sess *sess, int fd)
 		stats_output(sess);
 
 	return 1;
+}
+
+/*
+ * sess_cleanup() should be called before discarding a session
+ * object to ensure all accumlated resources are released.
+ */
+void
+sess_cleanup(struct sess *sess)
+{
+	free(sess->token_dbuf);
+	sess->token_dbuf = NULL;
+
+	free(sess->token_cbuf);
+	sess->token_cbuf = NULL;
+
+	free(sess->token_buf);
+	sess->token_buf = NULL;
 }

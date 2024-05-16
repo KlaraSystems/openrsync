@@ -220,8 +220,6 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		rc = ERR_PARTIAL;
 	}
 out:
-	free(sess.token_dbuf);
-	free(sess.token_cbuf);
-	free(sess.token_buf);
+	sess_cleanup(&sess);
 	return rc;
 }
