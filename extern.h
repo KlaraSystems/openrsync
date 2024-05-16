@@ -1023,6 +1023,7 @@ char		*symlinkat_read(int, const char *);
 
 int		 sess_stats_send(struct sess *, int);
 int		 sess_stats_recv(struct sess *, int);
+void		 sess_cleanup(struct sess *);
 
 int		 idents_add(int, struct ident **, size_t *, int32_t);
 void		 idents_assign_gid(struct sess *, struct flist *, size_t,

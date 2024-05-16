@@ -1190,9 +1190,7 @@ rsync_socket(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	}
 out:
 	batch_close(&sess, f, rc);
-	free(sess.token_dbuf);
-	free(sess.token_cbuf);
-	free(sess.token_buf);
+	sess_cleanup(&sess);
 	free(args);
 	return rc;
 }
