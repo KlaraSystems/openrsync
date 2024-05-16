@@ -1910,10 +1910,14 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 
 		/* don't even try to add it if we can't read it, just succeed. */
 		if (access(ent->fts_path, R_OK) != 0) {
-			if (!sess->opts->ignore_nonreadable)
+			if (sess->opts->ignore_nonreadable) {
+				continue;
+			} else if (!S_ISDIR(ent->fts_statp->st_mode)) {
+				ERR("%s: open", ent->fts_path);
 				sess->total_errors++;
-			ERR("%s: open", ent->fts_path);
-			continue;
+				continue;
+			}
+			sess->total_errors++;
 		}
 
 		/* Allocate a new file entry. */
