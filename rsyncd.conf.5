@@ -303,7 +303,7 @@ will be silently enabled on the daemon-side.
 Names the path on the filesystem that
 .Xr rsync 1
 will serve files for this module from.
-.It Do post-xfer exec Dc , Dq pre-xfer exec
+.It Do pre-xfer exec Dc , Dq post-xfer exec
 Commands to execute before and after the transfer.
 .Xr rsync 1
 will not do any word-splitting of these options.
@@ -465,7 +465,7 @@ in
 .Nm .
 .It Dq write only
 Indicates whether the module is write only or not.
-This is only checked when a client attempts to receive a file to the
+This is only checked when a client attempts to send a file to the
 .Xr rsync 1
 daemon.
 This is disabled by default.
