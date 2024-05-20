@@ -972,12 +972,18 @@ pre_dir(struct upload *p, struct sess *sess)
 			return -1;
 		}
 	} else if (rc != -1) {
+		LOG3("%s: updating directory", f->path);
+
 		/*
-		 * FIXME: we should fchmod the permissions here as well,
+		 * We need to fchmod the permissions here as well,
 		 * as we may locally have shut down writing into the
 		 * directory and that doesn't work.
 		 */
-		LOG3("%s: updating directory", f->path);
+		if (sess->opts->preserve_perms && st.st_mode != f->st.mode) {
+			rc = fchmodat(p->rootfd, f->path, f->st.mode, 0);
+			if (rc != 0)
+				ERRX("%s: unable to preserve dir mode", f->path);
+		}
 
 		if ((sess->opts->preserve_perms && st.st_mode != f->st.mode) ||
 		    (sess->opts->preserve_times && !sess->opts->omit_dir_times &&
