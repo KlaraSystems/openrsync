@@ -181,7 +181,10 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 		ts[1].tv_sec = f->st.mtime;
 		ts[1].tv_nsec = 0;
 		if (utimensat(rootfd, path, ts, AT_SYMLINK_NOFOLLOW) == -1) {
+			int save = errno;
+
 			ERR("%s: utimensat (2)", path);
+			errno = save;
 			return 0;
 		}
 		LOG4("%s: updated date", f->path);
@@ -225,7 +228,10 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	if (uid != (uid_t)-1 || gid != (gid_t)-1) {
 		if (fchownat(rootfd, path, uid, gid, AT_SYMLINK_NOFOLLOW) == -1) {
 			if (errno != EPERM) {
+				int save = errno;
+
 				ERR("%s: fchownat", path);
+				errno = save;
 				return 0;
 			}
 			if (geteuid() == 0)
@@ -240,7 +246,10 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	if (newfile || sess->opts->preserve_perms) {
 		if (fchmodat(rootfd, path, mode, AT_SYMLINK_NOFOLLOW) == -1) {
 			if (!(S_ISLNK(f->st.mode) && errno == EOPNOTSUPP)) {
+				int save = errno;
+
 				ERR("%s: fchmodat (1) %d", path, errno);
+				errno = save;
 				return 0;
 			}
 		}
@@ -249,7 +258,10 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 		mode = preserve_executability_check(mode, st.st_mode);
 		if (mode != 0) {
 			if (fchmodat(rootfd, path, mode, AT_SYMLINK_NOFOLLOW) == -1) {
+				int save = errno;
+
 				ERR("%s: fchmodat", path);
+				errno = save;
 				return 0;
 			}
 			LOG4("%s: updated permissions", f->path);
