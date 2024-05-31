@@ -1506,8 +1506,9 @@ basedir:
 			}
 			break;
 		case 'V':
-			fprintf(stderr, "openrsync: protocol version %u\n",
+			printf("openrsync: protocol version %u\n",
 			    RSYNC_PROTOCOL);
+			printf("rsync version 2.6.9 compatible\n");
 			exit(0);
 		case OP_HELP:
 			usage(0);
