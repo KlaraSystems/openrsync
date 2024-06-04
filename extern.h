@@ -805,7 +805,6 @@ int	flist_dir_cmp(const void *, const void *);
 int	flist_fts_check(struct sess *, FTSENT *, enum fmode);
 int	flist_del(struct sess *, int, const struct flist *, size_t);
 int	flist_gen(struct sess *, size_t, char **, struct fl *);
-int	flist_gen_local(struct sess *, const char *, struct flist **, size_t *);
 void	flist_free(struct flist *, size_t);
 int	flist_recv(struct sess *, int, int, struct flist **, size_t *);
 int	flist_send(struct sess *, int, int, const struct flist *, size_t);

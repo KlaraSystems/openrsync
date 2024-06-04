@@ -685,7 +685,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	if (sess->opts->del == DMODE_BEFORE && sess->opts->recursive &&
 	    dfd != -1) {
 		if (!flist_gen_dels(sess, root, &dfl, &dflsz, fl, flsz)) {
-			ERRX1("flist_gen_local");
+			ERRX1("flist_gen_dels");
 			goto out;
 		}
 
@@ -844,7 +844,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	if (sess->opts->del == DMODE_AFTER && sess->opts->recursive &&
 	    dfd != -1) {
 		if (!flist_gen_dels(sess, root, &dfl, &dflsz, fl, flsz)) {
-				ERRX1("flist_gen_local");
+				ERRX1("flist_gen_dels");
 				goto out;
 		}
 
