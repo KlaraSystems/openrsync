@@ -1699,6 +1699,27 @@ flist_dirent_strip(const char *root)
 	return (stripdir);
 }
 
+static int
+flist_normalize_path(const char *root, char *rootbuf, size_t rootbufsz)
+{
+	char *slash;
+	size_t rootlen;
+
+	rootlen = strlen(root);
+	/* Convert trailing '/./' -> '/.' */
+	if (rootlen >= 3 && strcmp(&root[rootlen - 3], "/./") == 0)
+		rootlen--;
+	if (rootlen >= rootbufsz)
+		return (0);
+
+	memcpy(rootbuf, root, rootlen);
+	/* Convert trailing '/' -> '/.' */
+	if (rootbuf[rootlen - 1] == '/')
+		rootbuf[rootlen++] = '.';
+	rootbuf[rootlen] = '\0';
+	return (1);
+}
+
 /*
  * Generate a flist possibly-recursively given a file root, which may
  * also be a regular file or symlink.
@@ -1718,10 +1739,20 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	dev_t		*newxdev, *xdev = NULL;
 	struct stat	 st, st2;
 	int              ret;
-	char             buf[PATH_MAX];
-	char             buf2[PATH_MAX];
+	char             buf[PATH_MAX], buf2[PATH_MAX], rootbuf[BIGPATH_MAX];
 
-	cargv[0] = root;
+	if (!flist_normalize_path(root, rootbuf, sizeof(rootbuf))) {
+		/*
+		 * If we failed to normalize the path, that's catastrophic and
+		 * we should bail out to be safe.  Notably, we could end up with
+		 * sorting issues that lead to us being very confused about what
+		 * we're transferring.
+		 */
+		ERR("%s: flist_normalize_path", root);
+		return 0;
+	}
+
+	cargv[0] = rootbuf;
 	cargv[1] = NULL;
 
 	/*
