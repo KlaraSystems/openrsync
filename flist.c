@@ -2462,6 +2462,8 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 	stripdir = strlen(root) + 1;
 	errno = 0;
 	while ((ent = fts_read(fts)) != NULL) {
+		const char *rpath;
+
 		if (ent->fts_info == FTS_NS)
 			continue;
 
@@ -2517,13 +2519,14 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		if (ent->fts_path[stripdir] == '/') {
 			stripdir++;
 		}
+
+		rpath = ent->fts_path + stripdir;
+
 		/* filter files on delete */
 		if (!sess->opts->del_excl && ent->fts_info != FTS_DP &&
-		    rules_match(ent->fts_path + stripdir,
-		    (ent->fts_info == FTS_D), FARGS_RECEIVER,
+		    rules_match(rpath, (ent->fts_info == FTS_D), FARGS_RECEIVER,
 		    perish_ent != NULL) == -1) {
-			LOG2("skip excluded file %s",
-			    ent->fts_path + stripdir);
+			LOG2("skip excluded file %s", rpath);
 			if (ent->fts_info == FTS_D)
 				skip_post = 1;
 			ent->fts_parent->fts_number++;
@@ -2540,7 +2543,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 
 		/* Look up in hashtable. */
 		memset(&hent, 0, sizeof(ENTRY));
-		hent.key = ent->fts_path + stripdir;
+		hent.key = rpath;
 		if (hsearch(hent, FIND) != NULL)
 			continue;
 
