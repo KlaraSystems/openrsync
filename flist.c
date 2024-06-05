@@ -234,7 +234,8 @@ flist_dedupe(const struct opts *opts, struct flist **fl, size_t *sz)
 		f = &(*fl)[i];
 		fnext = &(*fl)[i + 1];
 
-		if (strcmp(f->wpath, fnext->wpath)) {
+		if (strcmp(f->wpath, fnext->wpath) ||
+		    strcmp(f->wpath, ".") == 0) {
 			new[j++] = *f;
 			continue;
 		}
