@@ -385,36 +385,45 @@ flist_prune_empty(struct sess *sess, struct flist *fl, size_t *flsz)
 
 /*
  * We're now going to find our top-level directories.
- * This only applies to recursive mode.
+ * This only applies to recursive and dirs modes.
  * If we have the first element as the ".", then that's the "top
  * directory" of our transfer.
  * Otherwise, mark up all top-level directories in the set.
- * XXX: the FLIST_TOP_LEVEL flag should indicate what is and what isn't
- * a top-level directory, but I'm not sure if GPL rsync(1) respects it
- * the same way.
  */
 static void
 flist_topdirs(struct sess *sess, struct flist *fl, size_t flsz)
 {
 	size_t		 i;
-	const char	*cp;
+	const char	*cp, *wpath;
 
-	if (!sess->opts->recursive)
+	if (!sess->opts->recursive && !sess->opts->dirs)
 		return;
 
-	if (flsz && strcmp(fl[0].wpath, ".")) {
-		for (i = 0; i < flsz; i++) {
-			if (!S_ISDIR(fl[i].st.mode))
+	for (i = 0; i < flsz; i++) {
+		if (!S_ISDIR(fl[i].st.mode))
+			continue;
+
+		wpath = fl[i].wpath;
+
+		/*
+		 * In --recursive mode, we don't need to worry about any of
+		 * this, as all directories specified are top-directories.  In
+		 * --dirs mode, we have to be more careful to only mark those
+		 * that end in '/' or '.'.
+		 */
+		if (!sess->opts->recursive && strcmp(wpath, ".") != 0) {
+			/* Otherwise, only those ending in '/' or '/.'. */
+			cp = strrchr(fl[i].wpath, '/');
+			if (cp == NULL)
 				continue;
-			cp = strchr(fl[i].wpath, '/');
-			if (cp != NULL && cp[1] != '\0')
+
+			cp++;
+			if (*cp != '\0' && strcmp(cp, ".") != 0)
 				continue;
-			fl[i].st.flags |= FLSTAT_TOP_DIR;
-			LOG4("%s: top-level", fl[i].wpath);
 		}
-	} else if (flsz) {
-		fl[0].st.flags |= FLSTAT_TOP_DIR;
-		LOG4("%s: top-level", fl[0].wpath);
+
+		fl[i].st.flags |= FLSTAT_TOP_DIR;
+		LOG4("%s: top-level", fl[i].wpath);
 	}
 }
 
@@ -1320,6 +1329,8 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			ff->st.mode = fflast->st.mode;
 
 		ff->dstat.mode = ff->st.mode;
+		if (S_ISDIR(ff->st.mode) && (flag & FLIST_TOP_LEVEL) != 0)
+			ff->st.flags |= FLSTAT_TOP_DIR;
 
 		if (sess->opts->chmod != NULL) {
 			/* Client-receiver --chmod */
@@ -1532,10 +1543,11 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			goto out;
 
 		LOG3("%s: received file metadata: "
-			"size %jd, mtime %jd, mode %o, rdev (%d, %d)",
+			"size %jd, mtime %jd, mode %o, rdev (%d, %d), flag %x",
 			ff->path, (intmax_t)ff->st.size,
 			(intmax_t)ff->st.mtime, ff->st.mode,
-			major(ff->st.rdev), minor(ff->st.rdev));
+			major(ff->st.rdev), minor(ff->st.rdev),
+			flag);
 
 		if (S_ISREG(ff->st.mode) || S_ISLNK(ff->st.mode))
 			sess->total_size += ff->st.size;
@@ -1591,8 +1603,6 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 
 	if (sess->opts->prune_empty_dirs)
 		flist_prune_empty(sess, fl, &flsz);
-
-	flist_topdirs(sess, fl, flsz);
 
 	platform_flist_received(sess, fl, flsz);
 
@@ -2380,40 +2390,40 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		return 0;
 	}
 
-	/*
-	 * If we're given just a "." as the first entry, that means
-	 * we're doing a relative copy with a trailing slash.
-	 * Special-case this just for the sake of simplicity.
-	 * Otherwise, look through all top-levels.
-	 */
-
-	if (wflsz && strcmp(wfl[0].wpath, ".") == 0) {
-		assert(cargvs == 1);
-		assert(S_ISDIR(wfl[0].st.mode));
-		if (asprintf(&cargv[0], "%s/", root) == -1) {
+	for (i = j = 0; i < wflsz; i++) {
+		if (!(FLSTAT_TOP_DIR & wfl[i].st.flags))
+			continue;
+		assert(S_ISDIR(wfl[i].st.mode));
+		c = asprintf(&cargv[j], "%s/%s", root, wfl[i].wpath);
+		if (c == -1) {
 			ERR("asprintf");
-			cargv[0] = NULL;
+			cargv[j] = NULL;
 			goto out;
 		}
-		cargv[1] = NULL;
-	} else {
-		for (i = j = 0; i < wflsz; i++) {
-			if (!(FLSTAT_TOP_DIR & wfl[i].st.flags))
-				continue;
-			assert(S_ISDIR(wfl[i].st.mode));
-			assert(strcmp(wfl[i].wpath, "."));
-			c = asprintf(&cargv[j], "%s/%s", root, wfl[i].wpath);
-			if (c == -1) {
-				ERR("asprintf");
+
+		/*
+		 * We generally shouldn't have that many top-dirs in a transfer,
+		 * so this shouldn't be a major drag on performance and will
+		 * save us from some extra redundant directory walks later on.
+		 */
+		for (size_t dj = 0; dj < j; dj++) {
+			if (strcmp(cargv[dj], cargv[j]) == 0) {
+				free(cargv[j]);
 				cargv[j] = NULL;
-				goto out;
+				break;
 			}
-			LOG4("%s: will scan for deletions", cargv[j]);
-			j++;
 		}
-		assert(j == cargvs);
-		cargv[j] = NULL;
+
+		if (cargv[j] == NULL) {
+			cargvs--;
+			continue;
+		}
+
+		LOG4("%s: will scan for deletions", cargv[j]);
+		j++;
 	}
+
+	cargv[j] = NULL;
 
 	LOG2("delete from %zu directories", cargvs);
 
@@ -2441,9 +2451,11 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 			ERR("hsearch");
 			goto out;
 		} else if (hentp->key != hent.key) {
-			ERRX("%s: duplicate", wfl[i].wpath);
+			/*
+			 * Duplicate entry; this may happen if we had a single
+			 * src spec listed multiple times, so just drop it.
+			 */
 			free(hent.key);
-			goto out;
 		}
 	}
 
@@ -2520,7 +2532,14 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 			stripdir++;
 		}
 
+		/*
+		 * Normalize the path by stripping any leading "./" components
+		 * so that we don't have any false-negatives leading to a bogus
+		 * deletion.
+		 */
 		rpath = ent->fts_path + stripdir;
+		while (strncmp(rpath, "./", 2) == 0)
+			rpath += 2;
 
 		/* filter files on delete */
 		if (!sess->opts->del_excl && ent->fts_info != FTS_DP &&
