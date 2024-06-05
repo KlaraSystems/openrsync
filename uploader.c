@@ -1293,33 +1293,64 @@ pre_file_fuzzy(struct sess *sess, struct upload *p, struct flist *f,
 		return 1;
 	}
 
-	strlcpy((char*)&root, f->path, sizeof(root));
-	if ((rp = strrchr(root, '/')) != NULL) {
+	if ((rp = strrchr(f->path, '/')) != NULL) {
+		if (rp - f->path + 2 >= (ptrdiff_t)sizeof(root)) {
+			errno = ENAMETOOLONG;
+			ERR("%s: pre_file_fuzzy: strlcpy", f->path);
+			return -1;
+		}
 		/* Keep the trailing / */
-		*(++rp) = '\0';
+		strlcpy(root, f->path, rp - f->path + 2);
 	} else {
+		root[0] = '.';
+		root[1] = '\0';
+	}
+
+	/*
+	 * Here we cache the directory stream pointer to avoid having to open
+	 * and close the directory for each and every file in a directory.
+	 * Only if the root file descriptor or root path changes do we close
+	 * the cached directory stream and open the new directory.
+	 */
+	if (sess->fuzzy_dirp == NULL || sess->fuzzy_rootfd != p->rootfd ||
+	    sess->fuzzy_root == NULL || strcmp(root, sess->fuzzy_root) != 0) {
+		const size_t rootsz = sizeof(root);
+
+		if (sess->fuzzy_dirp != NULL) {
+			closedir(sess->fuzzy_dirp);
+			sess->fuzzy_dirp = NULL;
+		} else if (sess->fuzzy_root == NULL) {
+			sess->fuzzy_root = malloc(rootsz);
+			if (sess->fuzzy_root == NULL) {
+				ERR("%s: pre_file_fuzzy: malloc", root);
+				return -1;
+			}
+		}
+
+		if ((dirfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY |
+		    O_RESOLVE_BENEATH)) < 0) {
+			ERR("%s: pre_file_fuzzy: openat", root);
+			return -1;
+		}
+
+		if (!(dirp = fdopendir(dirfd))) {
+			ERR("%s: pre_file_fuzzy: opendirfd", root);
+			close(dirfd);
+			return -1;
+		}
+
+		sess->fuzzy_dirp = dirp;
+		sess->fuzzy_rootfd = p->rootfd;
+		strlcpy(sess->fuzzy_root, root, rootsz);
+	} else {
+		rewinddir(sess->fuzzy_dirp);
+		dirp = sess->fuzzy_dirp;
+	}
+
+	if (root[0] == '.' && root[1] == '\0')
 		root[0] = '\0';
-	}
-
-	if (*root == '\0') {
-		dirfd = dup(p->rootfd);
-	} else if ((dirfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY |
-	    O_RESOLVE_BENEATH)) < 0) {
-		ERR("%s: pre_file_fuzzy: openat", root);
-		return -1;
-	}
-
-	if (!(dirp = fdopendir(dirfd))) {
-		ERR("%s: pre_file_fuzzy: opendirfd", root);
-		close(dirfd);
-		return -1;
-	}
 
 	while ((di = readdir(dirp)) != NULL) {
-		if (di->d_name[0] == '.' && (di->d_name[1] == '\0' ||
-		    (di->d_name[1] == '.' && di->d_name[2] == '\0'))) {
-			continue;
-		}
 		if (!S_ISREG(DTTOIF(di->d_type))) {
 			continue;
 		}
@@ -1347,16 +1378,13 @@ pre_file_fuzzy(struct sess *sess, struct upload *p, struct flist *f,
 			free(f->link);
 			if ((f->link = strdup(pathbuf)) == NULL) {
 				ERR("strdup");
-				(void)closedir(dirp);
 				return -1;
 			}
 			LOG3("fuzzy basis selected for %s: %s", f->path, f->link);
 
-			(void)closedir(dirp);
 			return 0;
 		}
 	}
-	(void)closedir(dirp);
 
 	return 1;
 }

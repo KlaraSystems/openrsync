@@ -238,4 +238,13 @@ sess_cleanup(struct sess *sess)
 
 	free(sess->token_buf);
 	sess->token_buf = NULL;
+
+	free(sess->fuzzy_root);
+	sess->fuzzy_root = NULL;
+
+	if (sess->fuzzy_dirp != NULL) {
+		closedir(sess->fuzzy_dirp);
+		sess->fuzzy_rootfd = -1;
+		sess->fuzzy_dirp = NULL;
+	}
 }

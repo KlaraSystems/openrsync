@@ -17,7 +17,9 @@
 #ifndef EXTERN_H
 #define EXTERN_H
 
+#include <dirent.h>
 #include <getopt.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -691,6 +693,9 @@ struct	sess {
 	size_t             token_cbufsz; /* used for protocol token processing */
 	char              *token_dbuf; /* used for protocol token processing */
 	size_t             token_dbufsz; /* used for protocol token processing */
+	DIR               *fuzzy_dirp; /* cached fuzzy dir stream pointer */
+	int                fuzzy_rootfd; /* cached fuzzy root dir filedes */
+	char              *fuzzy_root; /* cached path from fuzzy_rootfd */
 };
 
 /*
