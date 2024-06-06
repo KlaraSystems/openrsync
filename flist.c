@@ -1758,20 +1758,6 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	int              ret;
 	char             buf[PATH_MAX], buf2[PATH_MAX], rootbuf[BIGPATH_MAX];
 
-	if (!flist_normalize_path(root, rootbuf, sizeof(rootbuf))) {
-		/*
-		 * If we failed to normalize the path, that's catastrophic and
-		 * we should bail out to be safe.  Notably, we could end up with
-		 * sorting issues that lead to us being very confused about what
-		 * we're transferring.
-		 */
-		ERR("%s: flist_normalize_path", root);
-		return 0;
-	}
-
-	cargv[0] = rootbuf;
-	cargv[1] = NULL;
-
 	/*
 	 * If we're a file, then revert to the same actions we use for
 	 * the non-recursive scan.
@@ -1848,8 +1834,22 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		return flist_gen_dirent_file(sess, "dir", root, fl, &st, prefix);
 	}
 
+	if (!flist_normalize_path(root, rootbuf, sizeof(rootbuf))) {
+		/*
+		 * If we failed to normalize the path, that's catastrophic and
+		 * we should bail out to be safe.  Notably, we could end up with
+		 * sorting issues that lead to us being very confused about what
+		 * we're transferring.
+		 */
+		ERR("%s: flist_normalize_path", root);
+		return 0;
+	}
+
+	cargv[0] = rootbuf;
+	cargv[1] = NULL;
+
 	if (stripdir == -1)
-		stripdir = flist_dirent_strip(root);
+		stripdir = flist_dirent_strip(rootbuf);
 
 	/*
 	 * If we're recursive, then we need to take down all of the
@@ -1905,7 +1905,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			}
 			if (sess->opts->copy_dirlinks ||
 			    (sess->opts->copy_unsafe_links &&
-			    is_unsafe_link(buf, root, prefix))) {
+			    is_unsafe_link(buf, rootbuf, prefix))) {
 				if (S_ISDIR(st2.st_mode)) {
 					ret = flist_gen_dirent(sess, ent->fts_path,
 					    fl, stripdir, prefix);
