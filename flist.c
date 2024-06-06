@@ -2439,7 +2439,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		return 0;
 	}
 
-	for (i = j = 0; i < wflsz; i++) {
+	for (i = j = 0; i < wflsz && j < cargvs; i++) {
 		if (!(FLSTAT_TOP_DIR & wfl[i].st.flags))
 			continue;
 		assert(S_ISDIR(wfl[i].st.mode));
@@ -2546,6 +2546,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		    !flist_fts_check(sess, ent, FARGS_RECEIVER)) {
 			if (ent->fts_errno != 0)
 				sess->total_errors++;
+			ent->fts_parent->fts_number++;
 			errno = 0;
 			continue;
 		} else if (stripdir >= ent->fts_pathlen)
