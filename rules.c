@@ -1505,6 +1505,9 @@ rules_match(const char *path, int isdir, enum fmode rulectx, int perishing)
 
 	assert(rule_base != NULL);
 
+	if (isdir && (strcmp(path, ".") == 0 || strcmp(path, "./") == 0))
+		return 0;
+
 	ctx.abspath[0] = '\0';
 	ctx.isdir = isdir;
 	ctx.match = 0;

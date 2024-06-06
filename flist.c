@@ -2491,8 +2491,13 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 	}
 
 	for (i = 0; i < wflsz; i++) {
+		const char *kpath;
+
 		memset(&hent, 0, sizeof(ENTRY));
-		if ((hent.key = strdup(wfl[i].wpath)) == NULL) {
+		kpath = wfl[i].wpath;
+		while (strncmp(kpath, "./", 2) == 0)
+			kpath += 2;
+		if ((hent.key = strdup(kpath)) == NULL) {
 			ERR("strdup");
 			goto out;
 		}
