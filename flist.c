@@ -384,6 +384,18 @@ flist_prune_empty(struct sess *sess, struct flist *fl, size_t *flsz)
 	*flsz = cursz;
 }
 
+static int
+flist_is_subdir(const struct flist *child, const struct flist *cparent)
+{
+	size_t parlen;
+
+	parlen = strlen(cparent->path);
+	if (strncmp(cparent->path, child->path, parlen) != 0)
+		return (0);
+
+	return (child->path[parlen] == '/');
+}
+
 /*
  * We're now going to find our top-level directories.
  * This only applies to recursive and dirs modes.
@@ -396,12 +408,16 @@ flist_topdirs(struct sess *sess, struct flist *fl, size_t flsz)
 {
 	size_t		 i;
 	const char	*cp, *wpath;
+	struct flist	*ltop;
 
 	if (!sess->opts->recursive && !sess->opts->dirs)
 		return;
 
+	ltop = NULL;
 	for (i = 0; i < flsz; i++) {
 		if (!S_ISDIR(fl[i].st.mode))
+			continue;
+		if (ltop != NULL && flist_is_subdir(&fl[i], ltop))
 			continue;
 
 		wpath = fl[i].wpath;
@@ -423,6 +439,7 @@ flist_topdirs(struct sess *sess, struct flist *fl, size_t flsz)
 				continue;
 		}
 
+		ltop = &fl[i];
 		fl[i].st.flags |= FLSTAT_TOP_DIR;
 		LOG4("%s: top-level", fl[i].wpath);
 	}
