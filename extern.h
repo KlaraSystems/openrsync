@@ -180,7 +180,7 @@ enum dryrun {
 #define ERR_FILE_IO	11
 #define ERR_WIREPROTO	12
 #define ERR_IPC		14	/* catchall for any kind of syscall error */
-#define ERR_TERMIMATED	16
+#define ERR_TERMINATED	16
 #define ERR_SIGUSR1	19
 #define ERR_SIGNAL	20
 #define ERR_WAITPID	21

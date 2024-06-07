@@ -15,6 +15,7 @@
  */
 #include "config.h"
 
+#include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -1684,7 +1685,7 @@ int
 main(int argc, char *argv[])
 {
 	pid_t		 child;
-	int		 fds[2], sd = -1, rc, st, i;
+	int		 fds[2], sd = -1, rc, rc2, st, i;
 	struct sess	 sess;
 	struct fargs	*fargs;
 	char		**args;
@@ -1910,19 +1911,15 @@ main(int argc, char *argv[])
 	cleanup_set_child(cleanup_ctx, 0);
 
 	/*
-	 * If we don't already have an error (rc == 0), then inherit the
-	 * error code of rsync_server() if it has exited.
-	 * If it hasn't exited, it overrides our return value.
+	 * If the child exited abnormally then use its exit status as our exit
+	 * code.  Otherwise, use the return code from the fork parent operation.
 	 */
-
-	if (rc == 0) {
-		if (WIFEXITED(st))
-			rc = WEXITSTATUS(st);
-		else if (WIFSIGNALED(st)) {
-			if (WTERMSIG(st) != SIGUSR2)
-				rc = ERR_TERMIMATED;
-		} else
-			rc = ERR_WAITPID;
+	if (WIFEXITED(st)) {
+		rc2 = WEXITSTATUS(st);
+	} else if (WIFSIGNALED(st)) {
+		rc2 = (WTERMSIG(st) != SIGUSR2) ? ERR_TERMINATED : 0;
+	} else {
+		rc2 = ERR_WAITPID;
 	}
 
 	free(opts.filesfrom_host);
@@ -1932,5 +1929,5 @@ main(int argc, char *argv[])
 	free(opts.outformat);
 	opts.outformat = NULL;
 
-	exit(rc);
+	exit(MAX(rc, rc2));
 }
