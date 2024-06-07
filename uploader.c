@@ -1319,6 +1319,7 @@ pre_file_fuzzy(struct sess *sess, struct upload *p, struct flist *f,
 		if (sess->fuzzy_dirp != NULL) {
 			closedir(sess->fuzzy_dirp);
 			sess->fuzzy_dirp = NULL;
+			sess->fuzzy_rootfd = -1;
 		} else if (sess->fuzzy_root == NULL) {
 			sess->fuzzy_root = malloc(rootsz);
 			if (sess->fuzzy_root == NULL) {
