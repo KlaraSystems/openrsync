@@ -266,7 +266,7 @@ int
 mktemplate(char **ret, const char *path, int hasdir, int tmp)
 {
 	const char	 suffix[] = ".XXXXXXXXXX";
-	const size_t	 suffixlen = sizeof(suffix) - 1;
+	const size_t	 maxfnlen = NAME_MAX - (sizeof(suffix) - 1) - 1;
 	int		 n, dirlen, fnlen;
 	const char	*cp;
 
@@ -279,9 +279,7 @@ mktemplate(char **ret, const char *path, int hasdir, int tmp)
 			basename++;
 		}
 
-		fnlen = strnlen(basename, NAME_MAX);
-		if (fnlen + suffixlen + 1 > NAME_MAX)
-			fnlen = NAME_MAX - suffixlen - 1;
+		fnlen = strnlen(basename, maxfnlen);
 
 		if ((n = asprintf(ret, ".%.*s%s", fnlen, basename, suffix)) == -1) {
 			ERR("asprintf");
@@ -290,9 +288,7 @@ mktemplate(char **ret, const char *path, int hasdir, int tmp)
 	} else if (hasdir && (cp = strrchr(path, '/')) != NULL) {
 		dirlen = (int)(cp - path);
 
-		fnlen = strnlen(path + dirlen + 1, NAME_MAX);
-		if (fnlen + suffixlen + 1 > NAME_MAX)
-			fnlen = NAME_MAX - suffixlen - 1;
+		fnlen = strnlen(path + dirlen + 1, maxfnlen);
 
 		n = asprintf(ret, "%.*s/.%.*s%s",
 			     dirlen, path, fnlen, path + dirlen + 1, suffix);
@@ -301,9 +297,7 @@ mktemplate(char **ret, const char *path, int hasdir, int tmp)
 			*ret = NULL;
 		}
 	} else {
-		fnlen = strnlen(path, NAME_MAX);
-		if (fnlen + suffixlen + 1 > NAME_MAX)
-			fnlen = NAME_MAX - suffixlen - 1;
+		fnlen = strnlen(path, maxfnlen);
 
 		if ((n = asprintf(ret, ".%.*s%s", fnlen, path, suffix)) == -1) {
 			ERR("asprintf");
