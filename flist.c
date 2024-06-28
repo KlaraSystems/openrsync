@@ -2928,6 +2928,8 @@ fdgets(struct sess *sess, int fd, char *buf, int bufsz)
 				ERR("read(2) of files-from file failed");
 				return -1;
 			}
+		} else if (n == 0) {
+			return 0;
 		} else
 			length++;
 		if (*(buf + length - 1) == '\0')
@@ -2962,6 +2964,7 @@ read_filesfrom(struct sess *sess, const char *basedir)
 	FILE *f;
 	char buf[PATH_MAX] = { 0 };
 	int retval;
+	ssize_t n = -1;
 
 	if (strcmp(sess->opts->filesfrom, "-") == 0) {
 		f = stdin;
@@ -2978,7 +2981,7 @@ read_filesfrom(struct sess *sess, const char *basedir)
 	sess->filesfrom = NULL;
 
 	retval = 0;
-	while (1) {
+	while (n != 0) {
 		if (sess->opts->filesfrom_host) {
 			/*
 			 * This is doing single byte read system calls.
@@ -2991,12 +2994,12 @@ read_filesfrom(struct sess *sess, const char *basedir)
 			 * The other side might be malicious, e.g. when
 			 * using a public rsync server.
 			 */
-			if (fdgets(sess, sess->filesfrom_fd, buf, sizeof(buf)) == -1)
+			if ((n = fdgets(sess, sess->filesfrom_fd, buf, sizeof(buf))) == -1)
 				goto out;
 			if (append_filesfrom(sess, basedir, buf) == 0)
 				goto out;
 		} else {
-			if (fdgets(sess, fileno(f), buf, PATH_MAX) == -1) {
+			if ((n = fdgets(sess, fileno(f), buf, PATH_MAX)) == -1) {
 				ERR("fdgets: '%s'", sess->opts->filesfrom);
 				goto out;
 			}
