@@ -1594,8 +1594,12 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 			return 1;
 		}
 	}
-	/* If there is a symlink in our way, we will get EMLINK */
-	if (*filefd == -1 && errno != ENOENT && errno != EMLINK) {
+	/*
+	 * If there is a symlink in our way, we will get EMLINK,
+	 * except on MacOS where they use ELOOP instead.
+	 */
+	if (*filefd == -1 && errno != ENOENT && errno != EMLINK &&
+	    errno != ELOOP) {
 		ERR("%s: pre_file: openat", f->path);
 		if (pdfd != -1)
 			close(pdfd);
