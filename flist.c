@@ -2366,7 +2366,6 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 #if 0
 	if (sess->opts->syncfile == NULL) {
 #endif
-	assert(argc > 0);
 	rc = sess->opts->recursive || sess->opts->dirs ?
 		flist_gen_dirs(sess, argc, argv, fl) :
 		flist_gen_files(sess, argc, argv, fl);
@@ -2874,13 +2873,17 @@ append_filesfrom(struct sess *sess, const char *basedir, char *file)
 {
 	size_t file_length = strlen(file);
 
+	/* Skip blank lines */
+	if (file[0] == '\0')
+		return 1;
+
 	if (file[file_length-1] == '\n') {
 		file[file_length-1] = '\0';
 		file_length--;
 	}
 
 	/* Skip comment lines */
-	if (file[0] == '#' || file[0] == ';')
+	if (file[0] == '#' || file[0] == ';' || file[0] == '\0')
 		return 1;
 	/* Reject paths leading with .. */
 	if (!strncmp(file, "..", 2)) {
@@ -2994,10 +2997,14 @@ read_filesfrom(struct sess *sess, const char *basedir)
 			 * The other side might be malicious, e.g. when
 			 * using a public rsync server.
 			 */
-			if ((n = fdgets(sess, sess->filesfrom_fd, buf, sizeof(buf))) == -1)
+			if ((n = fdgets(sess, sess->filesfrom_fd, buf, sizeof(buf))) == -1) {
+				ERR("fdgets: filesfrom_fd");
 				goto out;
+			}
 			if (append_filesfrom(sess, basedir, buf) == 0)
 				goto out;
+			if (buf[0] == '\0')
+				break;
 		} else {
 			if ((n = fdgets(sess, fileno(f), buf, PATH_MAX)) == -1) {
 				ERR("fdgets: '%s'", sess->opts->filesfrom);
@@ -3006,8 +3013,6 @@ read_filesfrom(struct sess *sess, const char *basedir)
 			if (append_filesfrom(sess, basedir, buf) == 0)
 				goto out;
 		}
-		if (buf[0] == '\0')
-			break;
 	}
 
 	qsort(sess->filesfrom, sess->filesfrom_n, sizeof(char *), strp_cmp);

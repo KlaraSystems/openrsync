@@ -490,6 +490,10 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				sess->filesfrom[i][length - 1] = '\0';
 				length--;
 			}
+			if (length == 0) {
+				/* Don't send two \0's in a row */
+				continue;
+			}
 			/* Send the terminating zero, too */
 			if (write(fdout, sess->filesfrom[i], length + 1) < 0) {
 				ERR("write files-from remote file");
@@ -549,10 +553,12 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * This uses our current umask: we might set the permissions on
 	 * this directory in post_dir().
 	 */
-	if (!sess->opts->dry_run && flsz > 0) {
+	if (!sess->opts->dry_run) {
 		bool implied_dir = false;
 
-		if (flsz > 1)
+		if (flsz == 0)
+			implied_dir = true;
+		else if (flsz > 1)
 			implied_dir = true;
 		else if (sess->opts->relative && strchr(fl[0].path, '/') != NULL)
 			implied_dir = true;
