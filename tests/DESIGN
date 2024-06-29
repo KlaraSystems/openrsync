@@ -1,0 +1,24 @@
+Pretty straightforward shell programming:
+- conf.sh # set variabes
+- lib.sh # library of functions
+- individual tests one compact shellscript at a time
+
+%%
+
+The original testsuite uses `diff -r` to compare the tree you got out
+of rsync to the expected tree.
+
+I prefer to do it binary and use cmp(1), on tarfiles.  The reason is
+that I want this testsuite to support large file operations, and I
+also want to fuzz with random binary input.
+
+Something like this to create to-be-compared tarfiles:
+  find . -print0 | sort --zero-terminated | xargs -0 tar fc foo.tar
+
+%%
+
+For testing things like --exclude and --delete I will create the
+source tree twice and for comparision purposes unlink the
+expected-to-be-deleted content by hand in the shellscript in the
+"expected" tree.  Then tar it as outlined.
+

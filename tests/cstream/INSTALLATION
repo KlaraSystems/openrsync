@@ -1,0 +1,10 @@
+cstream follows the usual GNU configure building process:
+
+  ./configure --prefix=/usr/local
+  make
+  make install
+
+The following compile-time options are supported:
+-------------------------------------------------
+--enable-notcp			Leave out TCP/IP socket code
+--enable-nosound		Leave out audio control code
