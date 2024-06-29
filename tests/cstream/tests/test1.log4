@@ -1,0 +1,707 @@
+Testing with options -c 1
+Child has pid (94148)
+#1 trying to read 8192 bytes
+#1 read 4 bytes
+#1 wrote 4 bytes
+#1 trying to read 8192 bytes
+#1 read 0 bytes
+4 B 4.0 B 0.00 s 983 B/s 982.79 B/s
+Since end of first transfer: 0 B/s 0.00 B/s
+#0 trying to read 8192 bytes
+#0 read 4 bytes
+#0 wrote 4 bytes
+#0 trying to read 8192 bytes
+#0 read 0 bytes
+Child has pid (94151)
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 0 bytes
+4 B 4.0 B 0.00 s 834 B/s 834.21 B/s
+Since end of first transfer: 2959 B/s 2.89 KB/s
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 0 bytes
+Child has pid (94154)
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 trying to read 1 bytes
+#1 read 0 bytes
+#1 wrote 1 bytes
+#1 wrote 1 bytes
+#1 wrote 1 bytes
+#1 wrote 1 bytes
+4 B 4.0 B 0.00 s 803 B/s 802.74 B/s
+Since end of first transfer: 10002 B/s 9.77 KB/s
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 0 bytes
+Child has pid (94157)
+#1 trying to read 2 bytes
+#1 read 2 bytes
+#1 trying to read 2 bytes
+#1 read 2 bytes
+#1 trying to read 2 bytes
+#1 read 0 bytes
+#1 wrote 2 bytes
+#1 wrote 2 bytes
+4 B 4.0 B 0.00 s 945 B/s 944.74 B/s
+Since end of first transfer: 17867 B/s 17.45 KB/s
+#0 trying to read 2 bytes
+#0 read 2 bytes
+#0 wrote 2 bytes
+#0 trying to read 2 bytes
+#0 read 2 bytes
+#0 wrote 2 bytes
+#0 trying to read 2 bytes
+#0 read 0 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+6 B 6.0 B 0.00 s 6243 B/s 6.10 KB/s 0 lines
+Since end of first transfer: 331129 B/s 323.37 KB/s
+#0 trying to read 3 bytes
+#0 read 0 bytes
+0 B 0.0 B 0.00 s 0 B/s 0.00 B/s 0 lines
+Since end of first transfer: 1 B/s 1.00 B/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+6 B 6.0 B 0.00 s 6142 B/s 6.00 KB/s 1 lines
+Since end of first transfer: 335544 B/s 327.68 KB/s
+Child has pid (94174)
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 trying to read 3 bytes
+#1 read 0 bytes
+#1 wrote 3 bytes
+#1 wrote 3 bytes
+6 B 6.0 B 0.00 s 1363 B/s 1.33 KB/s 0 lines
+Since end of first transfer: 20005 B/s 19.54 KB/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 wrote 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 wrote 3 bytes
+Child has pid (94177)
+#1 trying to read 3 bytes
+#1 read 0 bytes
+0 B 0.0 B 0.00 s 0 B/s 0.00 B/s 0 lines
+Since end of first transfer: 1 B/s 1.00 B/s
+#0 trying to read 3 bytes
+#0 read 0 bytes
+Child has pid (94180)
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 trying to read 3 bytes
+#1 read 0 bytes
+#1 wrote 3 bytes
+#1 wrote 3 bytes
+6 B 6.0 B 0.00 s 1375 B/s 1.34 KB/s 1 lines
+Since end of first transfer: 24576 B/s 24.00 KB/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 wrote 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 21979 B/s 21.46 KB/s 1 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+6 B 6.0 B 0.00 s 22390 B/s 21.86 KB/s 1 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+6 B 6.0 B 0.00 s 17963 B/s 17.54 KB/s 1 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 6128 B/s 5.98 KB/s 1 lines
+Since end of first transfer: 27031 B/s 26.40 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 4633 B/s 4.52 KB/s 1 lines
+Since end of first transfer: 8595 B/s 8.39 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 6487 B/s 6.33 KB/s 1 lines
+Since end of first transfer: 25216 B/s 24.63 KB/s
+Testing with options -c 2
+Child has pid (94203)
+#1 trying to read 8192 bytes
+#1 read 4 bytes
+#1 wrote 4 bytes
+#1 trying to read 8192 bytes
+#1 read 0 bytes
+4 B 4.0 B 0.00 s 966 B/s 965.71 B/s
+Since end of first transfer: 0 B/s 0.00 B/s
+#0 trying to read 8192 bytes
+#0 read 4 bytes
+#0 wrote 4 bytes
+#0 trying to read 8192 bytes
+#0 read 0 bytes
+Child has pid (94206)
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 0 bytes
+4 B 4.0 B 0.00 s 811 B/s 811.36 B/s
+Since end of first transfer: 2846 B/s 2.78 KB/s
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 0 bytes
+Child has pid (94209)
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 0 bytes
+4 B 4.0 B 0.00 s 810 B/s 809.89 B/s
+Since end of first transfer: 2791 B/s 2.73 KB/s
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 trying to read 1 bytes
+#0 read 0 bytes
+#0 wrote 1 bytes
+#0 wrote 1 bytes
+#0 wrote 1 bytes
+#0 wrote 1 bytes
+Child has pid (94212)
+#1 trying to read 2 bytes
+#1 read 2 bytes
+#1 wrote 2 bytes
+#1 trying to read 2 bytes
+#1 read 2 bytes
+#1 wrote 2 bytes
+#1 trying to read 2 bytes
+#0 trying to read 2 bytes
+#0 read 2 bytes
+#0 trying to read 2 bytes
+#0 read 2 bytes
+#0 trying to read 2 bytes
+#1 read 0 bytes
+4 B 4.0 B 0.01 s 554 B/s 553.64 B/s
+Since end of first transfer: 583 B/s 582.93 B/s
+#0 read 0 bytes
+#0 wrote 2 bytes
+#0 wrote 2 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+6 B 6.0 B 0.00 s 5988 B/s 5.85 KB/s 0 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+#0 trying to read 3 bytes
+#0 read 0 bytes
+0 B 0.0 B 0.00 s 0 B/s 0.00 B/s 0 lines
+Since end of first transfer: 1 B/s 1.00 B/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+6 B 6.0 B 0.00 s 6079 B/s 5.94 KB/s 1 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+Child has pid (94229)
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 wrote 3 bytes
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 wrote 3 bytes
+6 B 6.0 B 0.00 s 1573 B/s 1.54 KB/s 0 lines
+Since end of first transfer: 9583 B/s 9.36 KB/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+Child has pid (94232)
+#1 trying to read 3 bytes
+#1 read 0 bytes
+0 B 0.0 B 0.00 s 0 B/s 0.00 B/s 0 lines
+Since end of first transfer: 1 B/s 1.00 B/s
+#0 trying to read 3 bytes
+#0 read 0 bytes
+Child has pid (94235)
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 wrote 3 bytes
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 wrote 3 bytes
+6 B 6.0 B 0.00 s 1488 B/s 1.45 KB/s 1 lines
+Since end of first transfer: 9010 B/s 8.80 KB/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 18752 B/s 18.31 KB/s 1 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+6 B 6.0 B 0.00 s 18809 B/s 18.37 KB/s 1 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+6 B 6.0 B 0.00 s 18690 B/s 18.25 KB/s 1 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 6302 B/s 6.15 KB/s 1 lines
+Since end of first transfer: 27265 B/s 26.63 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 6445 B/s 6.29 KB/s 1 lines
+Since end of first transfer: 26324 B/s 25.71 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 6711 B/s 6.55 KB/s 1 lines
+Since end of first transfer: 27777 B/s 27.13 KB/s
+Testing with options -c 3
+#0 trying to read 8192 bytes
+Child has pid (94258)
+#1 trying to read 8192 bytes
+#1 read 4 bytes
+#0 read 4 bytes
+#0 wrote 4 bytes
+#0 trying to read 8192 bytes
+#1 wrote 4 bytes
+#1 trying to read 8192 bytes
+#1 read 0 bytes
+4 B 4.0 B 0.01 s 446 B/s 445.98 B/s
+Since end of first transfer: 0 B/s 0.00 B/s
+#0 read 0 bytes
+Child has pid (94261)
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 wrote 1 bytes
+#1 trying to read 1 bytes
+#1 read 0 bytes
+4 B 4.0#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+#0 read 1 bytes
+#0 wrote 1 bytes
+#0 trying to read 1 bytes
+ B 0.01 s 797 B/s 796.81 B/s
+Since end of first transfer: 2379 B/s 2.32 KB/s
+#0 read 0 bytes
+#0 trying to read 1 bytes
+Child has pid (94264)
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 trying to read 1 bytes
+#1 read 1 bytes
+#1 trying to read 1 bytes
+#1 read 0 bytes
+#0 read 1 bytes
+#0 trying to read 1 bytes
+#1 wrote 1 bytes
+#0 read 1 bytes
+#0 trying to read 1 bytes
+#1 wrote 1 bytes
+#0 read 1 bytes
+#0 trying to read 1 bytes
+#1 wrote 1 bytes
+#0 read 1 bytes
+#0 trying to read 1 bytes
+#1 wrote 1 bytes
+4 B 4.0 B 0.01 s 386 B/s 386.10 B/s
+Since end of first transfer: 2747 B/s 2.68 KB/s
+#0 read 0 bytes
+#0 wrote 1 bytes
+#0 wrote 1 bytes
+#0 wrote 1 bytes
+#0 wrote 1 bytes
+Child has pid (94267)
+#0 trying to read 2 bytes
+#1 trying to read 2 bytes
+#1 read 2 bytes
+#1 trying to read 2 bytes
+#1 read 2 bytes
+#1 trying to read 2 bytes
+#1 read 0 bytes
+#0 read 2 bytes
+#0 trying to read 2 bytes
+#1 wrote 2 bytes
+#0 read 2 bytes
+#0 trying to read 2 bytes
+#1 wrote 2 bytes
+4 B 4.0 B 0.01 s 538 B/s 537.64 B/s
+Since end of first transfer: 5479 B/s 5.35 KB/s
+#0 read 0 bytes
+#0 wrote 2 bytes
+#0 wrote 2 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+6 B 6.0 B 0.00 s 5842 B/s 5.71 KB/s 0 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+#0 trying to read 3 bytes
+#0 read 0 bytes
+0 B 0.0 B 0.00 s 0 B/s 0.00 B/s 0 lines
+Since end of first transfer: 1 B/s 1.00 B/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+6 B 6.0 B 0.00 s 6066 B/s 5.92 KB/s 1 lines
+Since end of first transfer: 370086 B/s 361.41 KB/s
+Child has pid (94284)
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 trying to read 3 bytes
+#1 read 0 bytes
+#1 wrote 3 bytes
+#1 wrote 3 bytes
+6 B 6.0 B 0.00 s 1353 B/s 1.32 KB/s 0 lines
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+Since end of first transfer: 26324 B/s 25.71 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+Child has pid (94287)
+#1 trying to read 3 bytes
+#1 read 0 bytes
+0 B 0.0 B 0.01 s 0 B/s 0.00 B/s 0 lines
+Since end of first transfer: 1 B/s 0.99 B/s
+#0 trying to read 3 bytes
+#0 read 0 bytes
+#0 trying to read 3 bytes
+Child has pid (94290)
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 trying to read 3 bytes
+#1 read 3 bytes
+#1 trying to read 3 bytes
+#1 read 0 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#1 wrote 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+#1 wrote 3 bytes
+6 B 6.0 B 0.02 s 300 B/s 300.03 B/s 1 lines
+Since end of first transfer: 406 B/s 405.73 B/s
+6 B 6.0 B 0.00 s 18634 B/s 18.20 KB/s 1 lines
+Since end of first transfer: 331129 B/s 323.37 KB/s
+6 B 6.0 B 0.00 s 18986 B/s 18.54 KB/s 1 lines
+Since end of first transfer: 375609 B/s 366.81 KB/s
+6 B 6.0 B 0.00 s 17963 B/s 17.54 KB/s 1 lines
+Since end of first transfer: 335544 B/s 327.68 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 5420 B/s 5.29 KB/s 1 lines
+Since end of first transfer: 15621 B/s 15.26 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 5333 B/s 5.21 KB/s 1 lines
+Since end of first transfer: 15458 B/s 15.10 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 3492 B/s 3.41 KB/s 1 lines
+Since end of first transfer: 15621 B/s 15.26 KB/s
+Testing with options -c 4
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 4 bytes
+Polling, want_to_read 0 want_to_write 1
+Poll returned 1
+Trying to write 4 bytes
+Wrote 4 bytes
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 0 bytes
+4 B 4.0 B 0.00 s 1157 B/s 1.13 KB/s
+Since end of first transfer: 5 B/s 4.98 B/s
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 1 bytes
+Polling, want_to_read 0 want_to_write 1
+Poll returned 1
+Trying to write 1 bytes
+Wrote 1 bytes
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 1 bytes
+Polling, want_to_read 0 want_to_write 1
+Poll returned 1
+Trying to write 1 bytes
+Wrote 1 bytes
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 1 bytes
+Polling, want_to_read 0 want_to_write 1
+Poll returned 1
+Trying to write 1 bytes
+Wrote 1 bytes
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 1 bytes
+Polling, want_to_read 0 want_to_write 1
+Poll returned 1
+Trying to write 1 bytes
+Wrote 1 bytes
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 0 bytes
+4 B 4.0 B 0.00 s 949 B/s 948.54 B/s
+Since end of first transfer: 5 B/s 4.98 B/s
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 1 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 1 bytes
+Wrote 1 bytes
+Trying to read
+Read 1 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 1 bytes
+Wrote 1 bytes
+Trying to read
+Read 1 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 1 bytes
+Wrote 1 bytes
+Trying to read
+Read 1 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 1 bytes
+Wrote 1 bytes
+Trying to read
+Read 0 bytes
+4 B 4.0 B 0.00 s 1074 B/s 1.05 KB/s
+Since end of first transfer: 5 B/s 4.98 B/s
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 2 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 2 bytes
+Wrote 2 bytes
+Trying to read
+Read 2 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 2 bytes
+Wrote 2 bytes
+Trying to read
+Read 0 bytes
+4 B 4.0 B 0.00 s 1610 B/s 1.57 KB/s
+Since end of first transfer: 5 B/s 4.99 B/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+6 B 6.0 B 0.00 s 5296 B/s 5.17 KB/s 0 lines
+Since end of first transfer: 303203 B/s 296.10 KB/s
+#0 trying to read 3 bytes
+#0 read 0 bytes
+0 B 0.0 B 0.00 s 0 B/s 0.00 B/s 0 lines
+Since end of first transfer: 1 B/s 1.00 B/s
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 3 bytes
+#0 trying to read 3 bytes
+#0 read 0 bytes
+6 B 6.0 B 0.00 s 5959 B/s 5.82 KB/s 1 lines
+Since end of first transfer: 335544 B/s 327.68 KB/s
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 3 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 3 bytes
+Wrote 3 bytes
+Trying to read
+Read 3 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 3 bytes
+Wrote 3 bytes
+Trying to read
+Read 0 bytes
+6 B 6.0 B 0.00 s 2629 B/s 2.57 KB/s 0 lines
+Since end of first transfer: 7 B/s 6.98 B/s
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 0 bytes
+0 B 0.0 B 0.00 s 0 B/s 0.00 B/s 0 lines
+Since end of first transfer: 1 B/s 1.00 B/s
+Polling, want_to_read 1 want_to_write 0
+Poll returned 1
+Trying to read
+Read 3 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 3 bytes
+Wrote 3 bytes
+Trying to read
+Read 3 bytes
+Polling, want_to_read 1 want_to_write 1
+Poll returned 2
+Trying to write 3 bytes
+Wrote 3 bytes
+Trying to read
+Read 0 bytes
+6 B 6.0 B 0.00 s 2709 B/s 2.65 KB/s 0 lines
+Since end of first transfer: 7 B/s 6.98 B/s
+6 B 6.0 B 0.00 s 16389 B/s 16.01 KB/s 1 lines
+Since end of first transfer: 331129 B/s 323.37 KB/s
+6 B 6.0 B 0.00 s 18518 B/s 18.08 KB/s 1 lines
+Since end of first transfer: 335544 B/s 327.68 KB/s
+6 B 6.0 B 0.00 s 18403 B/s 17.97 KB/s 1 lines
+Since end of first transfer: 331129 B/s 323.37 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 6263 B/s 6.12 KB/s 1 lines
+Since end of first transfer: 27295 B/s 26.66 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 6438 B/s 6.29 KB/s 1 lines
+Since end of first transfer: 25016 B/s 24.43 KB/s
+#0 wrote 3 bytes
+#0 wrote 3 bytes
+6 B 6.0 B 0.00 s 6494 B/s 6.34 KB/s 1 lines
+Since end of first transfer: 27265 B/s 26.63 KB/s

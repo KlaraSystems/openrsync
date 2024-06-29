@@ -1,0 +1,81 @@
+What now:
+- same mod time and size but middle of file different
+- more double spaces fun
+- "/" at beginning
+- tests from 2.6.9
+- expected error on chown
+- games around long pathnames and long components thereof
+
+flags to test:
+- --max-size, --min-size
+- --numerical-ids
+- timeout
+
+Bigger picture:
+- run all tests that rsync to an empty directory also with a
+  non-empty target directory (need to watch out for symlink
+  malfunctions).
+
+Longer term:
+- fuzzing on filenames (will clash with what the filesystems can do)
+- that whole hard link thing
+
+Delicious tests:
+================
+
+--exclude '/foo/bar'
+--exclude 'foo/bar'
+--exclude 'foo*/*/bar'
+
+
+Things that openrsync urgently needs for testing it:
+====================================================
+
+--no-whole-file
+
+That flag forces rsync to use the checksum algorithm.  Without this
+flag a simple test of making a new tree would never exercise that.
+
+Implies implementing --whole-file while we are at it.
+
+%%
+
+-i --itemize-changes
+
+This is a verbose printing option which tracks what exactly thingie is
+doing.  This should be implemented early because it is tremendous help
+in debugging.  It is also used by the original testsuite.
+
+%%
+
+-V --version needs to print the list of features we currently
+support.  This is used by some tests to determine how rsync was
+compiled, e.g. does it have atime support? This is trivial to do for
+the more common features, it is just static printfs - as long as we
+don't have conditional compilation in the first place.
+
+%%%%
+
+As for features that should be implemented soon, but not necessarily
+for the test suite:
+--------------------------------------------------------------------
+
+-H --hard-links.  The lack of this hurts the ability to trust even
+basic whole-tree copying, e.g. to move OS installations.
+
+(A previous edition of this file said that -H is part of -a for GNU
+rsync.  That was wrong, both GNU rsync and openrsync have the same
+flags in -a, excluding -H)
+
+macOS's rsync2 has a -E option (to copy extended attributes).  That
+clashes with the original rsync2 which has a -E that preserves
+executable status.
+
+generally useful and easy to implement:
+--prune-empty-dirs, -m   prune empty directory chains from file-list
+
+%%
+
+TODO:
+- check whether apple rsync2 has the fixes for zlib corruption
+- see whether --force solves the symlink problem
