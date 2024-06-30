@@ -107,6 +107,8 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	 */
 	if (sess.opts->filesfrom_host && f->mode == FARGS_SENDER)
 		sess.filesfrom_fd = fd;
+	else if (sess.opts->filesfrom && strcmp(sess.opts->filesfrom, "-") == 0 && f->mode == FARGS_SENDER)
+		sess.filesfrom_fd = fd;
 	else
 		sess.mplex_reads = 1;
 
