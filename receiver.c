@@ -482,7 +482,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * If we're doing --files-from, we need to do that before we can receive
 	 * any files.
 	 */
-	if (sess->opts->server && sess->opts->filesfrom) {
+	if (sess->opts->filesfrom != NULL) {
 		read_filesfrom(sess, ".");
 		for (i = 0; i < sess->filesfrom_n; i++) {
 			length = strlen(sess->filesfrom[i]);
