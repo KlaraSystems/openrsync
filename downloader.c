@@ -973,7 +973,8 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 	rlen = sz;
 	clen = 0;
 	hdr[0] = '\0';
-	while (rlen != 0) {
+	res = Z_OK;
+	while (res == Z_OK) {
 		if (dectx.avail_in == 0) {
 			if (clen == 0) {
 				/* Provide a stored-block header */
@@ -1005,6 +1006,8 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 			return TOKEN_ERROR;
 		}
 		if (dectx.avail_out == 0) {
+			continue;
+		} else if (rlen == 0) {
 			break;
 		}
 	}
