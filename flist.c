@@ -2969,7 +2969,9 @@ read_filesfrom(struct sess *sess, const char *basedir)
 	int retval;
 	ssize_t n = -1;
 
-	if (strcmp(sess->opts->filesfrom, "-") == 0) {
+	if (strcmp(sess->opts->filesfrom, "-") == 0 && sess->mode == FARGS_SENDER) {
+		f = NULL;
+	} else if (strcmp(sess->opts->filesfrom, "-") == 0) {
 		f = stdin;
 	} else if (sess->opts->filesfrom_host) {
 		f = NULL;
@@ -2985,7 +2987,9 @@ read_filesfrom(struct sess *sess, const char *basedir)
 
 	retval = 0;
 	while (n != 0) {
-		if (sess->opts->filesfrom_host) {
+		if (sess->opts->filesfrom_host ||
+		    (strcmp(sess->opts->filesfrom, "-") == 0 &&
+		    sess->mode == FARGS_SENDER)) {
 			/*
 			 * This is doing single byte read system calls.
 			 * Before you change that consider:

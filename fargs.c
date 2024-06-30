@@ -426,9 +426,11 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 			addargs(&args, "--no-dirs");
 		if (sess->opts->recursive > 0)
 			addargs(&args, "--recursive");
-		if (sess->opts->from0) {
+		if (sess->opts->from0)
 			addargs(&args, "--from0");
-		}
+	} else if (sess->opts->filesfrom != NULL && f->mode == FARGS_RECEIVER) {
+		addargs(&args, "--files-from=-");
+		addargs(&args, "--from0");
 	}
 
 	/* extra options for the receiver (local is sender) */
