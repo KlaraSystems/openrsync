@@ -1086,6 +1086,22 @@ rsync_sender(struct sess *sess, int fdin,
 	up.stat.blktab = blkhash_alloc();
 
 	/*
+	 * Client sends zero-length exclusions if deleting, unless we're
+	 * deleting excluded files, too.
+	 */
+	if (!sess->opts->server && (sess->opts->prune_empty_dirs ||
+	    (sess->opts->del && (!sess->opts->del_excl || protocol_delrules))))
+		send_rules(sess, fdout);
+
+	/*
+	 * If we're the server, read our exclusion list.  We need to do this
+	 * early as some rules may hide files from the transfer.
+	 */
+
+	if (sess->opts->server)
+		recv_rules(sess, fdin);
+
+	/*
 	 * Fill in from --files-from, if given.
 	 */
 	if (sess->opts->filesfrom != NULL) {
@@ -1114,22 +1130,6 @@ rsync_sender(struct sess *sess, int fdin,
 			sess->mplex_reads = 1;
 		}
 	}
-
-	/*
-	 * Client sends zero-length exclusions if deleting, unless we're
-	 * deleting excluded files, too.
-	 */
-	if (!sess->opts->server && (sess->opts->prune_empty_dirs ||
-	    (sess->opts->del && (!sess->opts->del_excl || protocol_delrules))))
-		send_rules(sess, fdout);
-
-	/*
-	 * If we're the server, read our exclusion list.  We need to do this
-	 * early as some rules may hide files from the transfer.
-	 */
-
-	if (sess->opts->server)
-		recv_rules(sess, fdin);
 
 	/*
 	 * Generate the list of files we want to send from our
