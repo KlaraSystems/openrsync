@@ -1,0 +1,198 @@
+#! /bin/sh
+
+. ${tstdir-.}/lib.sh
+. ${tstdir-.}/conf.sh
+
+# Tests for --files-from
+
+# Create the source tree:
+#
+rm -rf src dst
+mkdir -p src/dir1/dir2
+
+for f in a b c ; do
+    jot -r 31 >> src/${f}
+    compress -c src/${f} >> src/${f}.o
+    jot -r 37 >> src/dir1/${f}
+    compress -c src/${f} >> src/dir1/${f}.a
+    jot -r 43 >> src/dir1/dir2/${f}
+    compress -c src/${f} >> src/dir1/dir2/${f}.z
+done
+
+# rsync -a with no filter file should replicate
+# the source to the non-existing destination:
+#
+rm -f flist
+for file in $(find src/); do
+	echo ${file#src/} >> flist
+done
+
+echo "Test 1"
+rsync -a --files-from=flist -- src/ dst/
+compare_trees src dst
+
+# Test --files-from=/dev/null
+
+rm -rf dst
+echo "Test 2"
+rsync -a --files-from=/dev/null -- src/ dst/
+X=$(find dst | wc -l)
+[ "$X" -eq 1 -o "$X" -eq 0 ]
+
+# Test that --from0/-0 works correctly with -F, --exclude-from, and --include-from,
+# and --files-from.
+
+# rsync -a --XXX with no filter file should replicate
+# the source to the non-existing destination:
+#
+echo "Test 3"
+for opt in "-0" "--from0" "-0 -F" "-0 -FF" "--from0 -F" "--from0 -FF" ; do
+    rm -rf dst
+    rsync -a ${opt} -- src/ dst/
+    compare_trees -t src dst
+done
+
+# Test that /dev/null as include/excludes files work as expected:
+#
+echo "Test 4"
+for opt in "--exclude-from" "--include-from" "-0 --include-from" "-0 --exclude-from" ; do
+    rm -rf dst
+    rsync -a ${opt}=/dev/null -- src/ dst/
+    compare_trees -t src dst
+done
+
+echo "Test 5"
+for opt in "--files-from" "-0 --files-from" ; do
+    rm -rf dst
+    rsync -a ${opt}=/dev/null -- src/ dst/
+    X=$(find dst | wc -l)
+    [ "$X" -eq 1 -o "$X" -eq 0 ]
+done
+
+# Test that empty include/excludes pattern files and those
+# with only comments work as expected:
+#
+rm -f patterns
+> patterns
+
+echo "Test 6"
+for opt in "--exclude-from" "--include-from" ; do
+    rm -rf dst
+    rsync -a ${opt}=patterns -- src/ dst/
+    compare_trees -t src dst
+done
+
+echo "Test 7"
+for opt in "--exclude-from" "--include-from" ; do
+    rm -f patterns
+    > patterns
+    for i in $(seq 4) ; do
+        rm -rf dst
+        rsync -a ${opt}=patterns -- src/ dst/
+        compare_trees -t src dst
+	[ $i -eq 1 ] && echo ';' >> patterns
+	[ $i -eq 2 ] && echo '#' >> patterns
+	[ $i -eq 3 ] && echo >> patterns
+    done
+done
+
+# Test that empty --files-from pattern files and those
+# with only comments work as expected:
+#
+echo "Test 8"
+for opt in "--files-from" "-O --files-from" ; do
+    rm -f patterns
+    > patterns
+    for i in $(seq 4) ; do
+        rm -rf dst
+        rsync -a ${opt}=patterns -- src/ dst/
+        X=$(find dst | wc -l)
+        [ "$X" -eq 1 -o "$X" -eq 0 ]
+	[ $i -eq 1 ] && echo ';' >> patterns
+	[ $i -eq 2 ] && echo '#' >> patterns
+	[ $i -eq 3 ] && echo >> patterns
+    done
+done
+
+# Create a newline-terminated pattern file:
+#
+cat <<- EOF > patterns
+# $(date)
+
+*.o
+*.a
+;;; *.z
+*.c
+foobie-bletch
+EOF
+
+# Check that both a newline and a nul-delimited excludes
+# file works as expected:
+#
+cat patterns | tr '\n' '\0' > excludes0
+cp patterns excludes
+
+rm -rf ref
+cp -a src ref
+find ref -name \*.[oac] -exec rm -f {} \;
+touch $(find src ref)
+
+echo "Test 9"
+for opt in "--from0" "-0" "--from0 -0" ; do
+    rm -rf dst
+    rsync -a ${opt} --exclude-from=excludes0 -- src/ dst/
+    compare_trees -t ref dst
+done
+
+rm -rf dst
+echo "Test 10"
+rsync -a --exclude-from=excludes -- src/ dst/
+compare_trees -t ref dst
+
+
+# Check that both a newline and a nul-delimited includes
+# file works as expected:
+#
+cat patterns | tr '\n' '\0' > includes0
+cp patterns includes
+
+echo "Test 11"
+for opt in "--from0" "-0" "--from0 -0" ; do
+    rm -rf dst
+    rsync -a ${opt} --include-from=includes0 -- src/ dst/
+    compare_trees -t src dst
+done
+
+rm -rf dst
+echo "Test 12"
+rsync -a --include-from=includes -- src/ dst/
+compare_trees -t src dst
+
+# Using the same pattern file for both includes and excludes
+# should result in the dest dir being a replica of the
+# source dir:
+#
+echo "Test 13"
+for opt in "--from0" "-0" "--from0 -0" ; do
+    rm -rf dst
+    rsync -a ${opt} --exclude-from=excludes0 --include-from=excludes0 -- src/ dst/
+    compare_trees -t ref dst
+done
+
+rm -rf dst
+echo "Test 14"
+rsync -a --exclude-from=patterns --include-from=patterns -- src/ dst/
+compare_trees -t ref dst
+
+# An includes file that contains only the directory structure of
+# the source dir should cause rsync to replicate the source dir
+# to the destination:
+#
+(cd src && find . -type d | xargs -n1 -I{} echo {}/) > patterns
+
+cat patterns | tr '\n' '\0' > files0
+
+rm -rf dst
+echo "Test 15"
+rsync -a --from0 --files-from=files0 -- src/ dst/
+compare_trees src dst
