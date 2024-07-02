@@ -248,7 +248,7 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 	struct fargs	*f = NULL;
 	char		*cp;
 	size_t		 i, j, hostlen = 0;
-	int		 sinkarg;
+	size_t		 sinkarg;
 
 	/* Allocations. */
 
@@ -1333,12 +1333,12 @@ basedir:
 			break;
 		case OP_OUTFORMAT:
 		case OP_LOGFORMAT:
-			free(opts.outformat);
+			free((void *)opts.outformat);
 		        opts.outformat = strdup(optarg);
 			break;
 		case 'i':
 		case OP_ITEMIZE:
-			free(opts.outformat);
+			free((void *)opts.outformat);
 		        opts.outformat = strdup("%i %n%L");
 			break;
 		case OP_APPEND:
@@ -1926,7 +1926,7 @@ main(int argc, char *argv[])
 	opts.filesfrom_host = NULL;
 	free(opts.filesfrom_path);
 	opts.filesfrom_path = NULL;
-	free(opts.outformat);
+	free((void *)opts.outformat);
 	opts.outformat = NULL;
 
 	exit(MAX(rc, rc2));
