@@ -1174,6 +1174,11 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 	int rc = -1;
 	unsigned char md[sizeof(f->md)];
 
+	if (rootfd == -1) {
+		/* The root directory doesn't exist */
+		return 3;
+	}
+
 	if (is_partialdir)
 		path = download_partial_filepath(f);
 
@@ -1755,6 +1760,9 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		/* Only consider fuzzy matches if the destination does not exist */
 		assert(pdfd == -1);
 		*size = st.st_size;
+	} else if (p->rootfd == -1 && sess->opts->dry_run == DRY_XFER) {
+		/* We just want to pretend to transfer the file */
+		return 1;
 	} else if (!dry_full && rc < 3) {
 		assert(pdfd == -1);
 		*size = 0;
