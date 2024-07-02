@@ -9,7 +9,7 @@ set -u
 . ${tstdir-.}/lib.sh
 . ${tstdir-.}/conf.sh
 
-rm version.out version.err
+rm -f version.out version.err
 
 rsync --version >version.out 2>version.err
 
