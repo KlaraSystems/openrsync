@@ -26,13 +26,13 @@ OPT_IGNEXIST=''
 X=$(rsync -h 2>&1 | grep -- --ignore-existing || true)
 [ -n "$X" ] && OPT_IGNEXIST='--ignore-existing'
 
-rm -rf src dst ref
+rm -rf src dst
 
 # Create the source tree such that the first byte of src/big
 # is well known.
 #
 mkdir src
-od -x -N64 /dev/random > src/small
+date > src/small
 echo 0 > src/big
 jot -r -p9 1000000 >> src/big
 
