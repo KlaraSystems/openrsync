@@ -1230,7 +1230,7 @@ flist_output_one(const struct sess *sess, struct flist *fl)
 	strftime(timebuf, sizeof(timebuf) - 1, "%Y/%m/%d %H:%M:%S",
 	    localtime(&fl->st.mtime));
 
-	LOG0("%s %11.0d %s %s%s%s", modebuf, fl->st.size,
+	LOG0("%s %11.0lld %s %s%s%s", modebuf, fl->st.size,
 	    timebuf, fl->path,
 	    linkdest != NULL ? " -> " : "",
 	    linkdest != NULL ? linkdest : "");
@@ -1535,7 +1535,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			 */
 			if (!(FLIST_DEV_SAME & flag)) {
 				if (!io_read_ulong(sess, fdin,
-				    (unsigned long *)&lval)) {
+				    (uint64_t *)&lval)) {
 					ERRX1("io_read_long");
 					goto out;
 				}
@@ -1719,7 +1719,6 @@ flist_dirent_strip(const char *root)
 static int
 flist_normalize_path(const char *root, char *rootbuf, size_t rootbufsz)
 {
-	char *slash;
 	size_t rootlen;
 
 	rootlen = strlen(root);
@@ -2083,8 +2082,8 @@ static int
 flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
 	const char	*dname;
-	size_t		 i, max = 0;
-	int			 errors = 0;
+	size_t		 i;
+	int		 errors = 0;
 
 	for (i = 0; i < argc; i++) {
 		dname = argv[i];
@@ -2617,7 +2616,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 
 		/* Look up in hashtable. */
 		memset(&hent, 0, sizeof(ENTRY));
-		hent.key = rpath;
+		hent.key = (char *)rpath;
 		if (hsearch(hent, FIND) != NULL)
 			continue;
 
