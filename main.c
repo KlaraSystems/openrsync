@@ -494,6 +494,198 @@ scan_scaled_def(char *maybe_scaled, long long *result, char def)
 }
 
 /*
+ * Like scan_scaled, but accepts the rsync conventions that:
+ * 2k = 2048, but 2kb = 2000
+ * And additionally allows +1 and -1 (for --max-size etc)
+ */
+typedef enum {
+	NONE = 0, KILO = 1, MEGA = 2, GIGA = 3, TERA = 4, PETA = 5, EXA = 6
+} unit_type;
+
+/* These three arrays MUST be in sync!  XXX make a struct */
+static const unit_type units[] = { NONE, KILO, MEGA, GIGA, TERA, PETA, EXA };
+static const char scale_chars[] = "BKMGTPE";
+static const long long scale_factors[] = {
+	1LL,
+	1024LL,
+	1024LL*1024,
+	1024LL*1024*1024,
+	1024LL*1024*1024*1024,
+	1024LL*1024*1024*1024*1024,
+	1024LL*1024*1024*1024*1024*1024,
+};
+static const long long scale_factors_1000[] = {
+	1LL,
+	1000LL,
+	1000LL*1000,
+	1000LL*1000*1000,
+	1000LL*1000*1000*1000,
+	1000LL*1000*1000*1000*1000,
+	1000LL*1000*1000*1000*1000*1000,
+};
+
+#define	SCALE_LENGTH (sizeof(units)/sizeof(units[0]))
+
+#define MAX_DIGITS (SCALE_LENGTH * 3)	/* XXX strlen(sprintf("%lld", -1)? */
+
+static int
+rsync_scan_scaled(char *scaled, long long *result)
+{
+	char *p = scaled;
+	int sign = 0;
+	unsigned int i, ndigits = 0, fract_digits = 0;
+	long long scale_fact = 1, whole = 0, fpart = 0, plusminus = 0;
+
+	/* Skip leading whitespace */
+	while (isascii((unsigned char)*p) && isspace((unsigned char)*p))
+		++p;
+
+	/* Then at most one leading + or - */
+	while (*p == '-' || *p == '+') {
+		if (*p == '-') {
+			if (sign) {
+				errno = EINVAL;
+				return -1;
+			}
+			sign = -1;
+			++p;
+		} else if (*p == '+') {
+			if (sign) {
+				errno = EINVAL;
+				return -1;
+			}
+			sign = +1;
+			++p;
+		}
+	}
+
+	/* Main loop: Scan digits, find decimal point, if present.
+	 * We don't allow exponentials, so no scientific notation
+	 * (but note that E for Exa might look like e to some!).
+	 * Advance 'p' to end, to get scale factor.
+	 */
+	for (; isascii((unsigned char)*p) &&
+	    (isdigit((unsigned char)*p) || *p=='.'); ++p) {
+		if (*p == '.') {
+			if (fract_digits > 0) {	/* oops, more than one '.' */
+				errno = EINVAL;
+				return -1;
+			}
+			fract_digits = 1;
+			continue;
+		}
+
+		i = (*p) - '0';			/* whew! finally a digit we can use */
+		if (fract_digits > 0) {
+			if (fract_digits >= MAX_DIGITS-1)
+				/* ignore extra fractional digits */
+				continue;
+			fract_digits++;		/* for later scaling */
+			if (fpart > LLONG_MAX / 10) {
+				errno = ERANGE;
+				return -1;
+			}
+			fpart *= 10;
+			if (i > LLONG_MAX - fpart) {
+				errno = ERANGE;
+				return -1;
+			}
+			fpart += i;
+		} else {				/* normal digit */
+			if (++ndigits >= MAX_DIGITS) {
+				errno = ERANGE;
+				return -1;
+			}
+			if (whole > LLONG_MAX / 10) {
+				errno = ERANGE;
+				return -1;
+			}
+			whole *= 10;
+			if (i > LLONG_MAX - whole) {
+				errno = ERANGE;
+				return -1;
+			}
+			whole += i;
+		}
+	}
+
+	if (sign)
+		whole *= sign;
+
+	/* If no scale factor given, we're done. fraction is discarded. */
+	if (!*p) {
+		*result = whole;
+		return 0;
+	}
+
+	/* Validate scale factor, and scale whole and fraction by it. */
+	for (i = 0; i < SCALE_LENGTH; i++) {
+
+		/* Are we there yet? */
+		if (*p == scale_chars[i] ||
+			*p == tolower((unsigned char)scale_chars[i])) {
+			p++;
+
+			scale_fact = scale_factors[i];
+
+			if ((*p == 'i' || tolower((unsigned char)*p) == 'i') &&
+			    (*(p+1) == 'b' || tolower((unsigned char)*(p+1)) == 'b')) {
+				scale_fact = scale_factors[i];
+				p += 2;
+			} else if (*p == 'b' || tolower((unsigned char)*p) == 'b') {
+				/* rsync treats kb differently than just 'k' */
+				scale_fact = scale_factors_1000[i];
+				p++;
+			}
+			/* rsync allows +/- 1 to the units. */
+			if (*p == '+') {
+				plusminus = 1;
+			} else if (*p == '-') {
+				plusminus = -1;
+			} else if (isalnum((unsigned char)*p)) {
+				/* If it ends with alphanumerics after the scale char, bad. */
+				errno = EINVAL;
+				return -1;
+			}
+
+			/* check for overflow and underflow after scaling */
+			if (whole > LLONG_MAX / scale_fact ||
+			    whole < LLONG_MIN / scale_fact) {
+				errno = ERANGE;
+				return -1;
+			}
+
+			/* scale whole part */
+			whole *= scale_fact;
+
+			/* truncate fpart so it does't overflow.
+			 * then scale fractional part.
+			 */
+			while (fpart >= LLONG_MAX / scale_fact) {
+				fpart /= 10;
+				fract_digits--;
+			}
+			fpart *= scale_fact;
+			if (fract_digits > 0) {
+				for (i = 0; i < fract_digits -1; i++)
+					fpart /= 10;
+			}
+			if (sign == -1)
+				whole -= fpart;
+			else
+				whole += fpart;
+			whole += plusminus;
+			*result = whole;
+			return 0;
+		}
+	}
+
+	/* Invalid unit or character */
+	errno = EINVAL;
+	return -1;
+}
+
+/*
  * This function implements the rsync chmod symbolic mode parser
  * for the grammar described below (as taken from the chmod(1)
  * man page), including the addition of the "which" rule as
@@ -1007,7 +1199,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.bit8++;
 			break;
 		case 'B':
-			if (scan_scaled(optarg, &tmplong) == -1)
+			if (rsync_scan_scaled(optarg, &tmplong) == -1)
 				errx(1, "--block-size=%s: invalid numeric value", optarg);
 			if (tmplong < 0)
 				errx(1, "--block-size=%s: must be no less than 0", optarg);
@@ -1289,12 +1481,12 @@ basedir:
 			opts.sparse++;
 			break;
 		case OP_MAX_SIZE:
-			if (scan_scaled(optarg, &tmplong) == -1)
+			if (rsync_scan_scaled(optarg, &tmplong) == -1)
 				err(1, "bad max-size");
 			opts.max_size = tmplong;
 			break;
 		case OP_MIN_SIZE:
-			if (scan_scaled(optarg, &tmplong) == -1)
+			if (rsync_scan_scaled(optarg, &tmplong) == -1)
 				err(1, "bad min-size");
 			opts.min_size = tmplong;
 			break;
