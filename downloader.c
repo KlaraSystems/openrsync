@@ -689,9 +689,9 @@ delayed_renames(struct sess *sess)
 
 			if (linkat(p->rootfd, hl_p->path, p->rootfd, path,
 			    0) == -1) {
-				LOG0("While hard linking '%s' to '%s' ",
-				    hl_p->path, path);
-				ERRX1("linkat");
+				LOG0("Error while delayed hard linking '%s' "
+				    "to '%s' ", hl_p->path, path);
+				ERR("linkat");
 			}
 
 			hl_p = NULL;
@@ -1974,9 +1974,9 @@ again:
 				f->iflags |= IFLAG_HLINK_FOLLOWS;
 			if (linkat(p->rootfd, hl_p->path, p->rootfd, f->path,
 			    0) == -1) {
-				LOG0("While hard linking '%s' to '%s' ",
+				LOG0("Error while hard linking '%s' to '%s' ",
 				    hl_p->path, f->path);
-				ERRX1("linkat");
+				ERR("linkat");
 			}
 		}
 	}
