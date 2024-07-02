@@ -262,6 +262,9 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 	if (argc > 1) {
 		sinkarg = argc - 1;
 		f->sourcesz = argc - 1;
+	} else if (opts->read_batch != NULL) {
+		sinkarg = argc - 1;
+		f->sourcesz = 0;
 	} else {
 		sinkarg = argc;
 		f->sourcesz = 1;
