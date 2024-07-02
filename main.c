@@ -52,7 +52,7 @@ int poll_contimeout;
 int poll_timeout;
 
 /*
- * A remote host is has a colon before the first path separator.
+ * A remote host has a colon before the first path separator.
  * This works for rsh remote hosts (host:/foo/bar), implicit rsync
  * remote hosts (host::/foo/bar), and explicit (rsync://host/foo).
  * Return zero if local, non-zero if remote.
@@ -61,6 +61,9 @@ static int
 fargs_is_remote(const char *v)
 {
 	size_t	 pos;
+
+	if (v == NULL)
+		return 0;
 
 	pos = strcspn(v, ":/");
 	return v[pos] == ':';
