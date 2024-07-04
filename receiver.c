@@ -134,11 +134,13 @@ rsync_set_metadata(struct sess *sess, int newfile,
 	/* Conditionally adjust file permissions. */
 
 	if (newfile || sess->opts->preserve_perms) {
-		if (fchmod(fd, mode) == -1) {
-			ERR("%s: fchmod", path);
-			return 0;
+		if (mode != 0) {
+			if (fchmod(fd, mode) == -1) {
+				ERR("%s: fchmod", path);
+				return 0;
+			}
+			LOG4("%s: updated permissions", f->path);
 		}
-		LOG4("%s: updated permissions", f->path);
 	} else if (pres_exec) {
 		mode = preserve_executability_check(mode, st.st_mode);
 		if (mode != 0) {
@@ -244,16 +246,18 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	/* Conditionally adjust file permissions. */
 
 	if (newfile || sess->opts->preserve_perms) {
-		if (fchmodat(rootfd, path, mode, AT_SYMLINK_NOFOLLOW) == -1) {
-			if (!(S_ISLNK(f->st.mode) && errno == EOPNOTSUPP)) {
-				int save = errno;
+		if (mode != 0) {
+			if (fchmodat(rootfd, path, mode, AT_SYMLINK_NOFOLLOW) == -1) {
+				if (!(S_ISLNK(f->st.mode) && errno == EOPNOTSUPP)) {
+					int save = errno;
 
-				ERR("%s: fchmodat (1) %d", path, errno);
-				errno = save;
-				return 0;
+					ERR("%s: fchmodat (1) %d", path, errno);
+					errno = save;
+					return 0;
+				}
 			}
+			LOG4("%s: updated permissions", f->path);
 		}
-		LOG4("%s: updated permissions", f->path);
 	} else if (pres_exec) {
 		mode = preserve_executability_check(mode, st.st_mode);
 		if (mode != 0) {
