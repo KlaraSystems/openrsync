@@ -59,6 +59,7 @@ impls_server="openrsync"
 
 tstdir=$(mktemp -dt rsync_test)
 trap '(echo; date) >> $resultfile; rm -rf $tstdir' EXIT
+trap '' USR1
 
 write_header
 
