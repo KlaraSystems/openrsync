@@ -2088,6 +2088,13 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 		if (dname[0] == '\0')
 			dname = ".";
 		rules_base(dname);
+		if (sess->opts->relative) {
+			if (!sess->opts->noimpdirs &&
+			    !flist_append_dirs(dname, fl)) {
+				ERR("flist_append_dirs");
+				return 0;
+			}
+		}
 		if (!flist_gen_dirent(sess, dname, fl, -1, dname))
 			errors++;
 	}
