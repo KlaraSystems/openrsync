@@ -102,7 +102,7 @@ mkpathat(int fd, char *path)
 		if (mkdirat(fd, path, 0777) != 0) {
 			int mkdir_errno = errno;
 
-			if (stat(path, &sb) == -1) {
+			if (fstatat(fd, path, &sb, AT_RESOLVE_BENEATH) == -1) {
 				/* Not there; use mkdir()s errno */
 				errno = mkdir_errno;
 				*slash = '/';
