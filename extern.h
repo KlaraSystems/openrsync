@@ -991,8 +991,8 @@ int		 backup_to_dir(struct sess *, int, const struct flist *,
 int		 is_unsafe_link(const char *, const char *, const char *);
 char		*make_safe_link(const char *);
 
-int		 mkpath(char *);
-int		 mkpathat(int fd, char *);
+int		 mkpath(char *, mode_t);
+int		 mkpathat(int fd, char *, mode_t);
 int		 mksock(const char *, char *);
 
 int		 mkstempat(int, char *);

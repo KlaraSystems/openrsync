@@ -1005,8 +1005,9 @@ pre_dir(struct upload *p, struct sess *sess)
 	 * case it's u-w or something.
 	 */
 
-	if (mkdirat(p->rootfd, f->path, 0777 & ~p->oumask) == -1) {
-		ERR("%s: mkdirat", f->path);
+	if (mkpathat(p->rootfd, f->path, 0777 & ~p->oumask) == -1 &&
+	    errno != EEXIST) {
+		ERR("%s: mkpathat", f->path);
 		return -1;
 	}
 
@@ -1767,7 +1768,8 @@ createdirs(struct upload *u)
 	 * there would be a system call flood.
 	 */
 	if (u->lastimp == NULL || strcmp(s, u->lastimp)) {
-		if (mkpathat(u->rootfd, s) == -1) {
+		if (mkpathat(u->rootfd, s, 0755) == -1 &&
+		    errno != EEXIST) {
 			ERR("mkpathat '%s'", s);
 			retcode = -1;
 			/* Invalidate cache */
