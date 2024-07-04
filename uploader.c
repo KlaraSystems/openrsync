@@ -979,13 +979,13 @@ pre_dir(struct upload *p, struct sess *sess)
 		 * as we may locally have shut down writing into the
 		 * directory and that doesn't work.
 		 */
-		if (sess->opts->preserve_perms && st.st_mode != f->st.mode) {
+		if (sess->opts->preserve_perms && st.st_mode != f->st.mode && f->st.mode != 0) {
 			rc = fchmodat(p->rootfd, f->path, f->st.mode, 0);
 			if (rc != 0)
 				ERRX("%s: unable to preserve dir mode", f->path);
 		}
 
-		if ((sess->opts->preserve_perms && st.st_mode != f->st.mode) ||
+		if ((sess->opts->preserve_perms && st.st_mode != f->st.mode && f->st.mode != 0) ||
 		    (sess->opts->preserve_times && !sess->opts->omit_dir_times &&
 		     st.st_mtime != f->st.mtime)) {
 			log_dir(sess, f);
