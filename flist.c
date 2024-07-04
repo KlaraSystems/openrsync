@@ -462,6 +462,7 @@ flist_fts_check(struct sess *sess, FTSENT *ent, enum fmode fmode)
 	if (ent->fts_info == FTS_DC) {
 		WARNX("%s: directory cycle", ent->fts_path);
 	} else if (ent->fts_info == FTS_DNR) {
+		sess->total_errors++;
 		errno = ent->fts_errno;
 		WARN("%s: unreadable directory", ent->fts_path);
 	} else if (ent->fts_info == FTS_DOT) {
@@ -1662,13 +1663,13 @@ flist_gen_dirent_file(struct sess *sess, const char *type, const char *root,
 		WARNX("%s: skipping excluded %s", root, type);
 		return 1;
 	}
-	/* don't even try to add it if we can't read it, just succeed. */
-	if (access(root, R_OK) != 0) {
-		if (!sess->opts->ignore_nonreadable)
-			sess->total_errors++;
-		ERR("%s: open", root);
-		return 1;
+
+	if (sess->opts->ignore_nonreadable && !S_ISLNK(st->st_mode)) {
+		if (access(root, R_OK) != 0) {
+			return 1;
+		}
 	}
+
 	/* add it to our world view */
 	if (!flist_append(sess, st, root, fl, prefix)) {
 		ERRX1("flist_append");
@@ -1966,16 +1967,10 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			continue;
 		}
 
-		/* don't even try to add it if we can't read it, just succeed. */
-		if (access(ent->fts_path, R_OK) != 0) {
-			if (sess->opts->ignore_nonreadable) {
-				continue;
-			} else if (!S_ISDIR(ent->fts_statp->st_mode)) {
-				ERR("%s: open", ent->fts_path);
-				sess->total_errors++;
+		if (sess->opts->ignore_nonreadable && !S_ISLNK(ent->fts_statp->st_mode)) {
+			if (access(ent->fts_path, R_OK) != 0) {
 				continue;
 			}
-			sess->total_errors++;
 		}
 
 		/* Allocate a new file entry. */
