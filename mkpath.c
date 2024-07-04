@@ -36,13 +36,21 @@
 
 #include "extern.h"
 
+/*
+ * We're using AT_RESOLVE_BENEATH in a couple of places just for some additional
+ * safety on platforms that support it, so it's not a hard requirement.
+ */
+#ifndef AT_RESOLVE_BENEATH
+#define	AT_RESOLVE_BENEATH	0
+#endif
+
 /* Code taken directly from mkdir(1).
 
  * mkpath -- create directories.
  *	path     - path
  */
 int
-mkpath(char *path)
+mkpath(char *path, mode_t mode)
 {
 	struct stat sb;
 	char *slash;
@@ -57,7 +65,7 @@ mkpath(char *path)
 		done = (*slash == '\0');
 		*slash = '\0';
 
-		if (mkdir(path, 0777) != 0) {
+		if (mkdir(path, mode) != 0) {
 			int mkdir_errno = errno;
 
 			if (stat(path, &sb) == -1) {
@@ -84,7 +92,7 @@ mkpath(char *path)
 }
 
 int
-mkpathat(int fd, char *path)
+mkpathat(int fd, char *path, mode_t mode)
 {
 	struct stat sb;
 	char *slash;
@@ -99,7 +107,7 @@ mkpathat(int fd, char *path)
 		done = (*slash == '\0');
 		*slash = '\0';
 
-		if (mkdirat(fd, path, 0777) != 0) {
+		if (mkdirat(fd, path, mode) != 0) {
 			int mkdir_errno = errno;
 
 			if (fstatat(fd, path, &sb, AT_RESOLVE_BENEATH) == -1) {
