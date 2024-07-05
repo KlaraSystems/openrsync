@@ -60,7 +60,7 @@ stats_log(struct sess *sess,
 		char rbuf[32], wbuf[32], sbuf[32], ratebuf[32];
 		int64_t rate;
 
-		rate = (tread + twrite) / (sess->flist_xfer + 0.5);
+		rate = (tread + twrite) / ((sess->xfer_time + 0.1) / 1000);
 
 		rsync_humanize(sess, rbuf, sizeof(rbuf), tread);
 		rsync_humanize(sess, wbuf, sizeof(wbuf), twrite);

@@ -1043,6 +1043,7 @@ rsync_sender(struct sess *sess, int fdin,
 	ssize_t		    ssz;
 	int		    markers = 0, shutdown = 0;
 	struct timeval	    tv, fb_before, fb_after, fx_before, fx_after;
+	struct timeval      x_before, x_after;
 	double		    now, rate, sleeptime;
 	int		    max_phase = sess->protocol >= 29 ? 2 : 1;
 
@@ -1199,6 +1200,7 @@ rsync_sender(struct sess *sess, int fdin,
 		goto out;
 	}
 
+	gettimeofday(&x_before, NULL);
 	/*
 	 * Set up our poll events.
 	 * We start by polling only in receiver requests, enabling other
@@ -1606,6 +1608,9 @@ rsync_sender(struct sess *sess, int fdin,
 		goto out;
 	}
 
+	gettimeofday(&x_after, NULL);
+	timersub(&x_after, &x_before, &tv);
+	sess->xfer_time = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
 	if (!sess_stats_send(sess, fdout)) {
 		ERRX1("sess_stats_end");
 		goto out;
