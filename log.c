@@ -176,8 +176,8 @@ rsync_log(int level, const char *fmt, ...)
 	if (level <= 0 && buf != NULL)
 		log_writef(LOG_INFO, "%s\n", buf);
 	else if (level > 0)
-		log_writef(LOG_INFO, "%s: %s%s\n", getprogname(),
-		    (buf != NULL) ? ": " : "",
+		log_writef(LOG_INFO, "%s(%d): %s%s\n", getprogname(),
+		    getpid(), (buf != NULL) ? ": " : "",
 		    (buf != NULL) ? buf : "");
 	free(buf);
 }
@@ -201,8 +201,8 @@ rsync_errx(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_ERR, "%s: error%s%s\n", getprogname(),
-	   (buf != NULL) ? ": " : "",
+	log_writef(LOG_ERR, "%s(%d): error%s%s\n", getprogname(),
+	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
 }
@@ -227,8 +227,8 @@ rsync_err(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_ERR, "%s: error%s%s: %s\n", getprogname(),
-	   (buf != NULL) ? ": " : "",
+	log_writef(LOG_ERR, "%s(%d): error%s%s: %s\n", getprogname(),
+	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "", strerror(er));
 	free(buf);
 }
@@ -255,8 +255,8 @@ rsync_errx1(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_ERR, "%s: error%s%s\n", getprogname(),
-	   (buf != NULL) ? ": " : "",
+	log_writef(LOG_ERR, "%s(%d): error%s%s\n", getprogname(),
+	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
 }
@@ -282,8 +282,8 @@ rsync_warnx1(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_WARNING, "%s: warning%s%s\n", getprogname(),
-	   (buf != NULL) ? ": " : "",
+	log_writef(LOG_WARNING, "%s(%d): warning%s%s\n", getprogname(),
+	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
 }
@@ -306,8 +306,8 @@ rsync_warnx(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_WARNING, "%s: warning%s%s\n", getprogname(),
-	   (buf != NULL) ? ": " : "",
+	log_writef(LOG_WARNING, "%s(%d): warning%s%s\n", getprogname(),
+	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
 }
@@ -335,8 +335,8 @@ rsync_warn(int level, const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_WARNING, "%s: warning%s%s: %s\n", getprogname(),
-	   (buf != NULL) ? ": " : "",
+	log_writef(LOG_WARNING, "%s(%d): warning%s%s: %s\n", getprogname(),
+	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "", strerror(er));
 	free(buf);
 }
