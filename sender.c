@@ -1495,14 +1495,15 @@ rsync_sender(struct sess *sess, int fdin,
 					rate = (double)sess->total_write /
 						(now - sess->start_time);
 					if (rate > sess->opts->bwlimit) {
-						sleeptime = 
+						sleeptime =
 							/* Time supposed to have expired */
 							sess->total_write / 
 							sess->opts->bwlimit
 							/* Time actually expired */
 							- (now - sess->start_time)
 							;
-						usleep(sleeptime * 1000 * 1000);
+						if (sleeptime > 0)
+							usleep(sleeptime * 1000 * 1000);
 					}
 				}
 			}
