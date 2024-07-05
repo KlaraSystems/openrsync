@@ -621,14 +621,15 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far, bool finished
 	 */
 	if (sess->last_time == 0) {
 		sess->last_time = now;
+		sess->last_bytes = 0;
 		return;
 	}
-	if (now - sess->last_time < 0.1 && !finished)
+	if ((now - sess->last_time) < 0.5 && !finished)
 		return;
 	fprintf(stderr, " %14llu", (long long unsigned)so_far);
 	fprintf(stderr, " %3.0f%%", (double)so_far / 
 	    (double)total_bytes * 100.0);
-	rate = (double)so_far / (now - sess->last_time);
+	rate = (double)(so_far - sess->last_bytes) / (now - sess->last_time);
 	if (rate > 1024.0 * 1024.0 * 1024.0) {
 		fprintf(stderr, " %7.2fGB/s", rate / 
 		    1024.0 / 1024.0 / 1024.0);
@@ -642,7 +643,13 @@ progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far, bool finished
 	remaining_time = (total_bytes - so_far) / rate;
 	print_time(stderr, remaining_time);
 	fprintf(stderr, finished ? "\n" : "\r");
-	sess->last_time = now;
+	if (finished) {
+		sess->last_time = 0;
+		sess->last_bytes = 0;
+	} else {
+		sess->last_time = now;
+		sess->last_bytes = so_far;
+	}
 }
 
 /*

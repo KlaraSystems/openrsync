@@ -667,6 +667,7 @@ struct	sess {
 	size_t		   mplex_read_remain; /* remaining bytes */
 	int		   mplex_writes; /* multiplexing writes? */
 	double             last_time; /* last time printed --progress */  
+	uint64_t	   last_bytes; /* last bytes printed --progress */
 	int                itemize; /* --itemize or %i in --output-format */
 	int                lateprint; /* Does output format contain a flag requiring late print? */
 	char             **filesfrom; /* Contents of files-from */
