@@ -663,6 +663,7 @@ struct	sess {
 	uint64_t	   flist_size; /* items on the flist */
 	uint64_t	   flist_build; /* time to build flist */
 	uint64_t	   flist_xfer; /* time to transfer flist */
+	uint64_t	   xfer_time; /* time to transfer data */
 	int		   mplex_reads; /* multiplexing reads? */
 	size_t		   mplex_read_remain; /* remaining bytes */
 	int		   mplex_writes; /* multiplexing writes? */
