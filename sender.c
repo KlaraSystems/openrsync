@@ -1598,7 +1598,11 @@ rsync_sender(struct sess *sess, int fdin,
 				ERR("%s: open (2) in %s",
 				    fl.flp[up.cur->idx].path,
 				    getcwd(buf, sizeof(buf)));
-				goto out;
+
+				sess->total_errors++;
+				send_up_reset(&up);
+				pfd[1].fd = fdout;
+				continue;
 			}
 			pfd[2].fd = up.stat.fd;
 		}
