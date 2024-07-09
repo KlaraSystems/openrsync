@@ -64,6 +64,7 @@ enum	downloadst {
 static enum zlib_state	 dec_state; /* decompression state */
 static z_stream		 dectx; /* decompression context */
 static int decompress_reinit(void);
+static int buf_copy(const char *, size_t, struct download *, struct sess *);
 
 /*
  * Like struct upload, but used to keep track of what we're downloading.
@@ -332,6 +333,8 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 		return 1;
 	}
 
+	/* Flush any buffered writes to the file */
+	buf_copy(NULL, 0, p, sess);
 	close(p->fd);
 	p->fd = -1;
 
