@@ -217,6 +217,14 @@ rsync_batch(struct cleanup_ctx *cleanup_ctx, struct opts *opts,
 	}
 
 	rc = 0;
+
+	if (sess.err_del_limit) {
+		assert(sess.total_deleted >= sess.opts->max_delete);
+		rc = ERR_DEL_LIMIT;
+	} else if (sess.total_errors > 0) {
+		rc = ERR_PARTIAL;
+	}
+
 out:
 
 	close(batch_fd);
