@@ -96,6 +96,17 @@ rsync() {
 		# other way around won't fork/exec openrsync.
 		cmd="$cmd $@"
 	else
+		# For interop testing, samba rsync does not support multiple sources via ssh
+		# even if they're from the same host.
+		if [ -n "$RSYNC_PREFIX_SRC" -a $# -gt 2 ]; then
+		    case "$RSYNC_CLIENT" in
+		    *samba*)
+			echo "Skipping test incompatible with samba rsync"
+		        exit 0
+		        ;;
+		    esac
+		fi
+
 		# Prefix any srcs
 		while [ $# -gt 1 ]; do
 			if [ -z "$RSYNC_PREFIX_SRC" ]; then
