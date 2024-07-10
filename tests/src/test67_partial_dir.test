@@ -22,7 +22,7 @@ kill "$pid"
 # need some time to let the signal handler do its thing
 wait
 sleep 1
-ls -la dir[123]
+ls -laR dir[123]
 if [ ! -f dir3/.rsync-partial/foo ] ; then
     echo error: --partial-dir did not leave a dir3/foo 1>&2
     exit 1
@@ -32,6 +32,9 @@ if [ ! -s dir3/.rsync-partial/foo ] ; then
     exit 1
 fi
 
-rsync --partial-dir=.rsync-partial -a -- dir1/ dir3
-
+rsync --partial-dir=.rsync-partial -av -- dir1/ dir3
+echo "Exit code of final rsync was $?" 1>&2
+ls -laR dir[123]
 compare_trees dir2 dir3
+echo "Finished" 1>&2
+echo "Finished"

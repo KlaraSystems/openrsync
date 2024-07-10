@@ -20,6 +20,8 @@ doit ()
     printf "#! %s\n\n" "$shebang"
 
 cat <<EOF
+trap '' USR1
+
 setup_sshkey()
 {
 	local ssh_authfile ssh_keydir ssh_keyfile ssh_keyname ssh_lockfile
