@@ -1542,7 +1542,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 	if (p->state == DOWNLOAD_READ_LOCAL) {
 		assert(p->fname == NULL);
 
-		if (sess->opts->dry_run) {
+		if (sess->opts->dry_run && sess->wbatch_fd == -1) {
 			/*
 			 * Ideally we'd just be able to drive the token protocol
 			 * a little more cleanly.
@@ -1578,6 +1578,15 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 		/* Success either way: we don't need this. */
 
 		*ofd = -1;
+
+		/*
+		 * For the only-write-batch case, we need to map
+		 * the file to do the delta algorithm on it.
+		 */
+		if (sess->opts->dry_run && sess->wbatch_fd != -1) {
+			p->state = DOWNLOAD_READ_REMOTE;
+			return 1;
+		}
 
 		/* Create the temporary file. */
 		if (download_is_inplace(sess, p, false) || f->pdfd >= 0) {
@@ -1755,7 +1764,7 @@ again:
 	if (p->state == DOWNLOAD_FLUSH_REMOTE)
 		p->obufsz = 0;
 
-	assert(p->fd < 0 || p->obufsz == 0);
+	assert(p->fd < 0 || p->obufsz == 0 || sess->opts->dry_run);
 	assert(tokres == TOKEN_EOF);
 
 	/*
