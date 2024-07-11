@@ -28,7 +28,6 @@
 #include <syslog.h>
 #include <time.h>
 #include <unistd.h>
-#include <libutil.h>
 #ifdef __APPLE__
 #include <usbuf.h>
 #else
