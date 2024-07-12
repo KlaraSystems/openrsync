@@ -3,6 +3,16 @@
 . ${tstdir-.}/lib.sh
 . ${tstdir-.}/conf.sh
 
+# A bug in smb rsync 2.x means that --relative --no-implied-dirs fails even
+# smb <-> smb. Rsync 3.x also fails if you degrade it to --protocol=29
+if [ -n "$RSYNC_CLIENT" ]; then
+    case "$RSYNC_CLIENT$RSYNC_SERVER" in
+    *samba*)
+        exit 0
+        ;;
+    esac
+fi
+
 rm -rf dir1 dir2 dir3
 # make the copy-from-here tree
 mkdir dir1
