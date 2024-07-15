@@ -3,8 +3,6 @@
 . ${tstdir-.}/lib.sh
 . ${tstdir-.}/conf.sh
 
-trap '' USR1
-
 rm -rf dir1 dir2 dir3
 # make the copy-from-here tree
 mkdir dir1
