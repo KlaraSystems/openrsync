@@ -538,7 +538,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		sess->total_errors++;
 	}
 
-	if (flsz == 0 && !sess->opts->server) {
+	if (flsz == 0 && !sess->opts->server && !sess->opts->prune_empty_dirs) {
 		WARNX("receiver has empty file list: exiting");
 		rc = 1;
 		goto out;
