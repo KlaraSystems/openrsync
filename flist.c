@@ -909,8 +909,18 @@ flist_recv_name(struct sess *sess, int fd, struct flist *f, uint8_t flags,
 
 	strlcpy(last, f->path, PATH_MAX);
 	if (sess->opts->relative && f->path[0] == '/') {
-		while (f->path[0] == '/')
-			f->path++;
+		f->wpath = f->path;
+		while (f->wpath[0] == '/') {
+			f->wpath++;
+			len--;
+		}
+
+		/*
+		 * f->path is allocated on the heap, so we just preserve that as
+		 * the beginning of the path instead of having to add another
+		 * pointer to retain the start of the buffer.
+		 */
+		memmove(f->path, f->wpath, len + 1);
 	}
 	f->wpath = f->path;
 	return 1;
