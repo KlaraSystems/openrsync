@@ -1539,6 +1539,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 				ERRX1("io_read_long");
 				goto out;
 			}
+			hlprev = ff;
 		}
 
 		/*
