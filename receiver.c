@@ -612,7 +612,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				err(ERR_FILE_IO, "%s: mkpath", tofree);
 			free(tofree);
 
-			if (root_missing)
+			if (root_missing && flsz > 0)
 				fl[0].iflags |= IFLAG_NEW | IFLAG_LOCAL_CHANGE;
 		}
 	}
