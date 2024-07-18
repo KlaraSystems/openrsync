@@ -1531,8 +1531,8 @@ basedir:
 			break;
 		case 'i':
 		case OP_ITEMIZE:
-			free((void *)opts.outformat);
-		        opts.outformat = strdup("%i %n%L");
+			if (opts.outformat == NULL)
+				opts.outformat = strdup("%i %n%L");
 			break;
 		case OP_APPEND:
 			opts.append++;

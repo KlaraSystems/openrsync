@@ -75,6 +75,7 @@ static int buf_copy(const char *, size_t, struct download *, struct sess *);
 struct	download {
 	enum downloadst	    state; /* state of affairs */
 	size_t		    idx; /* index of current file */
+	int32_t		    idxprev; /* index of previous file */
 	struct blkset	    blk; /* its blocks */
 	struct fmap	   *map; /* mmap of current file */
 	int		    ofd; /* open origin file */
@@ -95,41 +96,6 @@ struct	download {
 	size_t		    curtok; /* current token */
 };
 
-
-/*
- * Simply log the filename.
- */
-static void
-log_file(struct sess *sess,
-	const struct download *dl, const struct flist *f)
-{
-	float		 frac, tot = dl->total;
-	int		 prec = 0;
-	const char	*unit = "B";
-
-	if (sess->opts->server)
-		return;
-
-	frac = (dl->total == 0) ? 100.0 :
-		100.0 * dl->downloaded / dl->total;
-
-	if (dl->total > 1024 * 1024 * 1024) {
-		tot = dl->total / (1024. * 1024. * 1024.);
-		prec = 3;
-		unit = "GB";
-	} else if (dl->total > 1024 * 1024) {
-		tot = dl->total / (1024. * 1024.);
-		prec = 2;
-		unit = "MB";
-	} else if (dl->total > 1024) {
-		tot = dl->total / 1024.;
-		prec = 1;
-		unit = "KB";
-	}
-
-	LOG1("%s (%.*f %s, %.1f%% downloaded)",
-	    f->path, prec, tot, unit, frac);
-}
 
 /*
  * Reinitialise a download context w/o overwriting the persistent parts
@@ -455,6 +421,7 @@ download_alloc(struct sess *sess, int fdin, struct flist *fl, size_t flsz,
 	}
 
 	p->state = DOWNLOAD_READ_NEXT;
+	p->idxprev = -1;
 	p->fl = fl;
 	p->flsz = flsz;
 	p->rootfd = rootfd;
@@ -787,28 +754,12 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 }
 
 /*
- * Read the Itemization flags for an index off the wire.
  * Deal with the conditional "follows" flags for extra metadata.
  */
 static int
-download_get_iflags(struct sess *sess, int fd, struct flist *fl, int32_t idx)
+download_get_iflags(struct sess *sess, int fd, struct flist *f)
 {
-	int32_t iflags;
-
-	if (idx < 0) {
-		return 0;
-	}
-
-	if (!protocol_itemize) {
-		fl[idx].iflags = IFLAG_TRANSFER;
-		return 1;
-	}
-
-	if (!io_read_short(sess, fd, &iflags)) {
-		ERRX1("io_read_short");
-		return 0;
-	}
-	fl[idx].iflags = iflags;
+	int32_t iflags = f->iflags;
 
 	if ((iflags & IFLAG_BASIS_FOLLOWS) != 0) {
 		uint8_t basis;
@@ -818,17 +769,14 @@ download_get_iflags(struct sess *sess, int fd, struct flist *fl, int32_t idx)
 			return 0;
 		}
 
-		fl[idx].basis = basis;
+		f->basis = basis;
 	}
 	if ((iflags & IFLAG_HLINK_FOLLOWS) != 0) {
-		if (fl[idx].link != NULL) {
-			free(fl[idx].link);
+		if (f->link != NULL) {
+			free(f->link);
+			f->link = NULL;
 		}
-		if ((fl[idx].link = calloc(1, PATH_MAX)) == NULL) {
-			ERR("calloc hlink vstring");
-			return 0;
-		} else if (!io_read_vstring(sess, fd, fl[idx].link,
-		    PATH_MAX)) {
+		if (!io_read_vstring(sess, fd, &f->link)) {
 			ERRX1("io_read_vstring");
 			return 0;
 		}
@@ -1404,6 +1352,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 	if (p->state == DOWNLOAD_READ_NEXT) {
 		const char *path;
+		int32_t iflags;
 		int rootfd;
 
 		if (!io_read_int(sess, p->fdin, &idx)) {
@@ -1411,6 +1360,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 			return -1;
 		} else if (idx < 0) {
 			LOG3("downloader: phase complete");
+			p->idxprev = -1;
 			return 0;
 		}
 
@@ -1418,25 +1368,71 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 		 * `idx` is a sendidx, translate it back into our local file
 		 * index since we may have, e.g., trimmed duplicates.
 		 */
-		if ((size_t)idx > flsz || p->fl[idx].sendidx != idx) {
-			for (size_t flidx = 0; flidx < p->flsz; flidx++) {
-				if (p->fl[flidx].sendidx == idx) {
-					idx = (int32_t)flidx;
-					break;
-				}
+		for (size_t flidx = p->idxprev + 1; flidx < p->flsz; flidx++) {
+			if (p->fl[flidx].sendidx == idx) {
+				p->idxprev = flidx;
+				idx = flidx;
+				break;
+			}
+		}
+		if (p->idxprev != idx) {
+			ERRX1("idx translation failed");
+			return -1;
+		}
+
+		if (!protocol_itemize) {
+			iflags = IFLAG_TRANSFER | IFLAG_MISSING_DATA;
+		} else {
+			if (!io_read_short(sess, p->fdin, &iflags)) {
+				ERRX1("io_read_short");
+				return -1;
 			}
 		}
 
-		if (!download_get_iflags(sess, p->fdin, p->fl, idx)) {
-			ERRX("get_iflags");
-			return 0;
+		/* Check for keep-alive packet */
+		if (iflags == IFLAG_NEW) {
+			if ((uint32_t)idx == flsz) {
+				/* Keep alive packet, do nothing */
+				return 1;
+			}
+
+			ERRX1("invalid index %d of %zu for keep alive packet",
+			    idx, flsz);
+			return -1;
+		} else if ((uint32_t)idx == flsz) {
+			ERRX1("invalid item flags 0x%x for index %d of %zu",
+			    iflags, idx, flsz);
+			return -1;
 		}
 
 		f = &p->fl[idx];
-		/* Check for keep-alive packet */
-		if (f->iflags == IFLAG_NEW) {
+		f->iflags = iflags;
+
+		if (!download_get_iflags(sess, p->fdin, f)) {
+			ERRX1("download_get_iflags");
+			return -1;
+		}
+
+		sess->total_read_lf = sess->total_read;
+		sess->total_write_lf = sess->total_write;
+
+		if ((f->iflags & IFLAG_TRANSFER) == 0) {
+			bool hlink = (f->iflags & IFLAG_HLINK_FOLLOWS) != 0;
+			bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
+
+			if (sig || hlink) {
+				bool local = (f->iflags & IFLAG_LOCAL_CHANGE) != 0;
+				bool dir = S_ISDIR(f->st.mode);
+
+				if (local || dir || hlink || sess->itemize)
+					log_item(sess, f);
+			}
+
 			return 1;
 		}
+
+		if ((!sess->lateprint && !sess->itemize) || sess->opts->dry_run)
+			log_item(sess, f);
 
 		/*
 		 * Short-circuit: dry_run mode does nothing, with one exception:
@@ -1481,6 +1477,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 		} else {
 			p->ofd = openat(rootfd, path, O_RDONLY | O_NONBLOCK);
 		}
+
 		if (sess->opts->progress && !verbose)
 			fprintf(stderr, "%s\n", f->path);
 
@@ -1966,9 +1963,9 @@ again:
 	}
 
 	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size, true);
-	log_file(sess, p, f);
-	if (!sess->opts->server)
-		output(sess, f, 1);
+
+	if (sess->lateprint || sess->itemize)
+		log_item(sess, f);
 
 done:
 	/*

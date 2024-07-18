@@ -113,7 +113,7 @@ make_safe_link(const char *link)
 {
 	char *dest, *dsep, *end, *start, *walker;
 	size_t depth = 0, destsz, linksz;
-	char trailer;
+	char trailer = 0;
 
 	/*
 	 * We want at least enough space for "./" in the output buffer, in case

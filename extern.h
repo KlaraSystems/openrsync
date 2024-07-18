@@ -104,7 +104,12 @@
 #define	IFLAG_HAD_BASIS		(1<<18) /* had basis, used by sender_get_iflags() */
 
 #define	SIGNIFICANT_IFLAGS	\
-	(~(IFLAG_BASIS_FOLLOWS | ITEM_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE))
+	(~(IFLAG_BASIS_FOLLOWS | IFLAG_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE))
+
+#define LOG_FORMAT_SUCCESS	(1 << 0)
+#define LOG_FORMAT_ITEMIZE	(1 << 1)
+#define LOG_FORMAT_LATEPRINT	(1 << 2)
+#define LOG_FORMAT_OPERATION	(1 << 3)
 
 /*
  * Defaults from the reference rsync; the max password size is specifically for
@@ -333,13 +338,13 @@ struct	fargs {
  * (There are some parts we don't use yet.)
  */
 struct	flstat {
+	unsigned int	 flags;
 	mode_t		 mode;	 /* mode */
 	uid_t		 uid;	 /* user */
 	gid_t		 gid;	 /* group */
 	dev_t		 rdev;	 /* device type */
 	off_t		 size;	 /* size */
 	time_t		 mtime;	 /* modification */
-	unsigned int	 flags;
 	int64_t		 device; /* device number, for hardlink detection */
 	int64_t		 inode;  /* inode number, for hardlink detection */
 	uint64_t	 nlink;  /* number of links, for hardlink detection */
@@ -399,9 +404,9 @@ struct	flist {
 	int		 flstate; /* flagged for redo, or complete? */
 	int32_t		 iflags; /* Itemize flags */
 	enum name_basis	 basis; /* name basis */
+	int		 sendidx; /* Sender index */
 	platform_open	*open; /* special open() for this entry */
 	platform_flist_sent	*sent; /* notify the platform an entry was sent */
-	int		 sendidx; /* Sender index */
 	struct fldstat	 dstat; /* original destination file information */
 };
 
@@ -604,7 +609,6 @@ enum	send_dl_state {
 	SDL_IFLAGS,
 	SDL_BLOCKS,
 	SDL_DONE,
-	SDL_SKIP,
 };
 
 typedef const char *(role_fetch_outfmt_fn)(const struct sess *, void *, char);
@@ -883,7 +887,7 @@ int	io_read_uint(struct sess *, int, uint32_t *);
 int	io_read_long(struct sess *, int, int64_t *);
 int	io_read_size(struct sess *, int, size_t *);
 int	io_read_ulong(struct sess *, int, uint64_t *);
-int	io_read_vstring(struct sess *, int, char *, size_t);
+int	io_read_vstring(struct sess *, int, char **);
 int	io_write_buf_tagged(struct sess *, int, const void *, size_t,
 	    enum iotag);
 int	io_write_buf(struct sess *, int, const void *, size_t);
@@ -974,7 +978,7 @@ int	rsync_set_metadata(struct sess *, int, int, const struct flist *,
 	    const char *);
 int	rsync_set_metadata_at(struct sess *, int, int, struct flist *,
 	    const char *);
-int	rsync_uploader(struct upload *, int *, struct sess *, int *,
+int	rsync_uploader(struct upload *, struct sess *, int, int *, int *,
 		       const struct hardlinks *);
 int	rsync_uploader_tail(struct upload *, struct sess *);
 
@@ -987,7 +991,7 @@ const char	*download_partial_filepath(const struct flist *);
 void		 download_interrupted(struct sess *, struct download *);
 void		 download_free(struct sess *, struct download *);
 struct upload	*upload_alloc(const char *, int, int, int, size_t,
-		   struct flist *, size_t, mode_t);
+		    struct flist *, size_t, size_t, mode_t);
 void		upload_next_phase(struct upload *, struct sess *, int);
 void		upload_ack_complete(struct upload *, struct sess *, int);
 void		upload_free(struct upload *);
@@ -1062,8 +1066,8 @@ void		 rules_base(const char *);
 
 int		 rmatch(const char *, const char *, int);
 
-char		*symlink_read(const char *);
-char		*symlinkat_read(int, const char *);
+char		*symlink_read(const char *, size_t);
+char		*symlinkat_read(int, const char *, size_t);
 
 int		 sess_stats_send(struct sess *, int);
 int		 sess_stats_recv(struct sess *, int);
@@ -1104,9 +1108,12 @@ sess_is_inplace(struct sess *sess)
 #endif
 
 struct sbuf;
-int output(struct sess *sess, const struct flist *fl, int do_print);
+int log_format(struct sess *sess, const struct flist *fl);
 void our_strmode(mode_t mode, char *p);
 int print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
     struct sbuf *);
+int log_item_impl(struct sess *sess, const struct flist *f);
+int log_item(struct sess *sess, const struct flist *f);
+const char *iflags_decode(uint32_t iflags);
 
 #endif /*!EXTERN_H*/

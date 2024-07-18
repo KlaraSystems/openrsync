@@ -17,10 +17,12 @@
 #include "config.h"
 
 #include <sys/ioctl.h>
+#include <sys/param.h>
 #include <sys/stat.h>
 #if HAVE_SYS_QUEUE
 #include <sys/queue.h>
 #endif
+#include <sys/uio.h>
 
 #include <assert.h>
 #include COMPAT_ENDIAN_H
@@ -34,6 +36,13 @@
 #include <unistd.h>
 
 #include "extern.h"
+
+/*
+ * struct iobuf repack and allocation thresholds.
+ */
+#define IOBUF_MIN_REPACK	(1024 * 4)
+#define IOBUF_MAX_REPACK	(1024 * 128)
+#define IOBUF_MIN_ALLOC		(1024 * 128)
 
 struct io_tag_handler {
 	SLIST_ENTRY(io_tag_handler)	 entry;
@@ -197,6 +206,78 @@ io_write_blocking(int fd, const void *buf, size_t sz)
 }
 
 /*
+ * Blocking write of the full length of iov[].  Modifies iov[]
+ * if unable to write the full request in one call to writev().
+ *
+ * Makes at most one pass over iov[], skipping zero-length
+ * iovecs when encountered.
+ *
+ * Leverages writev() to validate function parameters.
+ *
+ * Returns 0 on failure, non-zero on success (all bytes written).
+ */
+static int
+io_writev_blocking(int fd, struct iovec *iov, int iovcnt)
+{
+	struct pollfd pfd = {
+		.fd = fd,
+		.events = POLLOUT,
+	};
+
+	for (;;) {
+		int skip = 0;
+		ssize_t cc;
+		int n, i;
+
+		cc = writev(fd, iov, iovcnt);
+
+		if (cc == -1 && errno != EAGAIN && errno != EINTR) {
+			ERRX("io_writev_blocking: %s", strerror(errno));
+			return 0;
+		}
+
+		for (i = 0; i < iovcnt && cc >= 0; ++i) {
+			if ((size_t)cc < iov[i].iov_len) {
+				iov[i].iov_base += cc;
+				iov[i].iov_len -= cc;
+				break;
+			}
+
+			cc -= iov[i].iov_len;
+			skip++;
+		}
+
+		if (skip >= iovcnt)
+			break;
+
+		iov += skip;
+		iovcnt -= skip;
+
+		n = poll(&pfd, 1, poll_timeout);
+
+		if (n != 1) {
+			if (n == -1 && errno == EINTR)
+				continue;
+
+			ERRX("io_writev_blocking: %s",
+			    (n == 0) ? "timeout" : strerror(errno));
+			return 0;
+		}
+		if ((pfd.revents & (POLLERR | POLLNVAL | POLLHUP)) != 0) {
+			ERRX("io_writev_blocking: %s",
+			    ((pfd.revents & POLLHUP) != 0) ? "hangup" : "bad fd");
+			return 0;
+		}
+		if ((pfd.revents & POLLOUT) == 0) {
+			ERRX("io_writev_blocking: unknown event");
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+/*
  * Record data written to fdout outside of the io layer.  For example, file data
  * may be sent out-of-band to avoid write multiplexing.
  * Returns zero on failure, non-zero on success.  io_data_written() will only
@@ -255,24 +336,35 @@ io_write_buf_tagged(struct sess *sess, int fd, const void *buf, size_t sz,
 	/*
 	 * Some things can send 0-byte buffers in the reference implementation,
 	 * but I think those are all peer messages rather than client <-> server
+	 *
+	 * We might be here as the result of a POLLOUT event for which the
+	 * caller has carefully arranged to write no more data (incl. tag)
+	 * than there is space available (so as not to block).  However, if
+	 * we write the tag and data in separate output operations then we'll
+	 * likely block unnecessarily. Therefore, to avoid blocking, we try
+	 * to write them both in one single output operation via writev().
 	 */
 	while (sz > 0) {
+		struct iovec iov[2];
+
 		wsz = (sz < 0xFFFFFF) ? sz : 0xFFFFFF;
 		tag = ((iotag + IOTAG_OFFSET) << 24) + (int)wsz;
 		tagbuf = htole32(tag);
-		if (!io_write_blocking(fd, &tagbuf, sizeof(tagbuf))) {
-			ERRX1("io_write_blocking");
+		iov[0].iov_base = &tagbuf;
+		iov[0].iov_len = sizeof(tagbuf);
+
+		iov[1].iov_base = (void *)buf;
+		iov[1].iov_len = wsz;
+
+		if (!io_writev_blocking(fd, iov, 2)) {
+			ERRX1("io_writev_blocking");
 			return 0;
 		}
-		if (!io_write_blocking(fd, buf, wsz)) {
-			ERRX1("io_write_blocking");
-			return 0;
-		}
+
 		sess->total_write += wsz;
 		sz -= wsz;
 		buf += wsz;
 	}
-
 	return 1;
 }
 
@@ -761,9 +853,6 @@ io_lowbuffer_vstring(struct sess *sess, void *buf, size_t *bufpos,
 {
 	int32_t	tagbuf;
 
-	if (sz == 0)
-		return;
-
 	if (!sess->mplex_writes) {
 		io_buffer_vstring(buf, bufpos, buflen, str, sz);
 		return;
@@ -887,7 +976,8 @@ io_buffer_vstring(void *buf, size_t *bufpos, size_t buflen, char *str,
 		io_buffer_byte(buf, bufpos, buflen, (sz >> 8) + 0x80);
 	}
 	io_buffer_byte(buf, bufpos, buflen, sz & 0xff);
-	io_buffer_buf(buf, bufpos, buflen, str, sz);
+	if (sz > 0)
+		io_buffer_buf(buf, bufpos, buflen, str, sz);
 }
 
 /*
@@ -1092,12 +1182,20 @@ io_write_byte(struct sess *sess, int fd, uint8_t val)
 }
 
 /*
+ * Read a string length and data directly off the wire,
+ * blocking until all data is read or there is an error.
+ * Allocates storage for the string and returns a NUL
+ * terminated pointer to it, or a NULL pointer if the
+ * length of the string is zero.
+ * Returns zero on failure, non-zero on success.
  */
 int
-io_read_vstring(struct sess *sess, int fd, char *str, size_t sz)
+io_read_vstring(struct sess *sess, int fd, char **strp)
 {
 	uint8_t bval;
 	size_t len = 0;
+
+	*strp = NULL;
 
 	if (!io_read_byte(sess, fd, &bval)) {
 		ERRX1("io_read_vstring byte 1");
@@ -1112,15 +1210,19 @@ io_read_vstring(struct sess *sess, int fd, char *str, size_t sz)
 	}
 	len |= bval;
 
-	if (len >= sz) {
-		ERRX1("io_read_vstring: incoming string too large (%zu > %zu)",
-		    len, sz);
-		return 0;
-	}
+	if (len > 0) {
+		*strp = malloc(len + 1);
+		if (*strp == NULL) {
+			ERRX1("io_read_vstring: malloc(%zu) failed", len + 1);
+			return 0;
+		}
 
-	if (!io_read_buf(sess, fd, str, len)) {
-		ERRX1("io_read_vstring buf");
-		return 0;
+		if (!io_read_buf(sess, fd, *strp, len)) {
+			ERRX1("io_read_vstring buf");
+			return 0;
+		}
+
+		(*strp)[len] = '\0';
 	}
 
 	return 1;
@@ -1187,16 +1289,26 @@ iobuf_alloc_common(struct sess *sess, struct iobuf *buf, size_t sz, bool framed)
 	if (framed)
 		sz += sizeof(int32_t);	/* Multiplexing tag */
 
-	iobuf_repack(buf);
-	room = buf->size - buf->resid;
-	if (sz > room) {
-		pp = realloc(buf->buffer, buf->size + (sz - room));
+	room = buf->size - buf->offset - buf->resid;
+	if (room > sz)
+		return 1;
+
+	if ((buf->offset > IOBUF_MIN_REPACK && buf->resid < IOBUF_MIN_REPACK) ||
+	    (buf->offset > IOBUF_MAX_REPACK)) {
+		iobuf_repack(buf);
+	}
+
+	room = buf->size - buf->offset - buf->resid;
+	if (sz >= room) {
+		size_t newsz = buf->size + roundup(sz - room + 1, IOBUF_MIN_ALLOC);
+
+		pp = realloc(buf->buffer, newsz);
 		if (pp == NULL) {
 			ERR("realloc");
 			return 0;
 		}
 		buf->buffer = pp;
-		buf->size += sz - room;
+		buf->size = newsz;
 	}
 
 	return 1;
@@ -1227,7 +1339,11 @@ iobuf_fill(struct sess *sess, struct iobuf *buf, int fd)
 	bool read_any;
 
 	assert(buf->size != 0);
-	iobuf_repack(buf);
+
+	if ((buf->offset > IOBUF_MIN_REPACK && buf->resid < IOBUF_MIN_REPACK) ||
+	    (buf->offset > IOBUF_MAX_REPACK)) {
+		iobuf_repack(buf);
+	}
 
 	read_any = false;
 	check = 0;
@@ -1431,8 +1547,13 @@ iobuf_read_vstring(struct iobuf *buf, struct vstring *vstr)
 		return 0;
 
 	if (vstr->vstring_buffer == NULL) {
-		/* Need size */
-		if (avail < (2 * sizeof(bval)))
+		/* Need at least one of the potentially two length bytes */
+		if (avail < sizeof(bval))
+			return 0;
+
+		/* If bit 7 of the first byte is set then wait for both bytes */
+		iobuf_peek_buf(buf, &bval, sizeof(bval));
+		if ((bval & 0x80) && (avail < sizeof(bval) * 2))
 			return 0;
 
 		iobuf_read_byte(buf, &bval);
@@ -1442,6 +1563,9 @@ iobuf_read_vstring(struct iobuf *buf, struct vstring *vstr)
 		}
 
 		len |= bval;
+
+		if (len == 0)
+			return 1;
 
 		vstr->vstring_size = len;
 		vstr->vstring_buffer = malloc(vstr->vstring_size + 1);

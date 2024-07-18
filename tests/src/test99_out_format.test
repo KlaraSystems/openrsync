@@ -1,0 +1,133 @@
+#! /bin/sh
+
+# Test that the --out-format option works as expected.
+
+set -e
+set -u
+
+. ${tstdir-.}/lib.sh
+. ${tstdir-.}/conf.sh
+
+# Create the source tree:
+#
+rm -rf src
+mkdir -p src/dir
+shift $#
+for i in $(seq 5) ; do
+    [ $# -le 0 ] && set -- $(id -G)
+    jot $(expr $i \* 1000) $i > src/$i
+    jot $(expr $i \* 1333) $i > src/dir/$i
+    ln -s ../$i src/dir/sym$i
+    chgrp $1 src/$i src/dir/$i
+    mkfifo src/dir/fifo$i
+    ln src/$i src/hlink$i
+    shift
+done
+
+find src | xargs touch -A -03
+
+# Check that common --out-format conversion specifiers
+# are generated as expected:
+#
+for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
+    rm -rf dst log
+    rsync -a ${opt} --out-format='OUTFMT: %l %f %U %G %n %b %L' -- src/ dst/ > log 2>&1
+
+    [ "$(grep -c ^OUTFMT log)" -eq "$(find dst | wc -l)" ]
+
+    grep ^OUTFMT log | while read line ; do
+	set -- ${line}
+	[ $# -eq 7 -o $# -eq 9 ]
+	[ "$1" = "OUTFMT:" ]
+	SIZE=$2
+	FNLONG=$3
+	UID=$4
+	GID=$5
+	FNSHORT=src/$6
+	XFER=$7
+	[ "$(basename ${FNLONG})" = "$(basename ${FNSHORT})" ]
+
+	set -- $(stat -f 'X %z %N %u %g' ${FNSHORT})
+	[ "X" = "$1" ]
+	[ "${SIZE}" -eq "$2" ]
+	[ "${FNSHORT}" = "$3" ]
+	[ "${UID}" = "DEFAULT" ] || [ "${UID}" -eq "$4" ]
+	[ "${GID}" = "DEFAULT" ] || [ "${GID}" -eq "$5" ]
+
+	# If it's a regular file the transferred size should
+	# be slightly larger than the file size:
+	#
+	[ "${XFER}" -gt 0 ] || continue
+	[ "${XFER}" -gt "$2" ]
+    done
+
+    compare_trees -t src dst
+
+    # If we force rsync to use the differential transfer mode (--no-W)
+    # and the source and dest files contain identical data then the
+    # number of bytes transferred (%b) should be less than the size
+    # of the file.
+    #
+    touch -A -13 $(find dst)
+
+    rsync -a ${opt} --no-W --out-format='OUTFMT: %064l %16f %-8b' -- src/ dst/ > log 2>&1
+
+    grep ^OUTFMT log | while read line ; do
+	set -- ${line}
+	[ $# -eq 4 ]
+	[ "$1" = "OUTFMT:" ]
+	SIZE=$2
+	XFER=$4
+	[ "$(echo -n ${SIZE} | wc -c)" -eq 64 ]
+
+	# If it's a regular file the transferred size should
+	# be many times smaller than the file size:
+	#
+	[ "${XFER}" -gt 0 ] || continue
+	[ "${SIZE}" -gt "${XFER}" ]
+    done
+
+    compare_trees -t src dst
+
+    # openrsync doesn't yet support --log-file nor --log-file-format
+    # in non-daemon mode.  Remove these three lines when those
+    # options become available in non-daemon mode.
+    #
+    exit 0
+
+    # Check that --log-file-format works as expected:
+    #
+    rm -rf dst log
+
+    rsync -a ${opt} --log-file=log --log-file-format='OUTFMT: %063l %16f %-7b' -- src/ dst/ > /dev/null 2>&1
+
+    [ "$(grep -c OUTFMT log)" -eq "$(find dst -type f | wc -l)" ]
+
+    grep OUTFMT log | while read line ; do
+	set -- ${line}
+	[ $# -eq 7 ]
+	shift 3
+	[ "$1" = "OUTFMT:" ]
+	SIZE=$2
+	XFER=$4
+	[ "$(echo -n ${SIZE} | wc -c)" -eq 63 ]
+
+	# If it's a regular file the transferred size should
+	# be slightly larger than the file size:
+	#
+	[ "${XFER}" -gt 0 ] || continue
+	[ "${XFER}" -gt "$2" ]
+    done
+
+    compare_trees -t src dst
+done
+
+
+# Check for robust handling of out-format:
+#
+rm -rf src
+mkdir src
+date > src/file
+
+rsync -a --out-format='% %% %+ %- %0 %08 %777 %-f %' -- src/ dst/
+compare_trees -t src dst

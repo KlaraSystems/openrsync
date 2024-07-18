@@ -43,11 +43,10 @@
 #include "extern.h"
 
 /*
- * We allocate our file list in chunk sizes so as not to do it one by
- * one.
- * Preferably we get one or two allocation.
+ * Allocate the file list in chunk sizes of 8MiB's worth of items
+ * to reduce thrashing the memory allocator and improve performance.
  */
-#define	FLIST_CHUNK_SIZE (1024)
+#define	FLIST_CHUNK_SIZE	((8 << 20) / sizeof(struct flist))
 
 /*
  * These flags are part of the rsync protocol.
@@ -211,83 +210,38 @@ flist_dir_cmp(const void *p1, const void *p2)
 
 /*
  * Deduplicate our file list (which may be zero-length).
- * Returns zero on failure, non-zero on success.
  */
-static int
+static void
 flist_dedupe(const struct opts *opts, struct flist **fl, size_t *sz)
 {
 	size_t		 i, j;
-	struct flist	*new;
 	struct flist	*f, *fnext;
 
-	if (*sz == 0)
-		return 1;
+	if (*sz < 2)
+		return;
 
-	/* Create a new buffer, "new", and copy. */
-
-	new = calloc(*sz, sizeof(struct flist));
-	if (new == NULL) {
-		ERR("calloc");
-		return 0;
-	}
-
-	for (i = j = 0; i < *sz - 1; i++) {
+	for (i = 0, j = 1; j < *sz; j++) {
 		f = &(*fl)[i];
-		fnext = &(*fl)[i + 1];
+		fnext = &(*fl)[j];
 
-		if (strcmp(f->wpath, fnext->wpath) ||
-		    strcmp(f->wpath, ".") == 0) {
-			new[j++] = *f;
+		if (strcmp(f->wpath, fnext->wpath) == 0 &&
+		    strcmp(f->path, fnext->path) == 0)
 			continue;
-		}
 
-		/*
-		 * Our working (destination) paths are the same.
-		 * If the actual file is the same (as given on the
-		 * command-line), then we can just discard the first.
-		 * Otherwise, we need to bail out: it means we have two
-		 * different files with the relative path on the
-		 * destination side.
-		 */
-
-		if (strcmp(f->path, fnext->path) == 0) {
-			new[j++] = *f;
-			i++;
-			/* 
-			 * Do not warn when we came up with the duplicates
-			 * ourselves from --relative.
-			 */
-			if (!opts->relative && !S_ISDIR(f->st.mode))
-				WARNX("%s: duplicate path: %s",
-					f->wpath, f->path);
-			free(fnext->path);
-			free(fnext->link);
-			fnext->path = fnext->link = NULL;
+		if (++i >= j)
 			continue;
-		}
-		ERRX("%s: duplicate working path for "
-		    "possibly different file: '%s' '%s'",
-		    f->wpath, f->path, fnext->path);
-		free(new);
-		return 0;
+
+		f = &(*fl)[i];
+		free(f->path);
+		free(f->link);
+
+		*f = *fnext;
+
+		fnext->path = NULL;
+		fnext->link = NULL;
 	}
 
-	/* Don't forget the last entry. */
-
-	if (i == *sz - 1)
-		new[j++] = (*fl)[i];
-
-	/*
-	 * Reassign to the deduplicated array.
-	 * If we started out with *sz > 0, which we check for at the
-	 * beginning, then we'll always continue having *sz > 0.
-	 */
-
-	free(*fl);
-	*fl = new;
-	*sz = j;
-	assert(*sz);
-	return 1;
+	*sz = i + 1;
 }
 
 static int
@@ -1184,7 +1138,7 @@ flist_append(struct sess *sess, const struct stat *st,
 	if (S_ISLNK(st->st_mode)) {
 		char *link;
 
-		link = symlink_read(f->path);
+		link = symlink_read(f->path, st->st_size);
 		if (link == NULL) {
 			sess->total_errors++;
 			ERRX1("symlink_read");
@@ -1269,7 +1223,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 {
 	struct flist	*fl = NULL;
 	struct flist	*ff;
-	const struct flist *fflast = NULL;
+	const struct flist *fflast = NULL, *hlprev = NULL;
 	size_t		 flsz = 0, flmax = 0, lsz, gidsz = 0, uidsz = 0;
 	uint16_t	 flag;
 	char		 last[PATH_MAX];
@@ -1555,11 +1509,12 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 					goto out;
 				}
 				ff->st.device = lval;
-			} else if (fflast == NULL) {
+			} else if (hlprev == NULL) {
 				WARNX1("same device without last entry");
 				ff->st.device = 0;
+				hlprev = ff;
 			} else {
-				ff->st.device = fflast->st.device;
+				ff->st.device = hlprev->st.device;
 			}
 
 			if (!io_read_long(sess, fdin, &ff->st.inode)) {
@@ -1627,12 +1582,14 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 
 	/*
 	 * It's important that we keep track of the send index now, because we
-	 * may want to trim or dedupe the flist before we proceed.  openrsync
-	 * may dedupe on the sender side, but the reference rsync will not in
-	 * order to give receivers flexibility in how they handle it.
+	 * may want to trim or dedupe the flist before we proceed.  Neither
+	 * openrsync nor the reference rsync will dedupe on the sender side
+	 * in order to give receivers flexibility in how they handle it.
 	 */
 	for (size_t i = 0; i < flsz; i++)
 		fl[i].sendidx = (int)i;
+
+	flist_dedupe(sess->opts, &fl, &flsz);
 
 	if (sess->opts->prune_empty_dirs)
 		flist_prune_empty(sess, fl, &flsz);
@@ -1737,16 +1694,13 @@ flist_normalize_path(const char *root, char *rootbuf, size_t rootbufsz)
 	size_t rootlen;
 
 	rootlen = strlen(root);
-	/* Convert trailing '/./' -> '/.' */
-	if (rootlen >= 3 && strcmp(&root[rootlen - 3], "/./") == 0)
+	/* Convert trailing '/.' -> '/' */
+	if (rootlen >= 2 && strcmp(&root[rootlen - 2], "/.") == 0)
 		rootlen--;
 	if (rootlen >= rootbufsz)
 		return (0);
 
 	memcpy(rootbuf, root, rootlen);
-	/* Convert trailing '/' -> '/.' */
-	if (rootbuf[rootlen - 1] == '/')
-		rootbuf[rootlen++] = '.';
 	rootbuf[rootlen] = '\0';
 	return (1);
 }
@@ -2043,7 +1997,8 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				    "link %s -> %s to a regular file",
 				    ent->fts_path, buf);
 			} else {
-				f->link = symlink_read(ent->fts_accpath);
+				f->link = symlink_read(ent->fts_accpath,
+				    ent->fts_statp->st_size);
 				if (f->link == NULL) {
 					ERRX1("symlink_read");
 					sess->total_errors++;
@@ -2164,7 +2119,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 
 		if (S_ISDIR(st.st_mode)) {
 			if (!sess->opts->dirs) {
-				WARNX("%s: skipping directory", fname);
+				LOG0("skipping directory %s", fname);
 				continue;
 			}
 		}
@@ -2394,15 +2349,9 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 		qsort(fl->flp, fl->sz, sizeof(struct flist), flist_cmp);
 	}
 
-	if (flist_dedupe(sess->opts, &(fl->flp), &fl->sz)) {
-		flist_topdirs(sess, fl->flp, fl->sz);
-		return 1;
-	}
+	flist_topdirs(sess, fl->flp, fl->sz);
 
-	ERRX1("flist_dedupe");
-	flist_free(fl->flp, fl->sz);
-	fl->flp = NULL;
-	return 0;
+	return 1;
 }
 
 /*

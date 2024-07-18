@@ -190,13 +190,10 @@ daemon_apply_xferlog(struct sess *sess, const char *module, struct opts *opts)
 	}
 
 	if (opts->outformat != NULL) {
-		int printflags;
+		int printflags = log_format(sess, NULL);
 
-		printflags = output(sess, NULL, 0);
-		if ((printflags & 1) != 0)
-			sess->itemize = 1;
-		if ((printflags & 2) != 0)
-			sess->lateprint = 1;
+		sess->itemize = (printflags & LOG_FORMAT_ITEMIZE) != 0;
+		sess->lateprint = (printflags & LOG_FORMAT_LATEPRINT) != 0;
 
 		sess->role->role_fetch_outfmt = daemon_fetch_outfmt;
 		sess->role->role_fetch_outfmt_cookie = sess->role;

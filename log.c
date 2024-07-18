@@ -34,6 +34,7 @@
 #else
 #include <sys/sbuf.h>
 #endif
+#include <sys/param.h>
 #include <sys/stat.h>
 
 #include "extern.h"
@@ -376,6 +377,21 @@ isit_human(char *s1, const char *s2)
  * Do the 8-bit escaping as needed for `s`.  If `sbuf` is NULL, then the result
  * will be written to the log file -- otherwise, it'll be stashed in the sbuf
  * passed in as requested.
+ *
+ * TODO: We used to print the names of items to be updated with a mix of calls
+ * to LOG1() and print_7_or_8_bit().  With the former, embedded control
+ * characters were not correctly escaped, but all other characters were printed
+ * as if --8-bit-output were in effect (hence unicode characters were preserved).
+ * Conversely, with the latter, unicode characters outside the portable set were
+ * all treated as control characters and hence incorrectly escaped.
+ *
+ * We now call log_item() to print each item, which ends up calling this
+ * function, which now handles control characters correctly and partially
+ * deals with some range of unicode characters (e.g. c2xx-dfxx) that we get
+ * with the C.UTF-8 locale.
+ *
+ * The correct fix seems to be to use iconv() where available, and print all
+ * chars outside the portable set as if --8-bit-output were in effect.
  */
 int __printflike(2, 0)
 print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
@@ -384,15 +400,6 @@ print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
 	const char *p;
 	struct sbuf *innerbuf;
 
-	if (sess->opts->bit8) {
-		if (sbuf != NULL)
-			sbuf_printf(sbuf, fmt, s);
-		else
-			log_writef(LOG_INFO, fmt, s);
-
-		return 1;
-	}
-
 	innerbuf = sbuf_new_auto();
 	if (innerbuf == NULL) {
 		ERR("sbuf_new_auto");
@@ -400,10 +407,35 @@ print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
 	}
 
 	for (p = s; *p; p++) {
-		if (isprint(*(unsigned char*)p) || *p == '\t') {
-			sbuf_putc(innerbuf, *p);
+		unsigned char c = *(unsigned char *)p;
+
+		if (isprint(c) || c == '\t' || c == 0x7f) {
+			if (c == '\\' &&
+			    *(unsigned char *)(p + 1) == '#' &&
+			    isdigit(*(unsigned char *)(p + 2)) &&
+			    isdigit(*(unsigned char *)(p + 3)) &&
+			    isdigit(*(unsigned char *)(p + 4))) {
+				sbuf_printf(innerbuf, "\\#%03o", '\\');
+			} else {
+				sbuf_putc(innerbuf, c);
+			}
+		} else if (c < ' ') {
+                        sbuf_printf(innerbuf, "\\#%03o", c);
+		} else if (sess->opts->bit8) {
+                        sbuf_putc(innerbuf, c);
+		} else if (c >= 0xc2 && c <= 0xdf) {
+			unsigned char c2 = *(unsigned char *)(p + 1);
+
+			/* TODO: Use iconv() */
+			if (c2 >= 0x80 && c2 <= 0xdf) {
+				sbuf_putc(innerbuf, c);
+				sbuf_putc(innerbuf, c2);
+				p++;
+			} else {
+				sbuf_printf(innerbuf, "\\#%03o", c);
+			}
 		} else {
-			sbuf_printf(innerbuf, "\\#%03o", *(unsigned char*)p);
+			sbuf_printf(innerbuf, "\\#%03o", c);
 		}
 	}
 
@@ -424,29 +456,22 @@ print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
 
 /*
  * rval is filled with whether there is any argument that requires
- * late printing or whether itemization is requested.
- * 0 = neither
- * 1 = %i
- * 2 = late print
- * 4 = %o
+ * late printing or whether itemization is requested.  See the
+ * LOG_FORMAT_* flags.
  *
  * rval is expected to be initialized to zero before the first call.
  */
 static const char * __printflike(1, 0)
-printf_doformat(const char *fmt, int *rval, const struct sess *sess,
+printf_doformat(const char *fmt, int *rval, struct sess *sess,
     const struct flist *fl, struct sbuf *sbuf)
 {
 	static const char skip1[] = "'-+ 0";
+	const char *fmt_orig = fmt;
 	char convch;
-	char start[strlen(fmt) + 1];
-	char *dptr;
 	size_t l;
 	char widthstring[8192];
 	int humanlevel = 0;
-
-	dptr = start;
-	*dptr++ = '%';
-	*dptr = 0;
+	char buf[8192];
 
 	fmt++;
 
@@ -474,20 +499,19 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 
 	/* skip to field width */
 	while (*fmt && strchr(skip1, *fmt) != NULL) {
-		*dptr++ = *fmt++;
-		*dptr = 0;
+		fmt++;
 	}
-	if (!*fmt) {
-		ERRX("missing format character");
-		return NULL;
+	if (*fmt == '\0') {
+		if (sbuf != NULL) {
+			sbuf_putc(sbuf, fmt_orig[0]);
+			fmt = fmt_orig + 1;
+		}
+		return fmt_orig + 1;
 	}
 	while (isdigit(*fmt)) {
-		*dptr++ = *fmt++;
-		*dptr = 0;
+		fmt++;
 	}
 
-	*dptr++ = *fmt;
-	*dptr = 0;
 	convch = *fmt;
 	fmt++;
 
@@ -524,51 +548,53 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		break;
 	}
 	case 'b': {
-		char foo[8192];
-		uint64_t bytes_transferred;
-		*rval |= 2;
+		uint64_t bytes_transferred = 0;
 
-		bytes_transferred = sess->total_read - sess->total_read_lf +
-			sess->total_write - sess->total_write_lf;
+		*rval |= LOG_FORMAT_LATEPRINT;
 
-		if (sbuf != NULL) {
-			switch (humanlevel) {
-			case 0:
-				widthstring[l + 1] = 'l';
-				widthstring[l + 2] = 'd';
-				widthstring[l + 3] = '\0';
-				sbuf_printf(sbuf, widthstring,
+		if (sbuf == NULL)
+			break;
+
+		if (!sess->opts->dry_run) {
+			bytes_transferred = sess->total_read - sess->total_read_lf;
+			bytes_transferred += sess->total_write - sess->total_write_lf;
+		}
+
+		switch (humanlevel) {
+		case 0:
+			widthstring[l + 1] = 'l';
+			widthstring[l + 2] = 'd';
+			widthstring[l + 3] = '\0';
+			sbuf_printf(sbuf, widthstring,
 				    bytes_transferred);
-				break;
-			case 1:
-				widthstring[l + 1] = 'l';
-				widthstring[l + 2] = 'd';
-				widthstring[l + 3] = '\0';
-				sbuf_printf(sbuf, widthstring,
+			break;
+		case 1:
+			widthstring[l + 1] = 'l';
+			widthstring[l + 2] = 'd';
+			widthstring[l + 3] = '\0';
+			sbuf_printf(sbuf, widthstring,
 				    bytes_transferred);
-				break;
-			case 2:
-				humanize_number(foo, 5, bytes_transferred,
-				    "", HN_AUTOSCALE, HN_DECIMAL|HN_NOSPACE);
-				widthstring[l + 1] = 's';
-				widthstring[l + 2] = '\0';
-				sbuf_printf(sbuf, widthstring, foo);
-				break;
-			case 3:
-				humanize_number(foo, 5, bytes_transferred, "",
-				    HN_AUTOSCALE,
-				    HN_DECIMAL|HN_NOSPACE|HN_DIVISOR_1000);
-				widthstring[l + 1] = 's';
-				widthstring[l + 2] = '\0';
-				sbuf_printf(sbuf, widthstring, foo);
-				break;
-			}
+			break;
+		case 2:
+			humanize_number(buf, 5, bytes_transferred,
+					"", HN_AUTOSCALE, HN_DECIMAL|HN_NOSPACE);
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			sbuf_printf(sbuf, widthstring, buf);
+			break;
+		case 3:
+			humanize_number(buf, 5, bytes_transferred, "",
+					HN_AUTOSCALE,
+					HN_DECIMAL|HN_NOSPACE|HN_DIVISOR_1000);
+			widthstring[l + 1] = 's';
+			widthstring[l + 2] = '\0';
+			sbuf_printf(sbuf, widthstring, buf);
+			break;
 		}
 		break;
 	}
 	case 'B': {
 		/* Print mode human-readable */
-		char buf[STRMODE_BUFSZ];
 
 		if (sbuf != NULL) {
 			our_strmode(fl->st.mode, buf);
@@ -585,7 +611,7 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		 * I don't think smb rsync implements what it says in the
 		 * manpage.
 		 */
-		*rval |= 2;
+		*rval |= LOG_FORMAT_LATEPRINT;
 		break;
 	}
 #if 0
@@ -639,10 +665,9 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	}
 	case 'i': {
 		/* itemize string YXcstpogz */
-		char buf[10];
 		int32_t ifl;
 
-		*rval |= 1;
+		*rval |= LOG_FORMAT_ITEMIZE;
 		if (sbuf != NULL) {
 			ifl = fl->iflags;
 			if (ifl & IFLAG_DELETED) {
@@ -653,20 +678,19 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				strlcpy(buf, "*deleted", sizeof(buf));
 				break;
 			}
-			bzero(buf, sizeof(buf));
 
-			/* TODO: finish buf[0].  This is very approximate */
-			if (ifl & IFLAG_HLINK_FOLLOWS)
-				buf[0] = 'h';
-			if (S_ISDIR(fl->st.mode))
-				buf[0] = 'c';
-			if (S_ISLNK(fl->st.mode))
-				buf[0] = 'c';
-			if (buf[0] == '\0' ) {
-				if (sess->opts->sender)
-					buf[0] = '>';
-				else
-					buf[0] = '<';
+			/*
+			 * We only use 10 bytes from buf[], but buf is very
+			 * large so only zero the first few bytes.
+			 */
+			assert(sizeof(buf) >= 16);
+			bzero(buf, 16);
+
+			buf[0] = '.';
+			if (ifl & IFLAG_LOCAL_CHANGE) {
+				buf[0] = (ifl & IFLAG_HLINK_FOLLOWS) ? 'h' : 'c';
+			} else if (ifl & IFLAG_TRANSFER) {
+				buf[0] = sess->mode == FARGS_SENDER ? '<' : '>';
 			}
 
 			if (S_ISDIR(fl->st.mode))
@@ -728,9 +752,18 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				buf[5] = c; buf[6] = c; buf[7] = c;
 				buf[8] = c;
 			} else {
+				int i;
+
 				if (buf[0] == '.' || buf[0] == 'h' ||
 				    (buf[0] == 'c' && buf[1] == 'f')) {
-					/* TODO: that weird space-filling */
+					for (i = 2; buf[i]; ++i) {
+						if (buf[i] != '.')
+							break;
+					}
+					if (buf[i] == '\0') {
+						for (i = 2; buf[i]; ++i)
+							buf[i] = ' ';
+					}
 				}
 			}
 
@@ -742,7 +775,6 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	}
 	case 'l': {
 		/* File length */
-		char foo[8192];
 
 		if (sbuf != NULL) {
 			switch (humanlevel) {
@@ -761,47 +793,41 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 				sbuf_printf(sbuf, widthstring, fl->st.size);
 				break;
 			case 2:
-				humanize_number(foo, 5, fl->st.size,
+				humanize_number(buf, 5, fl->st.size,
 				    "", HN_AUTOSCALE, HN_DECIMAL|HN_NOSPACE);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				sbuf_printf(sbuf, widthstring, foo);
+				sbuf_printf(sbuf, widthstring, buf);
 				break;
 			case 3:
-				humanize_number(foo, 5, fl->st.size, "", HN_AUTOSCALE,
+				humanize_number(buf, 5, fl->st.size, "", HN_AUTOSCALE,
 				    HN_DECIMAL|HN_NOSPACE|HN_DIVISOR_1000);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
-				sbuf_printf(sbuf, widthstring, foo);
+				sbuf_printf(sbuf, widthstring, buf);
 				break;
 			}
 		}
 		break;
 	}
 	case 'L': {
-		char buf[8192];
 
 		/*
-		 * We set *rval |= 2
-		 * for "late print" here.  Theoretically late print is
+		 * Use "late print" here.  Theoretically late print is
 		 * only needed when hardlink printing is requested.
 		 * But with just the format string we can't tell
 		 * whether there will ever be hardlinks.
 		 */
-		*rval |= 2;
+		*rval |= LOG_FORMAT_LATEPRINT;
 
 		if (sbuf != NULL) {
-			if (fl->iflags & IFLAG_HLINK_FOLLOWS) {
-				snprintf(buf, sizeof(buf), " => %s", fl->link);
-				widthstring[l + 1] = 's';
-				widthstring[l + 2] = '\0';
-				if (!print_7_or_8_bit(sess, widthstring, buf,
-				    sbuf)) {
-					ERRX("print_7_or_8_bit");
-					return NULL;
-				}
-			} else if (fl->link != NULL) {
-				snprintf(buf, sizeof(buf), " -> %s", fl->link);
+			if (fl->link != NULL) {
+				const char *fmt = " -> %s";
+
+				if ((fl->iflags & IFLAG_HLINK_FOLLOWS) != 0)
+					fmt = " => %s";
+
+				snprintf(buf, sizeof(buf), fmt, fl->link);
 				widthstring[l + 1] = 's';
 				widthstring[l + 2] = '\0';
 				if (!print_7_or_8_bit(sess, widthstring, buf,
@@ -810,13 +836,11 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 					return NULL;
 				}
 			}
-
 		}
 		break;
 	}
 	case 'M': {
 		/* Modification time of item */
-		char buf[8192];
 
 		if (sbuf != NULL) {
 			/* 2024/01/30-16:23:29 */
@@ -830,7 +854,6 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	}
 	case 'n': {
 		/* Alternate file name print */
-		char buf[8192];
 
 		if (sbuf != NULL) {
 			widthstring[l + 1] = 's';
@@ -849,7 +872,8 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		break;
 	}
 	case 'o': {
-		*rval |= 4;
+		*rval |= LOG_FORMAT_OPERATION;
+
 		/*
 		 * "the operation, which is "send", "recv", or "del." (the
 		 * latter includes the trailing period)"
@@ -877,7 +901,6 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 	}
 	case 't': {
 		/* Current machine time */
-		char buf[8192];
 		time_t now;
 
 		if (sbuf != NULL) {
@@ -905,13 +928,20 @@ printf_doformat(const char *fmt, int *rval, const struct sess *sess,
 		}
 		break;
 	}
+	default:
+		if (sbuf != NULL) {
+			sbuf_putc(sbuf, fmt_orig[0]);
+			fmt = fmt_orig + 1;
+		}
+		break;
 	}
 	return fmt;
 }
 
 int
-output(struct sess *sess, const struct flist *fl, int do_print)
+log_format(struct sess *sess, const struct flist *fl)
 {
+	const bool do_print = (fl != NULL);
 	size_t len;
 	int end, rval = 0;
 	const char *start;
@@ -960,7 +990,7 @@ output(struct sess *sess, const struct flist *fl, int do_print)
 			ERRX("missing format character");
 			if (sbuf != NULL)
 				sbuf_delete(sbuf);
-			return rval;
+			return 0;
 		}
 		if (do_print)
 			sbuf_bcat(sbuf, start, fmt - start);
@@ -982,9 +1012,7 @@ out:
 		assert(sbuf == NULL);
 	}
 
-	sess->total_read_lf = sess->total_read;
-	sess->total_write_lf = sess->total_write;
-	return rval;
+	return rval | LOG_FORMAT_SUCCESS;
 }
 
 /*
@@ -1020,4 +1048,89 @@ rsync_humanize(struct sess *sess, char *buf, size_t len, int64_t val)
 	}
 
 	return 0;
+}
+
+int
+log_item_impl(struct sess *sess, const struct flist *f)
+{
+	char pathbuf[MAXPATHLEN * 2 + 8];
+	const char *path;
+	size_t sz;
+
+	if (sess->opts->outformat)
+		return log_format(sess, f);
+
+	if (verbose < 1)
+		return 1;
+
+	switch (IFTODT(f->st.mode)) {
+	case DT_DIR:
+		sz = strlen(f->path);
+		assert(sz > 0);
+		snprintf(pathbuf, sizeof(pathbuf), "%s%s",
+		    f->wpath, (f->path[sz - 1] == '/') ? "" : "/");
+		path = pathbuf;
+		break;
+
+	case DT_LNK:
+		snprintf(pathbuf, sizeof(pathbuf), "%s -> %s", f->wpath, f->link);
+		path = pathbuf;
+		break;
+
+	default:
+		path = f->wpath;
+		if (f->link) {
+			snprintf(pathbuf, sizeof(pathbuf), "%s => %s", f->wpath, f->link);
+			path = pathbuf;
+		}
+		break;
+	}
+
+	return print_7_or_8_bit(sess, "%s\n", path, NULL);
+}
+
+int
+log_item(struct sess *sess, const struct flist *f)
+{
+	if (sess->opts->server || sess->opts->daemon) {
+		bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
+
+		if (log_file == stderr || sess->opts->dry_run)
+			return 1;
+
+		if (!(sess->itemize && (sig || verbose > 1)))
+			return 1;
+	}
+
+	return log_item_impl(sess, f);
+}
+
+const char *
+iflags_decode(uint32_t iflags)
+{
+	static const char *namev[] = {
+		"atime", "cksum", "size", "time",
+		"perms", "owner", "group", "acl",
+		"xattr", "bad9", "bad10", "basis",
+		"hlink", "new", "local", "transfer",
+		"missing", "deleted", "hadbasis"
+	};
+	static char buf[256];
+	char *bufp = buf;
+
+	bufp += snprintf(buf, sizeof(buf), "0x%x", iflags);
+
+	if (iflags) {
+		assert((iflags & ((1u << (sizeof(namev) / sizeof((namev)[0]))) - 1)));
+
+		for (size_t i = 0; iflags; ++i) {
+			if (iflags & 1) {
+				bufp += strlcat(bufp, ",", sizeof(buf) - (bufp - buf));
+				bufp += strlcat(bufp, namev[i], sizeof(buf) - (bufp - buf));
+			}
+			iflags >>= 1;
+		}
+	}
+
+	return buf;
 }

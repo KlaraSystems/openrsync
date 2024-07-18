@@ -207,27 +207,6 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 
 	mode = f->st.mode;
 
-	if (sess->itemize) {
-		struct stat st;
-		/*
-		 * For itemize we actually need to know whether these
-		 * will change, so we need a stat(2).
-		 */
-		if (fstatat(rootfd, path, &st, AT_SYMLINK_NOFOLLOW) == -1) {
-			ERR("%s: fstatat for itemize", path);
-			/* Let code below deal with error abort or not or what */
-		} else {
-			if (uid != (uid_t)-1 && uid != st.st_uid)
-				f->iflags |= IFLAG_OWNER;
-			if (gid != (gid_t)-1 && gid != st.st_gid)
-				f->iflags |= IFLAG_GROUP;
-			if (newfile || sess->opts->preserve_perms)
-				if (mode != st.st_mode)
-					f->iflags |= IFLAG_PERMS;
-		}
-
-	}
-
 	if (uid != (uid_t)-1 || gid != (gid_t)-1) {
 		if (fchownat(rootfd, path, uid, gid, AT_SYMLINK_NOFOLLOW) == -1) {
 			if (errno != EPERM) {
@@ -409,6 +388,9 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	struct hardlinks hls;
 	bool		 root_missing = false;
 	int		 max_phase = sess->protocol >= 29 ? 2 : 1;
+	size_t		 chunksz;
+	socklen_t	 optlen;
+	int		 sndlowat;
 
 	if (pledge("stdio unix rpath wpath cpath dpath fattr chown getpw unveil", NULL) == -1)
 		err(ERR_IPC, "pledge");
@@ -629,6 +611,9 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 			if (mkpath(tofree, 0755) < 0)
 				err(ERR_FILE_IO, "%s: mkpath", tofree);
 			free(tofree);
+
+			if (root_missing)
+				fl[0].iflags |= IFLAG_NEW | IFLAG_LOCAL_CHANGE;
 		}
 	}
 
@@ -744,8 +729,37 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	pfd[PFD_DOWNLOADER_IN].events = POLLIN;
 	pfd[PFD_SENDER_OUT].events = POLLOUT;
 
+	/*
+	 * We avoid deadlocks between the sender and uploader by writing
+	 * no more data to the socket/pipe than there is space available.
+	 * If PFD_SENDER_OUT is a socket then we try to obtain the send
+	 * low-watermark and maybe try to set it to our preferred chunk
+	 * size. If PFD_SENDER_OUT is a pipe then we use PIPE_BUF as the
+	 * send low-watermark, and in both cases we'll adjust our chunk
+	 * size to accomodate a multiplex tag.
+	 */
+	optlen = sizeof(sndlowat);
+	sndlowat = 0;
+
+	rc = getsockopt(pfd[PFD_SENDER_OUT].fd, SOL_SOCKET, SO_SNDLOWAT,
+	    &sndlowat, &optlen);
+
+	if (rc == 0 && sndlowat < MAX_CHUNK &&
+	    (sess->opts->sockopts == NULL ||
+	     strstr(sess->opts->sockopts, "SO_SNDLOWAT") == NULL)) {
+		sndlowat = MAX_CHUNK;
+
+		rc = setsockopt(pfd[PFD_SENDER_OUT].fd, SOL_SOCKET, SO_SNDLOWAT,
+		    &sndlowat, sizeof(sndlowat));
+	}
+
+	chunksz = (rc == 0 && sndlowat > 0) ? sndlowat : PIPE_BUF;
+	if (sess->mplex_writes)
+		chunksz -= sizeof(int32_t);
+	rc = 0;
+
 	ul = upload_alloc(root, dfd, tfd, fdout, CSUM_LENGTH_PHASE1, fl, flsz,
-	    oumask);
+	    chunksz, oumask);
 
 	if (ul == NULL) {
 		ERRX1("upload_alloc");
@@ -798,7 +812,6 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				pfd[PFD_SENDER_IN].revents &= ~POLLIN;
 		}
 
-
 		/*
 		 * We run the uploader if we have files left to examine
 		 * (i < flsz) or if we have a file that we've opened and
@@ -807,9 +820,14 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 
 		if ((pfd[PFD_UPLOADER_IN].revents & POLLIN) ||
 		    (pfd[PFD_SENDER_OUT].revents & POLLOUT)) {
-			c = rsync_uploader(ul,
+			int revents;
+
+			revents = pfd[PFD_UPLOADER_IN].revents & POLLIN;
+			revents |= pfd[PFD_SENDER_OUT].revents & POLLOUT;
+
+			c = rsync_uploader(ul, sess, revents,
 				&pfd[PFD_UPLOADER_IN].fd,
-				sess, &pfd[PFD_SENDER_OUT].fd, &hls);
+				&pfd[PFD_SENDER_OUT].fd, &hls);
 			if (c < 0) {
 				ERRX1("rsync_uploader");
 				goto out;

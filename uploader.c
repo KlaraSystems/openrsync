@@ -29,6 +29,7 @@
 #include <inttypes.h>
 #include <limits.h>
 #include <math.h>
+#include <poll.h>
 #include <search.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -65,6 +66,7 @@ struct	upload {
 	size_t		    bufmax; /* maximum size of buf */
 	size_t		    bufpos; /* position in buf */
 	size_t		    idx; /* current transfer index */
+	size_t              chunksz; /* max send/write size to sender */
 	mode_t		    oumask; /* umask for creating files */
 	char		   *root; /* destination directory path */
 	int		    rootfd; /* destination directory */
@@ -77,7 +79,7 @@ struct	upload {
 	struct flist	   *dfl; /* delayed delete file list */
 	size_t		    dflsz; /* size of delayed delete list */
 	size_t		    dflmax; /* allocated size of delayed delete list */
-	int		   *newdir; /* non-zero if mkdir'd */
+	bool		   *newdir; /* non-zero if mkdir'd */
 	int		    phase; /* current uploader phase (transfer, redo) */
 	char               *lastimp; /* Last implied dir (dir cache) */
 };
@@ -111,50 +113,24 @@ dstat_save(const struct stat *st, struct fldstat *dstat)
 	dstat->gid = st->st_gid;
 }
 
-/*
- * Log a directory by emitting the file and a trailing slash, just to
- * show the operator that we're a directory.
- */
 static void
-log_dir(struct sess *sess, const struct flist *f)
+itemize_changes(struct sess *sess, struct stat *st, struct flist *f)
 {
-	size_t	 sz;
+	if (sess->opts->preserve_perms && st->st_mode != f->st.mode)
+		f->iflags |= IFLAG_PERMS;
 
-	sz = strlen(f->path);
-	assert(sz > 0);
-	LOG1("%s%s", f->path, (f->path[sz - 1] == '/') ? "" : "/");
-}
+	if (sess->opts->preserve_times && st->st_mtime != f->st.mtime) {
+		if (!S_ISDIR(f->st.mode) || !sess->opts->omit_dir_times)
+			f->iflags |= IFLAG_TIME;
+	}
 
-/*
- * Log a link by emitting the file and the target, just to show the
- * operator that we're a link.
- */
-static void
-log_symlink(struct sess *sess, const struct flist *f)
-{
+	if (sess->opts->preserve_uids && st->st_uid != f->st.uid &&
+	    f->st.uid != (uid_t)(-1))
+		f->iflags |= IFLAG_OWNER;
 
-	LOG1("%s -> %s", f->path, f->link);
-}
-
-/*
- * Simply log the socket, fifo, or device name.
- */
-static void
-log_other(struct sess *sess, const struct flist *f)
-{
-
-	LOG1("%s", f->path);
-}
-
-/*
- * Simply log the filename.
- */
-static void
-log_file(struct sess *sess, const struct flist *f)
-{
-
-	if (!sess->opts->server)
-		LOG1("%s", f->path);
+	if (sess->opts->preserve_gids && st->st_gid != f->st.gid &&
+	    f->st.gid != (gid_t)(-1))
+		f->iflags |= IFLAG_GROUP;
 }
 
 /*
@@ -252,16 +228,12 @@ pre_symlink(struct upload *p, struct sess *sess)
 
 	if (!sess->opts->preserve_links) {
 		if (!sess->opts->list_only)
-			WARNX("%s: ignoring symlink", f->path);
+			LOG0("skipping non-regular file \"%s\"", f->path);
 		return 0;
 	}
 	if (sess->opts->safe_links &&
 	    is_unsafe_link(f->link, f->path, NULL)) {
 		LOG1("ignoring unsafe symlink: %s -> %s", f->path, f->link);
-		return 0;
-	}
-	if (sess->opts->dry_run) {
-		log_symlink(sess, f);
 		return 0;
 	}
 
@@ -272,45 +244,46 @@ pre_symlink(struct upload *p, struct sess *sess)
 	 * If it's a non-directory, we just overwrite it.
 	 */
 
-	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
 	if (rc == -1) {
+		if (sess->opts->dry_run) {
+			f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
+			return 0;
+		}
+
 		if (errno != ENOENT) {
 			ERR("%s: fstatat", f->path);
 			return -1;
-		} else
-			f->iflags |= IFLAG_NEW;
+		}
 	}
 
-	if (!sess->opts->ignore_times)
-		if (st.st_mtime != f->st.mtime)
-			f->iflags |= IFLAG_TIME;
-
 	if (rc != -1 && (sess->opts->inplace || !S_ISLNK(st.st_mode))) {
-		if (force_delete_applicable(p, sess, st.st_mode) &&
-		    S_ISDIR(st.st_mode)) {
-			struct flist   *dfl = NULL;
-			struct flist	bf;
-			size_t		dflsz = 0;
+		if (!sess->opts->dry_run) {
+			if (force_delete_applicable(p, sess, st.st_mode) &&
+			    S_ISDIR(st.st_mode)) {
+				struct flist   *dfl = NULL;
+				struct flist	bf;
+				size_t		dflsz = 0;
 
-			memcpy(&bf, f, sizeof(bf));
-			bf.st.flags |= FLSTAT_TOP_DIR;
-			bf.st.mode = st.st_mode;
-			if (!flist_gen_dels(sess, p->root, &dfl, &dflsz, &bf, 1)) {
-				ERRX1("flist_gen_dels symlink");
-				return -1;
+				memcpy(&bf, f, sizeof(bf));
+				bf.st.flags |= FLSTAT_TOP_DIR;
+				bf.st.mode = st.st_mode;
+				if (!flist_gen_dels(sess, p->root, &dfl, &dflsz, &bf, 1)) {
+					ERRX1("flist_gen_dels symlink");
+					return -1;
+				}
+				if (!flist_del(sess, p->rootfd, dfl, dflsz)) {
+					ERRX1("flist_del symlink");
+					return -1;
+				}
 			}
-			if (!flist_del(sess, p->rootfd, dfl, dflsz)) {
-				ERRX1("flist_del symlink");
-				return -1;
+			if ((sess->opts->inplace || S_ISDIR(st.st_mode)) &&
+			    unlinkat(p->rootfd, f->path,
+				     S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0) == -1) {
+				ERR("%s: unlinkat", f->path);
+				sess->total_errors++;
+				return 0;
 			}
-		}
-		if ((sess->opts->inplace || S_ISDIR(st.st_mode)) &&
-		    unlinkat(p->rootfd, f->path,
-		    S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0) == -1) {
-			ERR("%s: unlinkat", f->path);
-			sess->total_errors++;
-			return 0;
 		}
 		rc = -1;
 	}
@@ -321,7 +294,7 @@ pre_symlink(struct upload *p, struct sess *sess)
 	 */
 
 	if (rc != -1) {
-		b = symlinkat_read(p->rootfd, f->path);
+		b = symlinkat_read(p->rootfd, f->path, st.st_size);
 		if (b == NULL) {
 			ERRX1("symlinkat_read");
 			return -1;
@@ -334,7 +307,14 @@ pre_symlink(struct upload *p, struct sess *sess)
 		}
 		free(b);
 		b = NULL;
+
+		itemize_changes(sess, &st, f);
+	} else {
+		f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
 	}
+
+	if (sess->opts->dry_run)
+		return 0;
 
 	/*
 	 * Create the temporary file as a symbolic link, then rename the
@@ -383,8 +363,6 @@ pre_symlink(struct upload *p, struct sess *sess)
 		free(temp);
 	}
 
-	if (newlink)
-		log_symlink(sess, f);
 	return 0;
 }
 
@@ -406,11 +384,8 @@ pre_dev(struct upload *p, struct sess *sess)
 
 	if (!sess->opts->devices || sess->opts->supermode == SMODE_OFF ||
 	    (sess->opts->supermode != SMODE_ON && geteuid() != 0)) {
-		WARNX("skipping non-regular file %s", f->path);
-		return 0;
-	}
-	if (sess->opts->dry_run) {
-		log_other(sess, f);
+		if (!sess->opts->list_only)
+			LOG0("skipping non-regular file \"%s\"", f->path);
 		return 0;
 	}
 
@@ -420,26 +395,30 @@ pre_dev(struct upload *p, struct sess *sess)
 	 * If it replaces a directory, remove the directory first.
 	 */
 
-	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
-
 	if (rc == -1) {
+		if (sess->opts->dry_run) {
+			f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
+			return 0;
+		}
+
 		if (errno != ENOENT) {
 			ERR("%s: fstatat", f->path);
 			return -1;
-		} else
-			f->iflags |= IFLAG_NEW;
+		}
 	}
 
 	if (rc != -1 && !(S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
-		if (force_delete_applicable(p, sess, st.st_mode))
-			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
-				return -1;
-		if (S_ISDIR(st.st_mode) &&
-		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
-			ERR("%s: unlinkat", f->path);
-			sess->total_errors++;
-			return 0;
+		if (!sess->opts->dry_run) {
+			if (force_delete_applicable(p, sess, st.st_mode))
+				if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
+					return -1;
+			if (S_ISDIR(st.st_mode) &&
+			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
+				ERR("%s: unlinkat", f->path);
+				sess->total_errors++;
+				return 0;
+			}
 		}
 		rc = -1;
 	}
@@ -453,7 +432,14 @@ pre_dev(struct upload *p, struct sess *sess)
 			LOG3("%s: updating device", f->path);
 			updatedev = 1;
 		}
+
+		itemize_changes(sess, &st, f);
+	} else {
+		f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
 	}
+
+	if (sess->opts->dry_run)
+		return 0;
 
 	if (rc == -1 || updatedev) {
 		if (sess->opts->inplace) {
@@ -497,7 +483,6 @@ pre_dev(struct upload *p, struct sess *sess)
 		free(temp);
 	}
 
-	log_other(sess, f);
 	return 0;
 }
 
@@ -518,11 +503,8 @@ pre_fifo(struct upload *p, struct sess *sess)
 	assert(S_ISFIFO(f->st.mode));
 
 	if (!sess->opts->specials) {
-		WARNX("skipping non-regular file %s", f->path);
-		return 0;
-	}
-	if (sess->opts->dry_run) {
-		log_other(sess, f);
+		if (!sess->opts->list_only)
+			LOG0("skipping non-regular file \"%s\"", f->path);
 		return 0;
 	}
 
@@ -532,54 +514,68 @@ pre_fifo(struct upload *p, struct sess *sess)
 	 * mark it from replacement.
 	 */
 
-	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
-
 	if (rc == -1) {
+		if (sess->opts->dry_run) {
+			f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
+			return 0;
+		}
+
 		if (errno != ENOENT) {
 			ERR("%s: fstatat", f->path);
 			return -1;
-		} else
-			f->iflags |= IFLAG_NEW;
+		}
 	}
 
 	if (rc != -1 && !S_ISFIFO(st.st_mode)) {
-		if (force_delete_applicable(p, sess, st.st_mode))
-			if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
-				return -1;
-		if (S_ISDIR(st.st_mode) &&
-		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
-			ERR("%s: unlinkat", f->path);
-			sess->total_errors++;
-			return 0;
+		if (!sess->opts->dry_run) {
+			if (force_delete_applicable(p, sess, st.st_mode))
+				if (pre_dir_delete(p, sess, DMODE_DURING) == 0)
+					return -1;
+			if (S_ISDIR(st.st_mode) &&
+			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
+				ERR("%s: unlinkat", f->path);
+				sess->total_errors++;
+				return 0;
+			}
 		}
 		rc = -1;
 	}
 
 	if (rc == -1) {
-		if (sess->opts->inplace) {
-			if (mkfifoat(p->rootfd, f->path, S_IRUSR|S_IWUSR) == -1) {
-				ERR("mkfifoat");
-				return -1;
-			}
-		} else {
-			if (mktemplate(&temp, f->path, sess->opts->recursive,
-			    IS_TMPDIR) == -1) {
-				ERRX1("mktemplate");
-				return -1;
-			}
-			if (mkstempfifoat(TMPDIR_FD, temp) == NULL) {
-				ERR("mkstempfifoat");
-				free(temp);
-				return -1;
+		if (!sess->opts->dry_run) {
+			if (sess->opts->inplace) {
+				if (mkfifoat(p->rootfd, f->path, S_IRUSR|S_IWUSR) == -1) {
+					ERR("mkfifoat");
+					return -1;
+				}
+			} else {
+				if (mktemplate(&temp, f->path, sess->opts->recursive,
+					       IS_TMPDIR) == -1) {
+					ERRX1("mktemplate");
+					return -1;
+				}
+				if (mkstempfifoat(TMPDIR_FD, temp) == NULL) {
+					ERR("mkstempfifoat");
+					free(temp);
+					return -1;
+				}
 			}
 		}
 
+		f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
 		newfifo = 1;
+	} else {
+		LOG3("%s: updating fifo", f->path);
+
+		itemize_changes(sess, &st, f);
 	}
 
 	if (rc != -1)
 		dstat_save(&st, &f->dstat);
+
+	if (sess->opts->dry_run)
+		return 0;
 
 	rsync_set_metadata_at(sess, newfifo, TMPDIR_FD, f,
 	    newfifo && temp != NULL ? temp : f->path);
@@ -595,7 +591,6 @@ pre_fifo(struct upload *p, struct sess *sess)
 		free(temp);
 	}
 
-	log_other(sess, f);
 	return 0;
 }
 
@@ -616,11 +611,8 @@ pre_sock(struct upload *p, struct sess *sess)
 	assert(S_ISSOCK(f->st.mode));
 
 	if (!sess->opts->specials) {
-		WARNX("skipping non-regular file %s", f->path);
-		return 0;
-	}
-	if (sess->opts->dry_run) {
-		log_other(sess, f);
+		if (!sess->opts->list_only)
+			LOG0("skipping non-regular file \"%s\"", f->path);
 		return 0;
 	}
 
@@ -630,49 +622,63 @@ pre_sock(struct upload *p, struct sess *sess)
 	 * mark it from replacement.
 	 */
 
-	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
-
 	if (rc == -1) {
+		if (sess->opts->dry_run) {
+			f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
+			return 0;
+		}
+
 		if (errno != ENOENT) {
 			ERR("%s: fstatat", f->path);
 			return -1;
-		} else
-			f->iflags |= IFLAG_NEW;
+		}
 	}
 
 	if (rc != -1 && !S_ISSOCK(st.st_mode)) {
-		if (S_ISDIR(st.st_mode) &&
-		    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
-			ERR("%s: unlinkat", f->path);
-			sess->total_errors++;
-			return 0;
+		if (!sess->opts->dry_run) {
+			if (S_ISDIR(st.st_mode) &&
+			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
+				ERR("%s: unlinkat", f->path);
+				sess->total_errors++;
+				return 0;
+			}
 		}
 		rc = -1;
 	}
 
 	if (rc == -1) {
-		if (sess->opts->inplace) {
-			if (mksock(temp, p->root) == -1) {
-				ERR("mksock");
-				return -1;
-			}
-		} else {
-			if (mktemplate(&temp, f->path, sess->opts->recursive,
-			    IS_TMPDIR) == -1) {
-				ERRX1("mktemplate");
-				return -1;
-			}
-			if (mkstempsock(sess->opts->temp_dir ?
-			    sess->opts->temp_dir : p->root, temp) == NULL) {
-				ERR("mkstempsock");
-				free(temp);
-				return -1;
+		if (!sess->opts->dry_run) {
+			if (sess->opts->inplace) {
+				if (mksock(temp, p->root) == -1) {
+					ERR("mksock");
+					return -1;
+				}
+			} else {
+				if (mktemplate(&temp, f->path, sess->opts->recursive,
+					       IS_TMPDIR) == -1) {
+					ERRX1("mktemplate");
+					return -1;
+				}
+				if (mkstempsock(sess->opts->temp_dir ?
+						sess->opts->temp_dir : p->root, temp) == NULL) {
+					ERR("mkstempsock");
+					free(temp);
+					return -1;
+				}
 			}
 		}
 
+		f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
 		newsock = 1;
+	} else {
+		LOG3("%s: updating sock", f->path);
+
+		itemize_changes(sess, &st, f);
 	}
+
+	if (sess->opts->dry_run)
+		return 0;
 
 	rsync_set_metadata_at(sess, newsock, TMPDIR_FD, f,
 		newsock && temp != NULL ? temp : f->path);
@@ -688,7 +694,6 @@ pre_sock(struct upload *p, struct sess *sess)
 		free(temp);
 	}
 
-	log_other(sess, f);
 	return 0;
 }
 
@@ -943,20 +948,18 @@ pre_dir(struct upload *p, struct sess *sess)
 		WARNX("%s: ignoring directory 1 %d", f->path, sess->opts->relative);
 		return 0;
 	}
-	if (sess->opts->dry_run) {
-		log_dir(sess, f);
-		return 0;
-	}
 
-	assert(p->rootfd != -1);
 	rc = fstatat(p->rootfd, f->path, &st, AT_SYMLINK_NOFOLLOW);
-
 	if (rc == -1) {
+		if (sess->opts->dry_run) {
+			f->iflags |= IFLAG_NEW | IFLAG_LOCAL_CHANGE;
+			return 0;
+		}
+
 		if (errno != ENOENT) {
 			ERR("%s: fstatat", f->path);
 			return -1;
-		} else
-			f->iflags |= IFLAG_NEW;
+		}
 	}
 
 	if (rc != -1 && !S_ISDIR(st.st_mode)) {
@@ -964,16 +967,24 @@ pre_dir(struct upload *p, struct sess *sess)
 			keep_dirlinks_applies(&st, f, p->rootfd)) {
 			return 0;
 		}
+
 		/*
 		 * Incoming item is a directory, but there is a non-directory
 		 * in the way, so we need to remove it.
 		 */
-		if (unlinkat(p->rootfd, f->path, 0) == -1) {
-			ERRX("%s: unable to replace file with a directory", f->path);
-			return -1;
+		if (!sess->opts->dry_run) {
+			if (unlinkat(p->rootfd, f->path, 0) == -1) {
+				ERRX("%s: unable to replace file with a directory", f->path);
+				return -1;
+			}
 		}
 	} else if (rc != -1) {
 		LOG3("%s: updating directory", f->path);
+
+		itemize_changes(sess, &st, f);
+
+		if (sess->opts->dry_run)
+			return 0;
 
 		/*
 		 * We need to fchmod the permissions here as well,
@@ -986,18 +997,17 @@ pre_dir(struct upload *p, struct sess *sess)
 				ERRX("%s: unable to preserve dir mode", f->path);
 		}
 
-		if ((sess->opts->preserve_perms && st.st_mode != f->st.mode && f->st.mode != 0) ||
-		    (sess->opts->preserve_times && !sess->opts->omit_dir_times &&
-		     st.st_mtime != f->st.mtime)) {
-			log_dir(sess, f);
-		}
-
 		if (sess->opts->del == DMODE_DURING || sess->opts->del == DMODE_DELAY) {
 			pre_dir_delete(p, sess, sess->opts->del);
 		}
 
 		return 0;
 	}
+
+	f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
+
+	if (sess->opts->dry_run)
+		return 0;
 
 	/*
 	 * We want to make the directory with default permissions (using
@@ -1013,7 +1023,6 @@ pre_dir(struct upload *p, struct sess *sess)
 	}
 
 	p->newdir[p->idx] = 1;
-	log_dir(sess, f);
 	return 0;
 }
 
@@ -1076,15 +1085,21 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 
 	if (is_partialdir)
 		path = download_partial_filepath(f);
+
 	if (fstatat(rootfd, path, st, AT_SYMLINK_NOFOLLOW) == -1) {
 		if (errno == ENOENT) {
 			if (sess->opts->ign_non_exist) {
 				LOG1("Skip non existing '%s'", f->path);
 				return 0;
-			} else {
-				f->iflags |= IFLAG_NEW;
-				return 3;
 			}
+
+			f->iflags |= IFLAG_NEW;
+			return 3;
+		}
+
+		if (sess->opts->dry_run) {
+			f->iflags |= IFLAG_NEW;
+			return 2;
 		}
 
 		ERR("%s: fstatat", f->path);
@@ -1143,16 +1158,13 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		return 2;
 	}
 
+	itemize_changes(sess, st, f);
+
 	if (sess->itemize) {
 		/*
 		 * This could be rolled into the if tree below, but
 		 * would make it uglier.
 		 */
-		if (st->st_size != f->st.size)
-			f->iflags |= IFLAG_SIZE;
-		if (!sess->opts->ignore_times)
-			if (st->st_mtime != f->st.mtime)
-				f->iflags |= IFLAG_TIME;
 		if (f->st.size != 0 && sess->opts->checksum) {
 			rc = hash_file_by_path(rootfd, f->path, f->st.size, md);
 			if (!(rc == 0 && memcmp(md, f->md, sizeof(md)) == 0))
@@ -1204,6 +1216,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
     struct flist *f, const struct hardlinks *const hl, int rc,
     int basemode, int *savedfd, bool is_partialdir)
 {
+	int32_t saved_iflags = f->iflags;
 	int dfd, x;
 
 	dfd = openat(p->rootfd, root, O_RDONLY | O_DIRECTORY);
@@ -1212,9 +1225,11 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 			return 1;
 		err(ERR_FILE_IO, "%s: pre_file_check_altdir: openat", root);
 	}
+
+	f->iflags = 0;
 	x = check_file(dfd, f, st, sess, hl, is_partialdir);
-	/* found a match */
 	if (x == 0) {
+		/* found a match */
 		if (rc >= 0) {
 			/* found better match, delete file in rootfd */
 			if (unlinkat(p->rootfd, f->path, 0) == -1 &&
@@ -1225,12 +1240,15 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 			}
 		}
 
+		itemize_changes(sess, st, f);
+
 		switch (basemode) {
 		case BASE_MODE_COPY:
 			LOG3("%s: copying: up to date in %s",
 			    f->path, root);
 			copy_file(p->rootfd, root, f);
 			rsync_set_metadata_at(sess, 1, p->rootfd, f, f->path);
+			f->iflags |= IFLAG_LOCAL_CHANGE;
 			break;
 		case BASE_MODE_LINK:
 			LOG3("%s: hardlinking: up to date in %s",
@@ -1245,6 +1263,9 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 				 */
 				ERR("hard link '%s/%s'", root, f->path);
 			}
+
+			f->iflags |= IFLAG_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE;
+			assert(f->link == NULL);
 			break;
 		case BASE_MODE_COMPARE:
 		default:
@@ -1253,8 +1274,11 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 		}
 		close(dfd);
 		return 0;
-	} else if ((x == 1 || x == 2) && *matchdir == NULL) {
+	}
+
+	if ((x == 1 || x == 2) && *matchdir == NULL) {
 		/* found a local file that is a close match */
+		itemize_changes(sess, st, f);
 		*matchdir = root;
 		if (savedfd != NULL) {
 			int prevfd;
@@ -1265,11 +1289,13 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 			/* Don't close() it. */
 			dfd = -1;
 		}
+		return 1;
 	}
 
-	if (dfd != -1)
-		close(dfd);
-	return 1;
+	f->iflags = saved_iflags;
+	close(dfd);
+
+	return rc;
 }
 
 /*
@@ -1407,13 +1433,12 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	struct stat st;
 	size_t psize = 0;
 	int i, pdfd = -1, rc, ret;
+	bool dry_run, dry_full, dry_xfer;
 
 	f = &p->fl[p->idx];
 	assert(S_ISREG(f->st.mode));
 
-	if (sess->opts->dry_run == DRY_FULL ||
-	    sess->opts->read_batch != NULL) {
-		log_file(sess, f);
+	if (sess->opts->read_batch != NULL) {
 		return 0;
 	}
 
@@ -1430,6 +1455,19 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	 * For non dry-run cases, we'll write the acknowledgement later
 	 * in the rsync_uploader() function.
 	 */
+	switch (sess->opts->dry_run) {
+	case DRY_DISABLED:
+		dry_run = dry_xfer = dry_full = false;
+		break;
+	case DRY_XFER:
+		dry_run = dry_xfer = true;
+		dry_full = false;
+		break;
+	case DRY_FULL:
+		dry_run = dry_full = true;
+		dry_xfer = false;
+		break;
+	}
 
 	*size = 0;
 	*filefd = -1;
@@ -1457,9 +1495,11 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		do_unlink = S_ISDIR(st.st_mode) || sess->opts->inplace;
 		if (S_ISDIR(st.st_mode))
 			uflags |= AT_REMOVEDIR;
-		if (do_unlink && unlinkat(p->rootfd, f->path, uflags) == -1) {
+		if (do_unlink && !dry_run &&
+		    unlinkat(p->rootfd, f->path, uflags) == -1) {
 			ERR("%s: unlinkat", f->path);
 			sess->total_errors++;
+			f->iflags = 0;
 			return 0;
 		}
 
@@ -1467,8 +1507,10 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		 * Fix the return value so that we don't try to set metadata of
 		 * what we unlinked below.
 		 */
-		if (do_unlink)
+		if (do_unlink) {
+			f->iflags |= IFLAG_NEW;
 			rc = 3;
+		}
 	}
 
 	/*
@@ -1478,7 +1520,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	 */
 	if (rc >= 0 && rc < 3) {
 		bool fix_metadata = (rc != 0 || !sess->opts->ign_non_exist) &&
-		    !sess->opts->dry_run;
+		    !dry_run;
 
 		if (fix_metadata)
 			dstat_save(&st, &f->dstat);
@@ -1488,6 +1530,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 			if (errno != EACCES && errno != EPERM) {
 				ERRX1("rsync_set_metadata");
 				sess->total_errors++;
+				f->iflags = 0;
 				return 0;
 			}
 
@@ -1499,13 +1542,14 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 			if (faccessat(p->rootfd, f->path, R_OK, 0) == -1 &&
 			    errno == EACCES)
 				sess->total_errors++;
-
 			if (unlinkat(p->rootfd, f->path, 0) == -1) {
 				ERR("%s: unlinkat", f->path);
 				sess->total_errors++;
+				f->iflags = 0;
 				return 0;
 			}
 
+			f->iflags |= IFLAG_NEW;
 			rc = 3;
 		}
 
@@ -1569,11 +1613,13 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 			sess->total_errors++;
 			if (pdfd != -1)
 				close(pdfd);
-			if (unlinkat(p->rootfd, download_partial_filepath(f), 0) == -1) {
+			if (!dry_run && unlinkat(p->rootfd, download_partial_filepath(f), 0) == -1) {
 				ERR("%s: unlinkat", download_partial_filepath(f));
+				f->iflags = 0;
 				return 0;
 			}
-			return 1;
+
+			return dry_full ? 0 : 1;
 		}
 
 		if (*filefd != -1)
@@ -1583,19 +1629,46 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		/* Only consider fuzzy matches if the destination does not exist */
 		assert(pdfd == -1);
 		*size = st.st_size;
-	} else {
+	} else if (!dry_full && rc < 3) {
 		assert(pdfd == -1);
-		*size = st.st_size;
+		*size = 0;
 		*filefd = openat(p->rootfd, f->path, O_RDONLY | O_NOFOLLOW);
 		if (*filefd == -1 && (errno == EACCES || errno == EPERM)) {
 			sess->total_errors++;
-			if (unlinkat(p->rootfd, f->path, 0) == -1) {
+			if (!dry_run && unlinkat(p->rootfd, f->path, 0) == -1) {
 				ERR("%s: unlinkat", f->path);
+				f->iflags = 0;
 				return 0;
 			}
+
 			return 1;
 		}
+
+		if (*filefd != -1)
+			*size = st.st_size;
+	} else {
+		assert(*filefd == -1);
+		assert(*size == 0);
+		errno = ENOENT;
 	}
+
+	if (dry_run) {
+		if (dry_xfer)
+			return 1;
+
+		if (*filefd != -1) {
+			close(*filefd);
+			*filefd = -1;
+		}
+		if (f->pdfd != -1) {
+			close(f->pdfd);
+			f->pdfd = -1;
+		}
+
+		*size = 0;
+		return 0;
+	}
+
 	/*
 	 * If there is a symlink in our way, we will get EMLINK,
 	 * except on MacOS where they use ELOOP instead.
@@ -1619,7 +1692,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
  */
 struct upload *
 upload_alloc(const char *root, int rootfd, int tempfd, int fdout,
-	size_t clen, struct flist *fl, size_t flsz, mode_t msk)
+	size_t clen, struct flist *fl, size_t flsz, size_t chunksz, mode_t msk)
 {
 	struct upload	*p;
 
@@ -1629,6 +1702,7 @@ upload_alloc(const char *root, int rootfd, int tempfd, int fdout,
 	}
 
 	p->state = UPLOAD_FIND_NEXT;
+	p->chunksz = chunksz;
 	p->oumask = msk;
 	p->root = strdup(root);
 	if (p->root == NULL) {
@@ -1643,7 +1717,8 @@ upload_alloc(const char *root, int rootfd, int tempfd, int fdout,
 	p->fl = fl;
 	p->flsz = flsz;
 	p->nextack = 0;
-	p->newdir = calloc(flsz, sizeof(int));
+
+	p->newdir = calloc(flsz, sizeof(p->newdir[0]));
 	if (p->newdir == NULL) {
 		ERR("calloc");
 		free(p->root);
@@ -1800,8 +1875,8 @@ out:
  * Otherwise returns <0, which is an error.
  */
 int
-rsync_uploader(struct upload *u, int *fileinfd,
-	struct sess *sess, int *fileoutfd, const struct hardlinks *const hl)
+rsync_uploader(struct upload *u, struct sess *sess, int revents,
+	int *fileinfd, int *fileoutfd, const struct hardlinks *const hl)
 {
 	struct blkset	    blk;
 	void		   *mbuf, *bufp;
@@ -1829,6 +1904,9 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		assert(*fileoutfd != -1);
 		assert(*fileinfd == -1);
 
+		if ((revents & POLLOUT) == 0)
+			return 1;
+
 		/*
 		 * Unfortunately, we need to chunk these: if we're
 		 * the server side of things, then we're multiplexing
@@ -1836,11 +1914,23 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		 * This is a major deficiency of rsync.
 		 * FIXME: add a "fast-path" mode that simply dumps out
 		 * the buffer non-blocking if we're not mplexing.
+		 *
+		 * At this point there should be at least u->chunksz bytes
+		 * of space available in u->fdout, and the sender might
+		 * currently be blocked trying to write to the receiver.
+		 * Hence, in order to avoid a deadlock we must not block
+		 * here, and the only way to ensure that is to write no
+		 * more than u->chunksz bytes to fdout per any single
+		 * POLLOUT event.
+		 *
+		 * All bets are off if someone issues a write to u->fdout
+		 * between the return from poll() in rsync_receiver() and
+		 * the call below to io_write_buf().
 		 */
 
 		if (u->bufpos < u->bufsz) {
-			sz = MAX_CHUNK < (u->bufsz - u->bufpos) ?
-				MAX_CHUNK : (u->bufsz - u->bufpos);
+			sz = u->chunksz < (u->bufsz - u->bufpos) ?
+				u->chunksz : (u->bufsz - u->bufpos);
 			c = io_write_buf(sess, u->fdout,
 				u->buf + u->bufpos, sz);
 			if (c == 0) {
@@ -1850,6 +1940,31 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			u->bufpos += sz;
 			if (u->bufpos < u->bufsz)
 				return 1;
+
+			assert(u->bufsz == u->bufpos);
+			u->bufsz = 0;
+			u->bufpos = 0;
+
+			/*
+			 * Wait for the next POLLOUT event before trying
+			 * to write more to u->fdout to ensure we don't
+			 * block in write.
+			 */
+			if (u->idx == u->flsz)
+				return 1;
+		}
+
+		if (u->idx == u->flsz) {
+			if (sess->opts->read_batch == NULL &&
+			    !io_write_int(sess, u->fdout, -1)) {
+				ERRX1("io_write_int");
+				return -1;
+			}
+
+			u->state = UPLOAD_FINISHED;
+			*fileoutfd = -1;
+			LOG4("uploader: finished");
+			return 0;
 		}
 
 		/*
@@ -1859,7 +1974,6 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		 */
 
 		u->state = UPLOAD_FIND_NEXT;
-		u->idx++;
 
 		/*
 		 * For delay-updates, there's no use scanning the flist for
@@ -1870,6 +1984,8 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			upload_ack_complete(u, sess, *fileoutfd);
 		return 1;
 	}
+
+	pos = u->bufsz;
 
 	/*
 	 * If we invoke the uploader without a file currently open, then
@@ -1914,24 +2030,38 @@ rsync_uploader(struct upload *u, int *fileinfd,
 
 			u->fl[u->idx].flstate |= FLIST_SUCCESS;
 
+			if (u->fl[u->idx].iflags == 0)
+				continue;
+
 			if (!protocol_itemize) {
+				log_item_impl(sess, &u->fl[u->idx]);
 				continue;
 			}
-			u->bufsz = sizeof(int32_t); /* identifier */
+
+			if (u->fl[u->idx].iflags == IFLAG_NEW) {
+				assert(S_ISREG(u->fl[u->idx].st.mode));
+				assert(sess->opts->dry_run);
+
+				u->fl[u->idx].iflags |= IFLAG_TRANSFER;
+			}
+
+			u->bufsz += sizeof(int32_t); /* identifier */
 			u->bufsz += sizeof(int16_t); /* iflags */
 			if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
 				/* basis flag */
 				u->bufsz += sizeof(int8_t);
 			}
-			if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
+			if ((IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) != 0) {
 				/* vstring len byte */
 				u->bufsz += sizeof(int8_t);
-				if ((linklen = strlen(u->fl[u->idx].link)) >
-				    0x7f) {
-					/* 2nd len byte */
-					u->bufsz += sizeof(int8_t);
+				if (u->fl[u->idx].link != NULL) {
+					linklen = strlen(u->fl[u->idx].link);
+					if (linklen > 0x7f) {
+						/* 2nd len byte */
+						u->bufsz += sizeof(int8_t);
+					}
+					u->bufsz += linklen; /* vstring */
 				}
-				u->bufsz += linklen; /* vstring */
 			}
 			if (u->bufsz > u->bufmax) {
 				if ((bufp = realloc(u->buf, u->bufsz)) == NULL) {
@@ -1941,17 +2071,25 @@ rsync_uploader(struct upload *u, int *fileinfd,
 				u->buf = bufp;
 				u->bufmax = u->bufsz;
 			}
-			u->bufpos = pos = 0;
-			io_buffer_int(u->buf, &pos, u->bufsz, (int)u->idx);
+
+			io_buffer_int(u->buf, &pos, u->bufsz, u->fl[u->idx].sendidx);
 			io_buffer_short(u->buf, &pos, u->bufsz,
 			    u->fl[u->idx].iflags);
 			if (IFLAG_BASIS_FOLLOWS & u->fl[u->idx].iflags) {
 				io_buffer_byte(u->buf, &pos, u->bufsz,
 				    u->fl[u->idx].basis);
 			}
-			if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
+			if ((IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) != 0) {
 				io_buffer_vstring(u->buf, &pos, u->bufsz,
 				    u->fl[u->idx].link, linklen);
+			}
+
+			/* Don't let the output buffer grow too large */
+
+			if (u->bufsz >= (MAX_CHUNK * 3 / 4)) {
+				u->state = UPLOAD_WRITE;
+				u->idx++;
+				return 1;
 			}
 		}
 
@@ -1963,6 +2101,13 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		*fileoutfd = -1;
 		if (u->idx == u->flsz) {
 			assert(*fileinfd == -1);
+
+			if (u->bufsz > 0) {
+				u->state = UPLOAD_WRITE;
+				*fileoutfd = u->fdout;
+				return 1;
+			}
+
 			if (sess->opts->read_batch == NULL &&
 			    !io_write_int(sess, u->fdout, -1)) {
 				ERRX1("io_write_int");
@@ -1977,6 +2122,8 @@ rsync_uploader(struct upload *u, int *fileinfd,
 
 		u->state = UPLOAD_WRITE;
 	}
+
+	assert(S_ISREG(u->fl[u->idx].st.mode));
 
 	/* Initialies our blocks. */
 
@@ -2076,7 +2223,7 @@ rsync_uploader(struct upload *u, int *fileinfd,
 
 	/* Make sure the block metadata buffer is big enough. */
 
-	u->bufsz =
+	u->bufsz +=
 	    sizeof(int32_t) + /* identifier */
 	    sizeof(int32_t) + /* block count */
 	    sizeof(int32_t) + /* block length */
@@ -2095,6 +2242,8 @@ rsync_uploader(struct upload *u, int *fileinfd,
 			u->bufsz += sizeof(int8_t); /* basis flag */
 		}
 		if (IFLAG_HLINK_FOLLOWS & u->fl[u->idx].iflags) {
+			assert(u->fl[u->idx].link != NULL);
+
 			u->bufsz += sizeof(int8_t); /* vstring len byte */
 			if ((linklen = strlen(u->fl[u->idx].link)) > 0x7f) {
 				u->bufsz += sizeof(int8_t); /* 2nd len byte */
@@ -2113,7 +2262,6 @@ rsync_uploader(struct upload *u, int *fileinfd,
 		u->bufmax = u->bufsz;
 	}
 
-	u->bufpos = pos = 0;
 	io_buffer_int(u->buf, &pos, u->bufsz, u->fl[u->idx].sendidx);
 	if (protocol_itemize) {
 		io_buffer_short(u->buf, &pos, u->bufsz, u->fl[u->idx].iflags);
@@ -2140,10 +2288,18 @@ rsync_uploader(struct upload *u, int *fileinfd,
 	}
 	assert(pos == u->bufsz);
 
+	/*
+	 * Accumulate download requests to avoid small writes.
+	 */
+	if (u->bufsz < (MAX_CHUNK * 3 / 4) && protocol_itemize)
+		u->state = UPLOAD_FIND_NEXT;
+
 	sess->total_files_xfer++;
 	sess->total_xfer_size += u->fl[u->idx].st.size;
 
 nowrite:
+	u->idx++;
+
 	/* Reenable the output poller and clean up. */
 
 	*fileoutfd = u->fdout;

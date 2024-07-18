@@ -35,3 +35,43 @@ for dstdir in dst-1 dst-2 dst-3 dst-4; do
 	1>&2 cmp src/foo/a "$dstdir"/a
 	1>&2 cmp src/bar/b "$dstdir"/b
 done
+
+
+# Test from 1-to-n source dirs with a various mix of suffixes:
+#
+SRCDIRS=""
+DSTDIR="dst/"
+#DSTDIR="localhost:$PWD/dst/"
+
+set --
+
+for i in $(seq 17) ; do
+	rm -rf src$i dst
+	mkdir -p src$i/dir
+
+	echo src$i > src$i/file
+	echo src$i > src$i/dir/file
+
+	if [ $# -le 0 ] ; then
+		set -- "/" "/." "/./" "/./." ""
+	fi
+
+	SRCDIRS="${SRCDIRS} src$i$1"
+
+	echo "rsync -av -- ${SRCDIRS} ${DSTDIR}"
+	rsync -av -- ${SRCDIRS} ${DSTDIR}
+
+	if [ -z "$1" ] ; then
+		diff -r src$i dst/src$i
+	elif [ "$1" = "/" ] ; then
+		[ -d dst ]
+		[ -f dst/file ]
+		[ -d dst/dir ]
+		[ -f dst/dir/file ]
+	fi
+
+	#diff src1/file dst/file
+	#diff src1/dir/file dst/dir/file
+
+	shift
+done
