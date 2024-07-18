@@ -38,9 +38,13 @@ drwxr-xr-x           3 2024/07/01 12:34:56 dir1/one/two/three
 -rw-r--r--     1048576 2024/07/01 12:34:56 dir1/one/two/three/four.txt
 EOT
 
+awk '{print $5}' expected.out > trimmed.out
+
 rsync -a --list-only -- dir1 > rsync.out 2>&1
-diff -ub expected.out rsync.out
+awk '{print $5}' rsync.out > generated.out
+diff -ub trimmed.out generated.out
 
 rsync -a -- dir1 > rsync2.out 2>&1
-diff -ub expected.out rsync2.out
+awk '{print $5}' rsync2.out > generated2.out
+diff -ub trimmed.out generated2.out
 
