@@ -75,7 +75,7 @@ static int buf_copy(const char *, size_t, struct download *, struct sess *);
 struct	download {
 	enum downloadst	    state; /* state of affairs */
 	size_t		    idx; /* index of current file */
-	int32_t		    idxprev; /* index of previous file */
+	int32_t		    fxiter; /* flist index translation iterator */
 	struct blkset	    blk; /* its blocks */
 	struct fmap	   *map; /* mmap of current file */
 	int		    ofd; /* open origin file */
@@ -421,7 +421,7 @@ download_alloc(struct sess *sess, int fdin, struct flist *fl, size_t flsz,
 	}
 
 	p->state = DOWNLOAD_READ_NEXT;
-	p->idxprev = -1;
+	p->fxiter = -1;
 	p->fl = fl;
 	p->flsz = flsz;
 	p->rootfd = rootfd;
@@ -1352,32 +1352,17 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 	if (p->state == DOWNLOAD_READ_NEXT) {
 		const char *path;
+		int32_t sendidx;
 		int32_t iflags;
 		int rootfd;
 
-		if (!io_read_int(sess, p->fdin, &idx)) {
+		if (!io_read_int(sess, p->fdin, &sendidx)) {
 			ERRX1("io_read_int");
 			return -1;
-		} else if (idx < 0) {
+		} else if (sendidx < 0) {
 			LOG3("downloader: phase complete");
-			p->idxprev = -1;
+			p->fxiter = -1;
 			return 0;
-		}
-
-		/*
-		 * `idx` is a sendidx, translate it back into our local file
-		 * index since we may have, e.g., trimmed duplicates.
-		 */
-		for (size_t flidx = p->idxprev + 1; flidx < p->flsz; flidx++) {
-			if (p->fl[flidx].sendidx == idx) {
-				p->idxprev = flidx;
-				idx = flidx;
-				break;
-			}
-		}
-		if (p->idxprev != idx) {
-			ERRX1("idx translation failed");
-			return -1;
 		}
 
 		if (!protocol_itemize) {
@@ -1391,17 +1376,35 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 		/* Check for keep-alive packet */
 		if (iflags == IFLAG_NEW) {
-			if ((uint32_t)idx == flsz) {
+			if ((uint32_t)sendidx == sess->sender_flsz) {
 				/* Keep alive packet, do nothing */
 				return 1;
 			}
 
-			ERRX1("invalid index %d of %zu for keep alive packet",
-			    idx, flsz);
+			ERRX1("invalid sendidx %d for keep alive packet",
+			    sendidx);
 			return -1;
-		} else if ((uint32_t)idx == flsz) {
-			ERRX1("invalid item flags 0x%x for index %d of %zu",
-			    iflags, idx, flsz);
+		} else if ((uint32_t)sendidx == sess->sender_flsz) {
+			ERRX1("invalid item flags 0x%x for sendidx %d",
+			    iflags, sendidx);
+			return -1;
+		}
+
+		/*
+		 * Translate the sender's index to our local flist
+		 * index since we may have, e.g., trimmed duplicates.
+		 */
+		idx = -1;
+		for (size_t i = 0; i < p->flsz; i++) {
+			p->fxiter = (p->fxiter + 1) % p->flsz;
+
+			if (p->fl[p->fxiter].sendidx == sendidx) {
+				idx = p->fxiter;
+				break;
+			}
+		}
+		if (idx == -1) {
+			ERRX1("sendidx %d translation failed", sendidx);
 			return -1;
 		}
 

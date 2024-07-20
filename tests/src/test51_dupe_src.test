@@ -40,13 +40,13 @@ done
 # Test from 1-to-n source dirs with a various mix of suffixes:
 #
 SRCDIRS=""
-DSTDIR="dst/"
-#DSTDIR="localhost:$PWD/dst/"
+DSTDIR="dst"
+#DSTDIR="localhost:$PWD/dst"
 
 set --
 
 for i in $(seq 17) ; do
-	rm -rf src$i dst
+	rm -rf src$i ${DSTDIR}
 	mkdir -p src$i/dir
 
 	echo src$i > src$i/file
@@ -58,16 +58,15 @@ for i in $(seq 17) ; do
 
 	SRCDIRS="${SRCDIRS} src$i$1"
 
-	echo "rsync -av -- ${SRCDIRS} ${DSTDIR}"
-	rsync -av -- ${SRCDIRS} ${DSTDIR}
+	rsync -av -- ${SRCDIRS} ${DSTDIR}/
 
 	if [ -z "$1" ] ; then
-		diff -r src$i dst/src$i
+		diff -r src$i ${DSTDIR}/src$i
 	elif [ "$1" = "/" ] ; then
-		[ -d dst ]
-		[ -f dst/file ]
-		[ -d dst/dir ]
-		[ -f dst/dir/file ]
+		[ -d ${DSTDIR} ]
+		[ -f ${DSTDIR}/file ]
+		[ -d ${DSTDIR}/dir ]
+		[ -f ${DSTDIR}/dir/file ]
 	fi
 
 	#diff src1/file dst/file
@@ -75,3 +74,29 @@ for i in $(seq 17) ; do
 
 	shift
 done
+
+
+# Test that all empty dirs are handled correctly:
+#
+for i in $(seq 17) ; do
+	mkdir -p src$i/empty
+done
+
+rm -rf ${DSTDIR}
+rsync -av -- ${SRCDIRS} ${DSTDIR}
+
+[ -d ${DSTDIR} ]
+[ -f ${DSTDIR}/file ]
+[ -d ${DSTDIR}/dir ]
+[ -f ${DSTDIR}/dir/file ]
+[ -d ${DSTDIR}/empty ]
+
+
+rm -rf ${DSTDIR}
+rsync -av --prune-empty-dirs -- ${SRCDIRS} ${DSTDIR}
+
+[ -d ${DSTDIR} ]
+[ -f ${DSTDIR}/file ]
+[ -d ${DSTDIR}/dir ]
+[ -f ${DSTDIR}/dir/file ]
+[ ! -d ${DSTDIR}/empty ]

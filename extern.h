@@ -658,6 +658,7 @@ struct	sess {
 	int32_t		   seed; /* checksum seed */
 	int32_t		   lver; /* local version */
 	int32_t		   rver; /* remote version */
+	size_t		   sender_flsz; /* sender's flist size */
 	uint64_t	   total_read; /* non-logging wire/reads */
 	uint64_t	   total_read_lf; /* reads at time of last file */
 	uint64_t	   total_size; /* total file size */

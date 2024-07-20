@@ -518,6 +518,8 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 
 	LOG2("sending file metadata list: %zu", flsz);
 
+	sess->sender_flsz = flsz;
+
 	for (i = 0; i < flsz; i++) {
 		f = &fl[i];
 		fn = f->wpath;
@@ -1571,9 +1573,14 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 		LOG2("received gid list: %zu", gidsz);
 	}
 
+	LOG2("received file metadata list: %zu", flsz);
+
+	/* Remember the sender's flist size for keep-alive detection. */
+
+	sess->sender_flsz = flsz;
+
 	/* Remember to order the received list. */
 
-	LOG2("received file metadata list: %zu", flsz);
 	if (protocol_newsort) {
 		qsort(fl, flsz, sizeof(struct flist), flist_cmp29);
 	} else {
@@ -1586,6 +1593,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 	 * openrsync nor the reference rsync will dedupe on the sender side
 	 * in order to give receivers flexibility in how they handle it.
 	 */
+
 	for (size_t i = 0; i < flsz; i++)
 		fl[i].sendidx = (int)i;
 
