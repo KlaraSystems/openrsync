@@ -440,11 +440,24 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 
 	addargs(&args, ".");
 
+	/*
+	 * In both cases, we could end up with an empty source/sink after
+	 * stripping a host: specification.  We should send across an explicit
+	 * '.' to use whatever directory ssh puts us in.
+	 */
 	if (f->mode == FARGS_RECEIVER) {
-		for (j = 0; j < f->sourcesz; j++)
-			addargs(&args, "%s", f->sources[j]);
-	} else
-		addargs(&args, "%s", f->sink);
+		for (j = 0; j < f->sourcesz; j++) {
+			if (f->sources[j][0] == '\0')
+				addargs(&args, ".");
+			else
+				addargs(&args, "%s", f->sources[j]);
+		}
+	} else {
+		if (f->sink[0] == '\0')
+			addargs(&args, ".");
+		else
+			addargs(&args, "%s", f->sink);
+	}
 
 	return args.list;
 }
