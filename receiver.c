@@ -111,7 +111,7 @@ rsync_set_metadata(struct sess *sess, int newfile,
 	 * means that we're mapping into an unknown (or disallowed)
 	 * group identifier.
 	 */
-	if ((sess->opts->supermode == SMODE_ON || getuid() == 0) &&
+	if ((sess->opts->supermode == SMODE_ON || geteuid() == 0) &&
 	    sess->opts->preserve_uids && sess->opts->supermode != SMODE_OFF)
 		uid = f->st.uid;
 	if (sess->opts->preserve_gids)
@@ -124,7 +124,7 @@ rsync_set_metadata(struct sess *sess, int newfile,
 				ERR("%s: fchown", path);
 				return 0;
 			}
-			if (getuid() == 0)
+			if (geteuid() == 0)
 				WARNX("%s: identity unknown or not available "
 				    "to user.group: %u.%u", f->path, uid, gid);
 		} else
@@ -195,7 +195,7 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	 * means that we're mapping into an unknown (or disallowed)
 	 * group identifier.
 	 */
-	if ((sess->opts->supermode == SMODE_ON || getuid() == 0) &&
+	if ((sess->opts->supermode == SMODE_ON || geteuid() == 0) &&
 	    sess->opts->preserve_uids && sess->opts->supermode != SMODE_OFF)
 		uid = f->st.uid;
 	if (sess->opts->preserve_gids)
@@ -208,7 +208,7 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 				ERR("%s: fchownat", path);
 				return 0;
 			}
-			if (getuid() == 0)
+			if (geteuid() == 0)
 				WARNX("%s: identity unknown or not available "
 				    "to user.group: %u.%u", f->path, uid, gid);
 		} else

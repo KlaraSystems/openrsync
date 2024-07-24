@@ -732,14 +732,14 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 	mode_t mode;
 
 	if (!sess->opts->preserve_uids) {
-		puid = getuid();
+		puid = geteuid();
 
 		if (puid != ost->st_uid && puid == 0)
 			uid = ost->st_uid;
 	}
 
 	if (!sess->opts->preserve_gids) {
-		pgid = getgid();
+		pgid = getegid();
 
 		if (pgid != ost->st_gid)
 			gid = ost->st_gid;
@@ -756,7 +756,7 @@ download_fix_metadata(const struct sess *sess, const char *fname, int fd,
 				ERR("%s: fchown", fname);
 				return 0;
 			}
-			if (getuid() == 0)
+			if (geteuid() == 0)
 				WARNX("%s: identity unknown or not available "
 				    "to user.group: %u.%u", fname, uid, gid);
 		}
