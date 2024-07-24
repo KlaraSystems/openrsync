@@ -23,6 +23,7 @@
 #include <sys/time.h>
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <poll.h>
@@ -49,6 +50,8 @@ struct	success_ctx {
 struct	send_dl {
 	int32_t			 idx; /* index in our file list */
 	struct blkset		*blks; /* the sender's block information */
+	size_t			 blkidx; /* last block index read */
+	enum send_dl_state	 dlstate; /* current blk recv state */
 	TAILQ_ENTRY(send_dl)	 entries;
 };
 
@@ -749,12 +752,14 @@ send_iflags(struct sess *sess, void **wb, size_t *wbsz, size_t *wbmax,
  * This frees up the read channel for further incoming requests.
  * We'll handle each element in turn, up to and including the last
  * request (phase change), which is always a -1 idx.
- * Returns zero on failure, non-zero on success.
+ * Returns zero on failure, non-zero on success.  If the received element was
+ * not the phase change element, then we will return it in *mdl (NULL for phase
+ * change) so that the sender may start working on the metadata.
  */
 static int
 send_dl_enqueue(struct sess *sess, struct send_dlq *q,
     void **wb, size_t *wbsz, size_t *wbmax,
-    int32_t idx, struct flist *fl, size_t flsz, int fd)
+    int32_t idx, struct flist *fl, size_t flsz, int fd, struct send_dl **mdl)
 {
 	struct send_dl	*s;
 
@@ -766,7 +771,9 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 		}
 		s->idx = -1;
 		s->blks = NULL;
+		s->dlstate = SDL_DONE;
 		TAILQ_INSERT_TAIL(q, s, entries);
+		*mdl = NULL;
 		return 1;
 	} else if (idx < 0 || (uint32_t)idx >= flsz) {
 		ERRX("file index out of bounds: invalid %d out of %zu",
@@ -805,21 +812,21 @@ send_dl_enqueue(struct sess *sess, struct send_dlq *q,
 	}
 	s->idx = idx;
 	s->blks = NULL;
-	TAILQ_INSERT_TAIL(q, s, entries);
 
 	/*
-	 * This blocks til the full blockset has been read.
-	 * That's ok, because the most important thing is getting data
-	 * off the wire.
+	 * If we're not doing a dry-run then we need to go through the blk_recv
+	 * machinery, but dry-runs have nothing left to read for this file; we
+	 * can just push it directly into the queue and move on.
 	 */
-
 	if (sess->opts->dry_run != DRY_FULL) {
-		s->blks = blk_recv(sess, fd, fl[idx].path);
-		if (s->blks == NULL) {
-			ERRX1("blk_recv");
-			return 0;
-		}
+		s->dlstate = SDL_META;
+		*mdl = s;
+	} else {
+		s->dlstate = SDL_DONE;
+		TAILQ_INSERT_TAIL(q, s, entries);
+		*mdl = NULL;
 	}
+
 	return 1;
 }
 
@@ -880,6 +887,7 @@ int
 rsync_sender(struct sess *sess, int fdin,
 	int fdout, size_t argc, char **argv)
 {
+	struct iobuf	    rbuf = { 0 };
 	struct role	    sender;
 	struct success_ctx  sctx;
 	struct fl	    fl;
@@ -889,7 +897,7 @@ rsync_sender(struct sess *sess, int fdin,
 	int32_t		    idx;
 	struct pollfd	    pfd[3];
 	struct send_dlq	    sdlq;
-	struct send_dl	   *dl;
+	struct send_dl	   *dl, *mdl = NULL;
 	struct send_up	    up;
 	struct stat	    st;
 	void		   *wbuf = NULL;
@@ -1019,6 +1027,12 @@ rsync_sender(struct sess *sess, int fdin,
 		}
 	}
 
+	/* Use rbuf from this point forward. */
+	if (!iobuf_alloc(sess, &rbuf, sizeof(int32_t) * 5)) {
+		ERRX1("iobuf_alloc");
+		goto out;
+	}
+
 	/*
 	 * Set up our poll events.
 	 * We start by polling only in receiver requests, enabling other
@@ -1033,9 +1047,13 @@ rsync_sender(struct sess *sess, int fdin,
 	pfd[2].events = POLLIN;
 
 	for (;;) {
-		pfd[0].fd = (pfd[1].fd >= 0 && wbufsz > 0) ? -1 : fdin;
+#define	READ_AVAIL(pfd, iobuf) \
+	(((pfd)[0].revents & POLLIN) != 0 || iobuf_get_readsz((iobuf)) != 0)
+		assert(pfd[0].fd != -1);
 
 		if ((c = poll(pfd, 3, poll_timeout)) == -1) {
+			if (errno == EINTR)
+				continue;
 			ERR("poll");
 			goto out;
 		} else if (c == 0) {
@@ -1074,6 +1092,21 @@ rsync_sender(struct sess *sess, int fdin,
 			}
 		}
 
+		if (READ_AVAIL(pfd, &rbuf) && mdl != NULL) {
+			mdl->blks = blk_recv(sess, fdin, &rbuf,
+			    fl.flp[mdl->idx].path, mdl->blks, &mdl->blkidx,
+			    &mdl->dlstate);
+			if (mdl->dlstate != SDL_META && mdl->blks == NULL) {
+				ERRX1("blk_recv");
+				return 0;
+			}
+			if (mdl->dlstate == SDL_DONE) {
+				TAILQ_INSERT_TAIL(&sdlq, mdl, entries);
+				mdl = NULL;
+			}
+			pfd[0].revents &= ~POLLIN;
+		}
+
 		/*
 		 * Now that we've handled the log messages, we're left
 		 * here if we have any actual data coming down.
@@ -1081,11 +1114,17 @@ rsync_sender(struct sess *sess, int fdin,
 		 * more data (read priority).
 		 */
 
-		if (pfd[0].revents & POLLIN && !shutdown) {
-			if (!io_read_int(sess, fdin, &idx)) {
-				ERRX1("io_read_int");
+		if (READ_AVAIL(pfd, &rbuf) && mdl == NULL && !shutdown) {
+			if (iobuf_get_readsz(&rbuf) < sizeof(int32_t) &&
+			    !iobuf_fill(sess, &rbuf, fdin)) {
+				ERRX1("iobuf_fill");
 				goto out;
 			}
+
+			if (iobuf_get_readsz(&rbuf) < sizeof(int32_t))
+				continue;
+
+			iobuf_read_int(&rbuf, &idx);
 
 			/*
 			 * Start to spin down; most notably, we need to avoid
@@ -1111,12 +1150,17 @@ rsync_sender(struct sess *sess, int fdin,
 				 */
 				metadata_phase++;
 			}
+			assert(mdl == NULL);
 			if (!send_dl_enqueue(sess,
 			    &sdlq, &wbuf, &wbufsz, &wbufmax,
-			    idx, fl.flp, fl.sz, fdin)) {
+			    idx, fl.flp, fl.sz, fdin, &mdl)) {
 				ERRX1("send_dl_enqueue");
 				goto out;
 			}
+
+			if (idx == -1)
+				assert(mdl == NULL);
+
 			c = io_read_check(sess, fdin);
 			if (c < 0) {
 				ERRX1("io_read_check");
@@ -1278,6 +1322,7 @@ rsync_sender(struct sess *sess, int fdin,
 
 			if ((up.cur = TAILQ_FIRST(&sdlq)) == NULL)
 				continue;
+			assert(up.cur->dlstate == SDL_DONE);
 			TAILQ_REMOVE(&sdlq, up.cur, entries);
 
 			/* Hash our blocks. */
