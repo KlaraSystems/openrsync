@@ -151,14 +151,14 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 			addargs(&args, "-%d", sess->opts->ipf);
 
 		addargs(&args, "%s", f->host);
-		addargs(&args, "%s", rsync_path);
+		fargs_cmdline_prog(&args, rsync_path);
 		if (skip)
 			*skip = args.num;
 		addargs(&args, "--server");
 		if (f->mode == FARGS_RECEIVER)
 			addargs(&args, "--sender");
 	} else {
-		addargs(&args, "%s", rsync_path);
+		fargs_cmdline_prog(&args, rsync_path);
 		addargs(&args, "--server");
 	}
 
