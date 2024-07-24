@@ -337,7 +337,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	struct role	 receiver;
 	struct flist	*fl = NULL, *dfl = NULL;
 	size_t		 i, flsz = 0, dflsz = 0, length, flist_bytes = 0;
-	char		*tofree;
+	char		*derived_root = NULL, *tofree;
 	int		 rc = 0, dfd = -1, tfd = -1, phase = 0, c;
 	int32_t		 ioerror;
 	struct stat	 st;
@@ -483,6 +483,19 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	 * this directory in post_dir().
 	 */
 	if (!sess->opts->dry_run) {
+		bool implied_dir = false;
+
+		if (flsz > 1)
+			implied_dir = true;
+		else if (sess->opts->relative && strchr(fl[0].path, '/') != NULL)
+			implied_dir = true;
+		else if (root[strlen(root) - 1] == '/')
+			implied_dir = true;
+		else if (sess->opts->filesfrom != NULL)
+			implied_dir = true;
+		else if (S_ISDIR(fl[0].st.mode))
+			implied_dir = true;
+
 		/*
 		 * If we're only transferring a single non-directory, then the
 		 * root is actually cwd and the destination specified in args is
@@ -491,14 +504,9 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		 * The receiver doesn't do this if the destination has a
 		 * trailing slash to indicate that it's actually a directory.
 		 */
-		if (root_missing && flsz == 1 && !S_ISDIR(fl[0].st.mode) &&
-		    root[strlen(root) - 1] != '/' &&
-		    (!sess->opts->relative || strchr(fl[0].path, '/') == NULL)) {
+		if (!implied_dir && (root_missing || !S_ISDIR(st.st_mode))) {
 			char *rpath;
 			const char *wpath;
-
-			free(fl[0].path);
-			fl[0].path = rpath = strdup(root);
 
 			/*
 			 * If we're not in relative mode, we strip the leading
@@ -506,14 +514,42 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 			 * we're not hitting this path unless it's in the
 			 * current directory.
 			 */
-			wpath = strrchr(rpath, '/');
-			if (wpath != NULL)
+			wpath = strrchr(root, '/');
+			if (wpath != NULL) {
 				wpath++;
-			else
-				wpath = rpath;
-			fl[0].wpath = wpath;
 
-			root = ".";
+				derived_root = strndup(root, wpath - root);
+				if (derived_root == NULL) {
+					ERR("strdup");
+					rc = 1;
+					goto out;
+				}
+
+				rpath = strdup(wpath);
+				if (rpath == NULL) {
+					ERR("strdup");
+					free(derived_root);
+					rc = 1;
+					goto out;
+				}
+
+				wpath = rpath;
+				root = derived_root;
+			} else {
+				/* Current directory, just copy. */
+				wpath = rpath = strdup(root);
+				if (rpath == NULL) {
+					ERR("strdup");
+					rc = 1;
+					goto out;
+				}
+
+				root = ".";
+			}
+
+			free(fl[0].path);
+			fl[0].path = rpath;
+			fl[0].wpath = wpath;
 		} else {
 			if ((tofree = strdup(root)) == NULL)
 				err(ERR_NOMEM, NULL);
@@ -819,6 +855,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	LOG2("receiver finished updating");
 	rc = 1;
 out:
+	free(derived_root);
 	delayed_renames(sess);
 	free(sess->dlrename);
 	sess->dlrename = NULL;
