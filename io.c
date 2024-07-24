@@ -25,6 +25,7 @@
 #include COMPAT_ENDIAN_H
 #include <errno.h>
 #include <poll.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -304,7 +305,7 @@ io_write_line(struct sess *sess, int fd, const char *line)
  * Returns zero on failure, non-zero on success (zero or more bytes).
  */
 static int
-io_read_nonblocking(int fd, void *buf, size_t bsz, size_t *sz)
+io_read_nonblocking(int fd, void *buf, size_t bsz, size_t *sz, bool eof_ok)
 {
 	struct pollfd	pfd;
 	ssize_t		rsz;
@@ -339,7 +340,7 @@ io_read_nonblocking(int fd, void *buf, size_t bsz, size_t *sz)
 	if ((rsz = read(fd, buf, bsz)) == -1) {
 		ERR("read");
 		return 0;
-	} else if (rsz == 0) {
+	} else if (rsz == 0 && !eof_ok) {
 		ERRX("unexpected end of file");
 		return 0;
 	}
@@ -361,7 +362,7 @@ io_read_blocking(int fd, void *buf, size_t sz)
 	int	 c;
 
 	while (sz > 0) {
-		c = io_read_nonblocking(fd, buf, sz, &rsz);
+		c = io_read_nonblocking(fd, buf, sz, &rsz, false);
 		if (!c) {
 			ERRX1("io_read_nonblocking");
 			return 0;
@@ -554,7 +555,6 @@ io_read_buf(struct sess *sess, int fd, void *buf, size_t sz)
 	int	 c;
 
 	/* If we're not multiplexing, read directly. */
-
 	if (!sess->mplex_reads) {
 		assert(sess->mplex_read_remain == 0);
 		c = io_read_blocking(fd, buf, sz);
@@ -1146,4 +1146,217 @@ io_write_vstring(struct sess *sess, int fd, char *str, size_t sz)
 		return 0;
 	}
 	return 1;
+}
+
+/*
+ * Re-pack the buffer such that the valid portion is at the beginning, leaving
+ * us with more room at the tail.  We'll do this for each allocation, as well as
+ * when we attempt to fill the buffer.
+ *
+ * For allocation, we'll likely do few allocations so it's not a big deal to add
+ * this kind of overhead.  We could see quite a few buffer fills, but odds are
+ * we won't be seeing a lot of fill/read interlaced unless we have enough
+ * contiguous data to make it worth our while to repack (e.g., when we're
+ * reading block metadata; we'd repack after each set of blocks and potentially
+ * pay the penalty of this memory copy, but at the same time we'll be able to
+ * read(2) more in the next go-around).
+ */
+static void
+iobuf_repack(struct iobuf *buf)
+{
+
+	if (buf->offset == 0)
+		return;
+
+	if (buf->resid != 0) {
+		memmove(&buf->buffer[0], &buf->buffer[buf->offset],
+		    buf->resid);
+	}
+
+	buf->offset = 0;
+}
+
+static int
+iobuf_alloc_common(struct sess *sess, struct iobuf *buf, size_t sz, bool framed)
+{
+	void	*pp;
+	size_t	 room;
+
+	if (framed)
+		sz += sizeof(int32_t);	/* Multiplexing tag */
+
+	iobuf_repack(buf);
+	room = buf->size - buf->resid;
+	if (sz > room) {
+		pp = realloc(buf->buffer, buf->size + (sz - room));
+		if (pp == NULL) {
+			ERR("realloc");
+			return 0;
+		}
+		buf->buffer = pp;
+		buf->size += sz - room;
+	}
+
+	return 1;
+}
+
+int
+iobuf_alloc(struct sess *sess, struct iobuf *buf, size_t rsz)
+{
+
+	return iobuf_alloc_common(sess, buf, rsz, false);
+}
+
+size_t
+iobuf_get_readsz(const struct iobuf *buf)
+{
+
+	return buf->resid;
+}
+
+/*
+ * Fill up an iobuf with as much data as is currently available.
+ */
+int
+iobuf_fill(struct sess *sess, struct iobuf *buf, int fd)
+{
+	size_t pos, read, remain;
+	int check, ret;
+	bool read_any;
+
+	assert(buf->size != 0);
+	iobuf_repack(buf);
+
+	read_any = false;
+	check = 0;
+	ret = 1;
+	while ((check = io_read_check(sess, fd)) > 0) {
+		/*
+		 * Flush any log messages first, we may not actually have any
+		 * data to read.
+		 */
+		if (sess->mplex_reads && sess->mplex_read_remain == 0) {
+			if (!io_read_flush(sess, fd)) {
+				ERRX1("io_read_flush");
+				return 0;
+			}
+
+			continue;
+		}
+
+		/*
+		 * Read into the end of the currently valid portion of the
+		 * buffer.
+		 */
+		pos = buf->offset + buf->resid;
+		remain = buf->size - pos;
+		if (remain == 0)
+			break;
+
+		/*
+		 * If we're multiplexing, we need to be careful not to overread
+		 * and accidentally slurp up the next tag.
+		 */
+		if (sess->mplex_reads && remain > sess->mplex_read_remain)
+			remain = sess->mplex_read_remain;
+
+		ret = io_read_nonblocking(fd, &buf->buffer[pos], remain, &read,
+		    true);
+		if (!ret) {
+			ERRX1("io_read_nonblocking");
+			break;
+		} else if (read == 0) {
+			/*
+			 * EOF is only fatal for us if we weren't able to pull
+			 * any data at all; clearly the caller was expecting
+			 * something.  If it wasn't enough, they'll come back
+			 * and get an error.
+			 */
+			if (!read_any) {
+				ERRX1("unexpected eof");
+				ret = 0;
+			}
+			break;
+		}
+
+		read_any = true;
+		buf->resid += read;
+
+		/*
+		 * Update our session accounting; we may not have read all of
+		 * the data buffer that was available, in which case we'll
+		 * likely return.
+		 */
+		sess->total_read += read;
+		if (sess->mplex_read_remain != 0) {
+			assert(read <= sess->mplex_read_remain);
+			sess->mplex_read_remain -= read;
+		}
+
+		if (read == remain)
+			break;
+	}
+
+	if (check < 0)
+		ret = 0;
+	return ret;
+}
+
+/*
+ * Copies "valsz" from "buf".
+ * Calls assert() if the source doesn't have enough data.
+ */
+void
+iobuf_read_buf(struct iobuf *buf, void *val, size_t valsz)
+{
+
+	assert(valsz <= buf->resid);
+	memcpy(val, &buf->buffer[buf->offset], valsz);
+	buf->resid -= valsz;
+
+	/*
+	 * We can just reset our offset to 0 to start over if we hit the end of
+	 * the valid portion, otherwise we'll move along.  This just saves us
+	 * a tiny bit of time determining if we need to repack the buffer.
+	 */
+	if (buf->resid == 0)
+		buf->offset = 0;
+	else
+		buf->offset += valsz;
+}
+
+/*
+ * Calls iobuf_read_buf() and converts.
+ */
+void
+iobuf_read_int(struct iobuf *buf, int32_t *val)
+{
+	int32_t	oval;
+
+	iobuf_read_buf(buf, &oval, sizeof(int32_t));
+	*val = le32toh(oval);
+}
+
+/*
+ * Calls iobuf_read_buf() and converts.
+ */
+int
+iobuf_read_size(struct iobuf *buf, size_t *val)
+{
+	int32_t	oval;
+
+	iobuf_read_int(buf, &oval);
+	if (oval < 0) {
+		ERRX("%s: negative value", __func__);
+		return 0;
+	}
+	*val = oval;
+	return 1;
+}
+
+void
+iobuf_free(struct iobuf *buf)
+{
+
+	free(buf->buffer);
 }

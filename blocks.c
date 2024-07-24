@@ -24,6 +24,7 @@
 #include COMPAT_ENDIAN_H
 #include <errno.h>
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -368,50 +369,94 @@ blk_recv_ack(char buf[16], const struct blkset *blocks, int32_t idx)
 /*
  * Read all of the checksums for a file's blocks.
  * Returns the set of blocks or NULL on failure.
+ * blk_recv() is designed to be re-entrant, so that we can collect everything
+ * over a number of calls rather than blocking if we don't have everything
+ * available just yet.
  */
 struct blkset *
-blk_recv(struct sess *sess, int fd, const char *path)
+blk_recv(struct sess *sess, int fd, struct iobuf *buf, const char *path,
+    struct blkset *s, size_t *blkidx, enum send_dl_state *state)
 {
-	struct blkset	*s;
 	int32_t		 i;
 	size_t		 j;
 	struct blk	*b;
 	off_t		 offs = 0;
+	bool		 first = false, meta = (*state == SDL_META);
 
-	if ((s = calloc(1, sizeof(struct blkset))) == NULL) {
+	assert(meta || s != NULL);
+	assert(*state == SDL_META || *state == SDL_BLOCKS);
+	first = (s == NULL);
+
+	if (first && (s = calloc(1, sizeof(struct blkset))) == NULL) {
 		ERR("calloc");
 		return NULL;
 	}
 
 	/*
-	 * The block prologue consists of a few values that we'll need
-	 * in reading the individual blocks for this file.
-	 * FIXME: read into buffer and unbuffer.
+	 * We'll make sure we have enough to read the metadata in the meta
+	 * phase, and somewhere around ~64 blocks after that.  Each block is
+	 * a 4-byte fast checksum and somewhere between 2 and 16 byte slow (MD4)
+	 * checksum, so we're not necessarily allocating massive buffers for
+	 * this...
+	 *
+	 * For !meta, we only enlarge the buffer on the first read.
 	 */
+	if (first) {
+		size_t bufsz;
 
-	if (!io_read_size(sess, fd, &s->blksz)) {
-		ERRX1("io_read_size");
-		goto out;
-	} else if (!io_read_size(sess, fd, &s->len)) {
-		ERRX1("io_read_size");
-		goto out;
-	} else if (!io_read_size(sess, fd, &s->csum)) {
-		ERRX1("io_read_int");
-		goto out;
-	} else if (!io_read_size(sess, fd, &s->rem)) {
-		ERRX1("io_read_int");
-		goto out;
-	} else if (s->rem && s->rem >= s->len) {
-		ERRX("block remainder is "
-			"greater than block size");
+		bufsz = 64 * (sizeof(int32_t) + 16);
+
+		if (!iobuf_alloc(sess, buf, bufsz)) {
+			ERRX1("iobuf_alloc");
+			goto out;
+		}
+	}
+
+	/*
+	 * Read what we can from the buffer, each part below will check if they
+	 * have enough to make progress.
+	 */
+	if (!iobuf_fill(sess, buf, fd)) {
+		ERRX1("iobuf_fill");
 		goto out;
 	}
 
-	LOG3("%s: read block prologue: %zu blocks of "
-	    "%zu B, %zu B remainder, %zu B checksum", path,
-	    s->blksz, s->len, s->rem, s->csum);
+	/*
+	 * The block prologue consists of a few values that we'll need
+	 * in reading the individual blocks for this file.
+	 */
+	if (meta) {
+		if (iobuf_get_readsz(buf) < (4 * sizeof(int32_t)))
+			return s;
 
-	if (s->blksz) {
+		if (!iobuf_read_size(buf, &s->blksz)) {
+			ERRX1("iobuf_read_size");
+			goto out;
+		} else if (!iobuf_read_size(buf, &s->len)) {
+			ERRX1("iobuf_read_size");
+			goto out;
+		} else if (!iobuf_read_size(buf, &s->csum)) {
+			ERRX1("iobuf_read_size");
+			goto out;
+		} else if (!iobuf_read_size(buf, &s->rem)) {
+			ERRX1("iobuf_read_size");
+			goto out;
+		} else if (s->rem && s->rem >= s->len) {
+			ERRX("block remainder %zu is "
+				"greater than block size %zu", s->rem, s->len);
+			goto out;
+		}
+
+		LOG3("%s: read block prologue: %zu blocks of "
+		    "%zu B, %zu B remainder, %zu B checksum", path,
+		    s->blksz, s->len, s->rem, s->csum);
+
+		*state = SDL_BLOCKS;
+		*blkidx = 0;
+	}
+
+	assert(*state == SDL_BLOCKS);
+	if (s->blksz && s->blks == NULL) {
 		if (*sess->role->phase == 0 && sess->role->append) {
 			if (s->rem > 0)
 				offs = (s->blksz - 1) * s->len + s->rem;
@@ -425,27 +470,24 @@ blk_recv(struct sess *sess, int fd, const char *path)
 			ERR("calloc");
 			goto out;
 		}
+	} else if (*blkidx != 0) {
+		offs = *blkidx * s->len;
 	}
 
 	/*
 	 * Read each block individually.
-	 * FIXME: read buffer and unbuffer.
 	 */
 
-	for (j = 0; j < s->blksz; j++) {
+	for (j = *blkidx; j < s->blksz; j++) {
+		if (iobuf_get_readsz(buf) < sizeof(int32_t) + s->csum)
+			break;
+
 		b = &s->blks[j];
-		if (!io_read_int(sess, fd, &i)) {
-			ERRX1("io_read_int");
-			goto out;
-		}
+		iobuf_read_int(buf, &i);
 		b->chksum_short = i;
 
 		assert(s->csum <= sizeof(b->chksum_long));
-		if (!io_read_buf(sess,
-		    fd, b->chksum_long, s->csum)) {
-			ERRX1("io_read_buf");
-			goto out;
-		}
+		iobuf_read_buf(buf, b->chksum_long, s->csum);
 
 		/*
 		 * If we're the last block, then we're assigned the
@@ -456,13 +498,23 @@ blk_recv(struct sess *sess, int fd, const char *path)
 		b->idx = j;
 		b->len = (j == (s->blksz - 1) && s->rem) ?
 			s->rem : s->len;
+		assert(b->len != 0);
 		offs += b->len;
 
 		LOG4("%s: read block %zu, length %zu B",
 		    path, b->idx, b->len);
 	}
 
+	/*
+	 * If we still haven't read the full set, just return without a state
+	 * transition.
+	 */
+	*blkidx = j;
+	if (j < s->blksz)
+		return s;
+
   skipmap:
+	*state = SDL_DONE;
 	s->size = offs;
 	LOG3("%s: read blocks: %zu blocks, %jd B total blocked data",
 	    path, s->blksz, (intmax_t)s->size);

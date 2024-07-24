@@ -216,6 +216,13 @@ enum	compat_loglvl {
 	LOGWARNING,
 };
 
+struct	iobuf {
+	uint8_t		*buffer;
+	size_t		 offset;
+	size_t		 resid;
+	size_t		 size;
+};
+
 enum	iotag {
 	IT_DATA = 0,
 
@@ -534,6 +541,12 @@ struct	blkset {
 	size_t		 blksz; /* number of blks */
 };
 
+enum	send_dl_state {
+	SDL_META = 0,
+	SDL_BLOCKS,
+	SDL_DONE,
+};
+
 /*
  * Context for the role (sender/receiver).  The role may embed this into their
  * own context struct.
@@ -776,15 +789,23 @@ void	io_lowbuffer_byte(struct sess *sess, void *buf, size_t *bufpos,
 void	io_lowbuffer_vstring(struct sess *sess, void *buf, size_t *bufpos,
 	    size_t buflen, char *str, size_t sz);
 
-void	io_buffer_int(void *, size_t *, size_t, int32_t);
-void	io_buffer_short(void *, size_t *, size_t, int32_t);
 void	io_buffer_buf(void *, size_t *, size_t, const void *, size_t);
 void	io_buffer_byte(void *, size_t *, size_t, int8_t);
+void	io_buffer_int(void *, size_t *, size_t, int32_t);
+void	io_buffer_short(void *, size_t *, size_t, int32_t);
 void	io_buffer_vstring(void *, size_t *, size_t, char *, size_t);
 
 void	io_unbuffer_int(const void *, size_t *, size_t, int32_t *);
 int	io_unbuffer_size(const void *, size_t *, size_t, size_t *);
 void	io_unbuffer_buf(const void *, size_t *, size_t, void *, size_t);
+
+int	iobuf_alloc(struct sess *, struct iobuf *, size_t);
+size_t	iobuf_get_readsz(const struct iobuf *);
+int	iobuf_fill(struct sess *, struct iobuf *, int);
+void	iobuf_read_buf(struct iobuf *, void *, size_t);
+void	iobuf_read_int(struct iobuf *, int32_t *);
+int	iobuf_read_size(struct iobuf *, size_t *);
+void	iobuf_free(struct iobuf *);
 
 /* accept(2) callback */
 struct sockaddr_storage;
@@ -850,7 +871,8 @@ struct blktab	*blkhash_alloc(void);
 int		 blkhash_set(struct blktab *, const struct blkset *);
 void		 blkhash_free(struct blktab *);
 
-struct blkset	*blk_recv(struct sess *, int, const char *);
+struct blkset	*blk_recv(struct sess *, int, struct iobuf *, const char *,
+		    struct blkset *, size_t *, enum send_dl_state *);
 void		 blk_recv_ack(char [16], const struct blkset *, int32_t);
 void		 blk_match(struct sess *, const struct blkset *,
 		    const char *, struct blkstat *);
