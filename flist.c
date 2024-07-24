@@ -898,29 +898,38 @@ flist_chmod(const struct sess *sess, struct flist *ff)
 static int
 flist_append_dirs(const char *path, struct fl *fl)
 {
-	char *begin;
 	char *wbegin;
 	char *pos;
 	struct stat st;
 	struct flist *f;
 
-	if ((begin = strdup(path)) == NULL) {
-		ERR("strdup");
-		return 0;
-	}
-	wbegin = begin;
+	wbegin = path;
 	while (wbegin[0] == '/')
 		wbegin++;
 	if ((pos = strrchr(wbegin, '/')) != NULL) {
+		char *begin;
+
+		if ((begin = strdup(path)) == NULL) {
+			ERR("strdup");
+			goto out;
+		}
+
+		wbegin = begin + (wbegin - path);
+		pos = begin + (pos - path);
 		*pos = '\0';
+
 		if ((stat(begin, &st)) == -1) {
 			ERR("%s: stat", begin);
+			free(begin);
 			goto out;
 		}
+
 		if ((f = fl_new(fl)) == NULL) {
 			ERRX1("flist_realloc");
+			free(begin);
 			goto out;
 		}
+
 		memset(f, 0, sizeof(struct flist));
 		f->path = begin;
 		f->wpath = wbegin;
@@ -932,12 +941,10 @@ flist_append_dirs(const char *path, struct fl *fl)
 			}
 		}
 	}
-	/* Do not free() begin */
-	return 1;
 
+	return 1;
+out:
 	/* Error */
-	out:
-	free(begin);
 	return 0;
 }
 
