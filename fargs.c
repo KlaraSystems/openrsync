@@ -22,6 +22,7 @@
 #if HAVE_ERR
 # include <err.h>
 #endif
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,13 +52,20 @@ alt_base_mode(int mode)
 static void
 fargs_cmdline_prog(arglist *argsp, const char *prog)
 {
-	const char *arg, *walker;
-	char quotec;
+	const char *arg, *end;
+	char *mprog, *walker;
+	char lastquote, quotec;
 
-	quotec = '\0';
-	for (walker = arg = prog; *walker != '\0'; walker++) {
+	mprog = strdup(prog);
+	if (mprog == NULL)
+		err(ERR_IPC, "strdup");
+
+	end = &mprog[strlen(mprog) + 1];
+	quotec = lastquote = '\0';
+	for (arg = walker = mprog; *walker != '\0'; walker++) {
 		/* Add what we have so far once we hit whitespace. */
 		if (isspace(*walker)) {
+			lastquote = '\0';
 			addargs(argsp, "%.*s", (int)(walker - arg), arg);
 
 			/* Skip entire sequence of whitespace. */
@@ -67,7 +75,22 @@ fargs_cmdline_prog(arglist *argsp, const char *prog)
 			arg = walker + 1;
 			continue;
 		} else if (*walker == '"' || *walker == '\'') {
+			char *search = walker + 1;
+
 			quotec = *walker;
+
+			/*
+			 * Compatible with the reference rsync, but not with
+			 * traditional shell style: we don't strip off the
+			 * the beginning quote of the second quoted part of a
+			 * single arg.
+			 */
+			if (arg == walker || quotec != lastquote) {
+				memmove(walker, walker + 1, end - (walker + 1));
+				search = walker;
+				end--;
+			}
+
 
 			/*
 			 * Skip to the closing quote; smb rsync doesn't seem to
@@ -75,22 +98,38 @@ fargs_cmdline_prog(arglist *argsp, const char *prog)
 			 * find a closing quote, we'll bail out and report the
 			 * error.
 			 */
-			walker = strchr(walker + 1, quotec);
+			walker = strchr(search, quotec);
 			if (walker == NULL)
 				break;
 
+			/*
+			 * We'll move the remainder of the string over and
+			 * strip off the quote character, then take a step
+			 * backward and let us process whichever quote just
+			 * replaced our terminal quote.
+			 */
+			memmove(walker, walker + 1, end - (walker + 1));
+			assert(walker > arg);
+			end--;
+			walker--;
+
+			lastquote = quotec;
 			quotec = '\0';
+
 			continue;
 		}
 	}
 
 	if (quotec != '\0') {
+		free(mprog);
 		errx(ERR_SYNTAX,
 		    "Missing terminating `%c` in specified remote-shell command",
 		    quotec);
 	} else if (walker > arg) {
 		addargs(argsp, "%.*s", (int)(walker - arg), arg);
 	}
+
+	free(mprog);
 }
 
 static int
