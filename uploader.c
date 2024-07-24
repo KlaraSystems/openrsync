@@ -967,44 +967,8 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
 		return 0;
 	}
 
-	/*
-	 * Update the modification time if we're a new directory *or* if
-	 * we're preserving times and the time has changed.
-	 * FIXME: run rsync_set_metadata()?
-	 */
-
-	if (u->newdir[idx] ||
-	    (sess->opts->preserve_times &&
-	     (!S_ISDIR(f->st.mode) || !sess->opts->omit_dir_times) &&
-	     st.st_mtime != f->st.mtime)) {
-		tv[0].tv_sec = time(NULL);
-		tv[0].tv_nsec = 0;
-		tv[1].tv_sec = f->st.mtime;
-		tv[1].tv_nsec = 0;
-		rc = utimensat(u->rootfd, f->path, tv, 0);
-		if (rc == -1) {
-			ERR("%s: utimensat (1)", f->path);
-			return 0;
-		}
-		LOG4("%s: updated date", f->path);
-	}
-
-	/*
-	 * Update the mode if we're a new directory *or* if we're
-	 * preserving modes and it has changed.
-	 */
-
-	if (u->newdir[idx] ||
-	    (sess->opts->preserve_perms && st.st_mode != f->st.mode)) {
-		rc = fchmodat(u->rootfd, f->path, f->st.mode, 0);
-		if (rc == -1) {
-			ERR("%s: fchmodat (2)", f->path);
-			return 0;
-		}
-		LOG4("%s: updated mode", f->path);
-	}
-
-	return 1;
+	return rsync_set_metadata_at(sess, u->newdir[idx], u->rootfd, f,
+	    f->path);
 }
 
 /*
