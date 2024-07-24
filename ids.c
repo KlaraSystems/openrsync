@@ -16,6 +16,7 @@
 #include "config.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <grp.h>
 #include <inttypes.h>
 #include <pwd.h>
@@ -174,20 +175,31 @@ idents_add(int isgid, struct ident **ids, size_t *idsz, int32_t id)
 	/*
 	 * Look up the reference in a type-specific way.
 	 * Make sure that the name length is sane: we transmit it using
-	 * a single byte.
+	 * a single byte.  Note that failing to resolve is not an issue, we
+	 * simply don't transmit a name and the other side cannot remap it.
 	 */
 
 	assert(i == *idsz);
 	if (isgid) {
+		errno = 0;
 		if ((grp = getgrgid((gid_t)id)) == NULL) {
-			ERR("%" PRIu32 ": unknown gid", id);
-			return 0;
+			if (errno != 0) {
+				ERR("%" PRIu32 ": unknown gid", id);
+				return 0;
+			}
+
+			return 1;
 		}
 		name = grp->gr_name;
 	} else {
+		errno = 0;
 		if ((usr = getpwuid((uid_t)id)) == NULL) {
-			ERR("%" PRIu32 ": unknown uid", id);
-			return 0;
+			if (errno != 0) {
+				ERR("%" PRIu32 ": unknown uid", id);
+				return 0;
+			}
+
+			return 1;
 		}
 		name = usr->pw_name;
 	}
