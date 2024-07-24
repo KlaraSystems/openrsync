@@ -1144,6 +1144,7 @@ flist_append(struct sess *sess, const struct stat *st,
 
 		link = symlink_read(f->path);
 		if (link == NULL) {
+			sess->total_errors++;
 			ERRX1("symlink_read");
 			return 0;
 		}
@@ -1159,6 +1160,7 @@ flist_append(struct sess *sess, const struct stat *st,
 			error = sess->symlink_filter(link, &f->link,
 			    FARGS_SENDER);
 			if (error != 0) {
+				sess->total_errors++;
 				ERRX1("symlink_filter");
 				return 0;
 			}
@@ -1177,6 +1179,7 @@ flist_append(struct sess *sess, const struct stat *st,
 
 		rc = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
 		if (rc) {
+			sess->total_errors++;
 			ERRX1("hash_file_by_path");
 			return 0;
 		}
@@ -1716,6 +1719,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	else
 		ret = lstat(root, &st);
 	if (ret == -1) {
+		sess->total_errors++;
 		ERR("%s: (l)stat", root);
 		return 0;
 	} else if (S_ISREG(st.st_mode)) {
@@ -1731,10 +1735,12 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		if (sess->opts->copy_dirlinks ||
 		    sess->opts->copy_unsafe_links) {
 			if (stat(root, &st2) == -1) {
+				sess->total_errors++;
 				ERR("%s: stat", root);
 				return 0;
 			}
 			if ((ret = (int)readlink(root, buf, sizeof(buf))) == -1) {
+				sess->total_errors++;
 				ERR("%s: readlink", root);
 				return 0;
 			}
@@ -1792,6 +1798,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	if ((fts = fts_open((char * const *)cargv,
 		    sess->opts->copy_links ? FTS_LOGICAL: FTS_PHYSICAL |
 		    FTS_NOCHDIR, NULL)) == NULL) {
+		sess->total_errors++;
 		ERR("fts_open");
 		return 0;
 	}
@@ -2007,6 +2014,7 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
 	const char	*dname;
 	size_t		 i, max = 0;
+	int			 errors = 0;
 
 	for (i = 0; i < argc; i++) {
 		dname = argv[i];
@@ -2014,18 +2022,12 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 			dname = ".";
 		rules_base(dname);
 		if (!flist_gen_dirent(sess, dname, fl, -1, dname))
-			break;
+			errors++;
 	}
 
-	if (i == argc) {
-		LOG2("recursively generated %zu filenames", fl->sz);
-		return 1;
-	}
+	LOG2("recursively generated %zu filenames", fl->sz);
 
-	ERRX1("flist_gen_dirent");
-	flist_free(fl->flp, max);
-	fl->flp = NULL;
-	return 0;
+	return errors ? 0 : 1;
 }
 
 /*
@@ -2062,6 +2064,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 			ret = lstat(fname, &st);
 
 		if (ret == -1) {
+			sess->total_errors++;
 			ERR("'%s': (l)stat", fname);
 			goto out;
 		}
@@ -2290,7 +2293,12 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 
 	/* After scanning, lock our file-system view. */
 
-	if (!rc)
+	/*
+	 * If our flist_gen_*() call failed and we didn't have any transfer
+	 * errors, then consider the situation fatal and bail out.  Otherwise,
+	 * we'll still proceed with what we have.
+	 */
+	if (!rc && sess->total_errors == 0)
 		return 0;
 
 	if (!platform_flist_modify(sess, fl))
@@ -2436,6 +2444,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 	 */
 
 	if ((fts = fts_open(cargv, FTS_PHYSICAL, NULL)) == NULL) {
+		sess->total_errors++;
 		ERR("fts_open");
 		goto out;
 	}
