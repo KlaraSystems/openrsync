@@ -1736,11 +1736,15 @@ out:
 static int
 flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
+	const char	*dname;
 	size_t		 i, max = 0;
 
 	for (i = 0; i < argc; i++) {
-		rules_base(argv[i]);
-		if (!flist_gen_dirent(sess, argv[i], fl, -1))
+		dname = argv[i];
+		if (dname[0] == '\0')
+			dname = ".";
+		rules_base(dname);
+		if (!flist_gen_dirent(sess, dname, fl, -1))
 			break;
 	}
 
@@ -1764,6 +1768,7 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 static int
 flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
+	const char	*fname;
 	size_t		 i;
 	struct stat	 st;
 	int              ret;
@@ -1779,15 +1784,16 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	fl->sz = 0;
 
 	for (i = 0; i < argc; i++) {
-		if (argv[i][0] == '\0')
-			continue;
+		fname = argv[i];
+		if (fname[0] == '\0')
+			fname = ".";
 		if (sess->opts->copy_links)
-			ret = stat(argv[i], &st);
-		else			
-			ret = lstat(argv[i], &st);
+			ret = stat(fname, &st);
+		else
+			ret = lstat(fname, &st);
 
 		if (ret == -1) {
-			ERR("'%s': (l)stat", argv[i]);
+			ERR("'%s': (l)stat", fname);
 			goto out;
 		}
 
@@ -1801,20 +1807,20 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 
 		if (S_ISDIR(st.st_mode)) {
 			if (!sess->opts->dirs) {
-				WARNX("%s: skipping directory", argv[i]);
+				WARNX("%s: skipping directory", fname);
 				continue;
 			}
 		}
 
 		/* filter files */
-		if (rules_match(argv[i], S_ISDIR(st.st_mode), FARGS_SENDER,
+		if (rules_match(fname, S_ISDIR(st.st_mode), FARGS_SENDER,
 		    0) == -1) {
-			WARNX("%s: skipping excluded file", argv[i]);
+			WARNX("%s: skipping excluded file", fname);
 			continue;
 		}
 
 		/* Add this file to our file-system worldview. */
-		if (!flist_append(sess, &st, argv[i], fl)) {
+		if (!flist_append(sess, &st, fname, fl)) {
 			ERRX1("flist_append");
 			goto out;
 		}
