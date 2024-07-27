@@ -1010,12 +1010,27 @@ flist_chmod(const struct sess *sess, struct flist *ff)
  * - unless --no-implied-dirs is given.
  */
 static int
-flist_append_dirs(const char *path, struct fl *fl)
+flist_append_dirs(struct sess *sess, const char *path, struct fl *fl)
 {
 	const char *wbegin;
 	char *pos;
 	struct stat st;
 	struct flist *f;
+
+	/*
+	 * In files-from mode, do not add any component of path
+	 * to the flist unless each and every component exists
+	 * and all but the last component is a directory.
+	 */
+	if (sess->opts->filesfrom) {
+		assert(path[0] != '/');
+
+		if ((stat(path, &st)) == -1) {
+			ERR("%s: stat", path);
+			sess->total_errors++;
+			goto out;
+		}
+	}
 
 	wbegin = path;
 	while (wbegin[0] == '/')
@@ -1034,6 +1049,7 @@ flist_append_dirs(const char *path, struct fl *fl)
 
 		if ((stat(begin, &st)) == -1) {
 			ERR("%s: stat", begin);
+			sess->total_errors++;
 			free(begin);
 			goto out;
 		}
@@ -1048,8 +1064,9 @@ flist_append_dirs(const char *path, struct fl *fl)
 		f->path = begin;
 		f->wpath = wbegin;
 		flist_copy_stat(f, &st);
+
 		if (strchr(wbegin, '/') != NULL) {
-			if (!flist_append_dirs(begin, fl)) {
+			if (!flist_append_dirs(sess, begin, fl)) {
 				ERRX1("flist_append_dirs");
 				goto out;
 			}
@@ -1109,8 +1126,7 @@ flist_append(struct sess *sess, const struct stat *st,
 		while (f->wpath[0] == '/')
 			f->wpath++;
 		if (!sess->opts->noimpdirs &&
-		    !flist_append_dirs(f->path, fl)) {
-			ERR("flist_append_dirs");
+		    !flist_append_dirs(sess, f->path, fl)) {
 			return 0;
 		}
 
@@ -1702,13 +1718,16 @@ flist_normalize_path(const char *root, char *rootbuf, size_t rootbufsz)
 	size_t rootlen;
 
 	rootlen = strlen(root);
-	/* Convert trailing '/.' -> '/' */
-	if (rootlen >= 2 && strcmp(&root[rootlen - 2], "/.") == 0)
+	/* Convert trailing '/./' -> '/.' */
+	if (rootlen >= 3 && strcmp(&root[rootlen - 3], "/./") == 0)
 		rootlen--;
 	if (rootlen >= rootbufsz)
 		return (0);
 
 	memcpy(rootbuf, root, rootlen);
+	/* Convert trailing '/' -> '/.' */
+	if (rootbuf[rootlen - 1] == '/')
+		rootbuf[rootlen++] = '.';
 	rootbuf[rootlen] = '\0';
 	return (1);
 }
@@ -1729,10 +1748,12 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	struct flist	*f;
 	size_t		 i, nxdev = 0;
 	ssize_t		 pstripdir = stripdir;
+	ssize_t		 stripdir_saved;
 	dev_t		*newxdev, *xdev = NULL;
 	struct stat	 st, st2;
 	int              ret;
 	char             buf[PATH_MAX], buf2[PATH_MAX], rootbuf[BIGPATH_MAX];
+	size_t		 rootbuflen;
 
 	/*
 	 * If we're a file, then revert to the same actions we use for
@@ -1744,9 +1765,12 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	else
 		ret = lstat(root, &st);
 	if (ret == -1) {
-		sess->total_errors++;
-		ERR("%s: (l)stat", root);
-		return 0;
+		if (!sess->opts->filesfrom) {
+			ERR("%s: (l)stat", root);
+			sess->total_errors++;
+			return 0;
+		}
+		return 1;
 	} else if (S_ISREG(st.st_mode)) {
 		return flist_gen_dirent_file(sess, "file", root, fl, &st, prefix);
 	} else if (S_ISLNK(st.st_mode)) {
@@ -1821,11 +1845,27 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		return 0;
 	}
 
-	cargv[0] = rootbuf;
-	cargv[1] = NULL;
-
 	if (stripdir == -1)
 		stripdir = flist_dirent_strip(sess, rootbuf);
+
+	/* The net effect of flist_normalize_path() is that it will copy
+	 * root[] to rootbuf[] and will append "." to rootbuf[] if it ends
+	 * with "/", thereby affecting the computation of stripdir made by
+	 * flist_dirent_strip().  That done, we can remove the trailing "."
+	 * so that "./" doesn't wind up in the middle of fts_path.
+	 */
+	rootbuflen = strlen(rootbuf);
+	if (rootbuflen >= 2) {
+		if (strncmp(rootbuf + rootbuflen - 2, "/.", 2) == 0) {
+			if ((size_t)stripdir >= rootbuflen && stripdir > 0)
+				stripdir--;
+			rootbuflen--;
+			rootbuf[rootbuflen] = '\0';
+		}
+	}
+
+	cargv[0] = rootbuf;
+	cargv[1] = NULL;
 
 	/*
 	 * If we're recursive, then we need to take down all of the
@@ -1842,14 +1882,30 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		return 0;
 	}
 
+	stripdir_saved = stripdir;
 	errno = 0;
+
 	while ((ent = fts_read(fts)) != NULL) {
+		size_t fts_pathlen = ent->fts_pathlen;
+		char *fts_path = ent->fts_path;
+
+		stripdir = stripdir_saved;
+
+		if (fts_pathlen > 2) {
+			if (strncmp(fts_path, "./", 2) == 0) {
+				fts_pathlen -= 2;
+				fts_path += 2;
+				if (stripdir >= 2)
+					stripdir -= 2;
+			}
+		}
+
 		if (ent->fts_info == FTS_D && ent->fts_level > 0 &&
 		    !sess->opts->recursive)
 			fts_set(fts, ent, FTS_SKIP);
 
 		if (ent->fts_info == FTS_DP)
-			rules_dir_pop(ent->fts_path, stripdir);
+			rules_dir_pop(fts_path, stripdir);
 
 		if (!flist_fts_check(sess, ent, FARGS_SENDER)) {
 			errno = 0;
@@ -1857,7 +1913,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		}
 
 		if (ent->fts_info == FTS_D)
-			rules_dir_push(ent->fts_path, stripdir,
+			rules_dir_push(fts_path, stripdir,
 			    sess->opts->from0 ? 0 : '\n');
 
 		/* We don't allow symlinks without -l. */
@@ -1883,7 +1939,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			    (sess->opts->copy_unsafe_links &&
 			    is_unsafe_link(buf, rootbuf, prefix))) {
 				if (S_ISDIR(st2.st_mode)) {
-					ret = flist_gen_dirent(sess, ent->fts_path,
+					ret = flist_gen_dirent(sess, fts_path,
 					    fl, stripdir, prefix);
 					if (!ret)
 						sess->total_errors++;
@@ -1931,20 +1987,21 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		}
 
 		/* This is for macOS fts, which returns "foo//bar" */
-		if (ent->fts_path[stripdir] == '/') {
+		if (fts_path[stripdir] == '/') {
 			stripdir++;
 		}
+
 		/* filter files */
-		if (rules_match(ent->fts_path + stripdir,
+		if (rules_match(fts_path + stripdir,
 		    (ent->fts_info == FTS_D), FARGS_SENDER, 0) == -1) {
-			WARNX("%s: skipping excluded file",
-			    ent->fts_path + stripdir);
+			LOG2("hiding file %s because of pattern",
+			    fts_path + stripdir);
 			fts_set(fts, ent, FTS_SKIP);
 			continue;
 		}
 
 		if (sess->opts->ignore_nonreadable && !S_ISLNK(ent->fts_statp->st_mode)) {
-			if (access(ent->fts_path, R_OK) != 0) {
+			if (access(fts_path, R_OK) != 0) {
 				continue;
 			}
 		}
@@ -1958,52 +2015,58 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 
 		/* Our path defaults to "." for the root. */
 
-		if (ent->fts_path[stripdir] == '\0') {
-			if (asprintf(&f->path, "%s.", ent->fts_path) == -1) {
+		if (fts_path[stripdir] == '\0') {
+			if (asprintf(&f->path, "%s.", fts_path) == -1) {
 				ERR("asprintf");
 				f->path = NULL;
 				goto out;
 			}
 		} else {
-			if ((f->path = strdup(ent->fts_path)) == NULL) {
+			if ((f->path = strdup(fts_path)) == NULL) {
 				ERR("strdup");
 				goto out;
 			}
 		}
 
-		if (pstripdir != -1) {
+		if (pstripdir != -1 || sess->opts->filesfrom || sess->opts->relative) {
+			size_t sz2 = fts_pathlen;
+
 			/*
 			 * We recursed; must not have "foo/." dir specs.
 			 * If we do mkdir fails.
 			 */
-			size_t sz2 = strlen(f->path);
-
 			if (sz2 >= 2 && f->path[sz2 - 1] == '.' &&
 			    f->path[sz2 - 2] == '/') {
 				(f->path)[sz2 - 2] = '\0';
+				sz2 -= 2;
 			}
-
 			/*
-			 * If we recursed a symlink, removing the trailing
-			 * "/" to avoid issues sorting the flist.
+			 * If we recursed a symlink or --files-from is in
+			 * play we must remove any trailing "/" to avoid
+			 * issues sorting the flist.
 			 */
 			if (sz2 >= 1 && f->path[sz2 - 1] == '/') {
 				(f->path)[sz2 - 1] = '\0';
+				sz2 -= 1;
 			}
+
+			fts_pathlen = sz2;
 		}
 
 		f->wpath = f->path + stripdir;
+		assert(f->wpath[0] != '\0');
+
 		flist_copy_stat(f, ent->fts_statp);
 
 		/* Optionally copy link information. */
 
 		if (S_ISLNK(ent->fts_statp->st_mode)) {
 			if (sess->opts->copy_unsafe_links &&
-			    is_unsafe_link(buf, ent->fts_path, prefix)) {
+			    is_unsafe_link(buf, fts_path, prefix)) {
 				flist_copy_stat(f, &st2);
 				LOG3("copy_unsafe_links: converting unsafe "
 				    "link %s -> %s to a regular file",
-				    ent->fts_path, buf);
+				    fts_path, buf);
 			} else {
 				f->link = symlink_read(ent->fts_accpath,
 				    ent->fts_statp->st_size);
@@ -2064,8 +2127,7 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 		rules_base(dname);
 		if (sess->opts->relative) {
 			if (!sess->opts->noimpdirs &&
-			    !flist_append_dirs(dname, fl)) {
-				ERR("flist_append_dirs");
+			    !flist_append_dirs(sess, dname, fl)) {
 				return 0;
 			}
 		}
@@ -2811,6 +2873,112 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 	return 1;
 }
 
+static size_t
+normalize_path_filesfrom(char *path)
+{
+	char *pc;
+
+	/* Remove all leading slashes, and squash all runs of slashes */
+
+	for (pc = path; *pc != '\0'; /* do nothing */) {
+		if (pc[0] == '/' && pc == path) {
+			while (*pc == '/')
+				pc++;
+
+			/* Erase all leading slashes */
+			pc = memmove(path, pc, strlen(pc) + 1);
+			continue;
+		}
+
+		if (pc[0] == '/' && pc[1] == '/') {
+			char *dst = ++pc;
+
+			while (*pc == '/')
+				pc++;
+
+			/* Convert "xxx///yyy" to "xxx/yyy" */
+			pc = memmove(dst, pc, strlen(pc) + 1);
+			continue;
+		}
+
+		pc++;
+	}
+
+	/*
+	 * ".." is allowed, but must be clamped to the beginning of path.
+	 *
+	 * For example, both "../dir" and "../../dir" yield "dir", while
+	 * "dir/.." and "dir/../.." yield ".".
+	 */
+
+	for (pc = path; *pc != '\0'; /* do nothing */) {
+		pc = strstr(pc, "..");
+		if (pc == NULL)
+			break;
+
+		if (pc[2] == '/' || pc[2] == '\0') {
+			if (pc == path) {
+				const char *src = pc + 2 + (pc[2] == '/');
+
+				/* Erase leading ".." and "../" */
+				pc = memmove(path, src, strlen(src) + 1);
+				continue;
+			}
+
+			if (pc > path && pc[-1] == '/') {
+				char *parent = (pc - path >= 2) ? (pc - 2) : (pc - 1);
+				const char *src = pc + 2 + (pc[2] == '/');
+
+				while (parent > path && *parent != '/')
+					parent--;
+				if (*parent == '/')
+					parent++;
+
+				/* Convert "xxx/../yyy" to "yyy" */
+				pc = memmove(parent, src, strlen(src) + 1);
+				continue;
+			}
+		}
+
+		while (*pc == '.')
+			pc++;
+	}
+
+	/* Remove all embedded "./" directories from path */
+
+	for (pc = path; *pc != '\0'; /* do nothing */) {
+		pc = strstr(pc, "./");
+		if (pc == NULL)
+			break;
+
+		if (pc == path) {
+			const char *src = pc + 2;
+
+			if (pc[2] == '\0')
+				break; /* Retain leading "./" */
+
+			/* Convert leading "./yyy" to "yyy" */
+			pc = memmove(path, src, strlen(src) + 1);
+			continue;
+		}
+
+		if (pc > path && pc[-1] == '/') {
+			const char *src = pc + 2;
+
+			/* Convert "xxx/./yyy" to "xxx/yyy" */
+			pc = memmove(pc, src, strlen(src) + 1);
+			continue;
+		}
+
+		pc += 2;
+	}
+
+	if (path[0] == '\0')
+		strcpy(path, ".");
+
+	return strlen(path);
+}
+
 void
 cleanup_filesfrom(struct sess *sess)
 {
@@ -2829,29 +2997,34 @@ cleanup_filesfrom(struct sess *sess)
 static int
 append_filesfrom(struct sess *sess, const char *basedir, char *file)
 {
-	size_t file_length = strlen(file);
+	size_t file_length;
 
-	/* Skip blank lines */
-	if (file[0] == '\0')
-		return 1;
-
-	if (file[file_length-1] == '\n') {
-		file[file_length-1] = '\0';
-		file_length--;
-	}
-
-	/* Skip comment lines */
+	/* Skip blank and comment lines */
 	if (file[0] == '#' || file[0] == ';' || file[0] == '\0')
 		return 1;
-	/* Reject paths leading with .. */
-	if (!strncmp(file, "..", 2)) {
-		ERRX("Can't have files-from with '..'");
-		return 0;
-	}
-	/* Reject paths with .. in the middle */
-	if (strstr(file, "/..") != NULL) {
-		ERRX("Can't have files-from with '..'");
-		return 0;
+
+	file_length = normalize_path_filesfrom(file);
+	assert(file_length > 0);
+
+	if (file_length > 1 && strcmp(file + file_length - 2, "/.") == 0)
+		file[file_length - 1] = '\0';
+
+	/*
+	 * Regardless of protocol level, rsync3 treats "." as if
+	 * it were specified as "./", while rsync2 handles "."
+	 * like any directory specified without the "/" suffix.
+	 * Openrsync employs rsync3 semantics in this regard.
+	 *
+	 * Here we eliminate duplicate "." and "./" entries as they
+	 * can cause the flist to expand in such a way that rsync
+	 * either unnecessarily runs out of memory or unnecessarily
+	 * exceeds the wire protocol's maximum file count.
+	 */
+	if (strcmp(file, ".") == 0 || strcmp(file, "./") == 0) {
+		for (size_t i = 0; i < sess->filesfrom_n; ++i) {
+			if (strcmp(file, sess->filesfrom[i]) == 0)
+				return 1;
+		}
 	}
 
 	if ((sess->filesfrom = realloc(sess->filesfrom,
@@ -2860,7 +3033,7 @@ append_filesfrom(struct sess *sess, const char *basedir, char *file)
 		return 0;
 	}
 
-	asprintf(&(sess->filesfrom[sess->filesfrom_n]),"%s", file);
+	asprintf(&(sess->filesfrom[sess->filesfrom_n]), "%s", file);
 	if (sess->filesfrom[sess->filesfrom_n] == NULL) {
 		ERR("asprintf");
 		cleanup_filesfrom(sess);
@@ -2895,11 +3068,14 @@ fdgets(struct sess *sess, int fd, char *buf, int bufsz)
 			length++;
 		if (*(buf + length - 1) == '\0')
 			break;
-		if (!sess->opts->from0 && *(buf + length - 1) == '\n') {
+		if (!sess->opts->from0 &&
+		    (*(buf + length - 1) == '\n' ||
+		     *(buf + length - 1) == '\r')) {
 			*(buf + length - 1) = '\0';
 			break;
 		}
 	}
+
 	return length;
 }
 
@@ -2927,7 +3103,8 @@ read_filesfrom(struct sess *sess, const char *basedir)
 	int retval;
 	ssize_t n = -1;
 
-	if (strcmp(sess->opts->filesfrom, "-") == 0 && sess->mode == FARGS_SENDER) {
+	if (strcmp(sess->opts->filesfrom, "-") == 0 &&
+	    sess->mode == FARGS_SENDER && sess->opts->server) {
 		f = NULL;
 	} else if (strcmp(sess->opts->filesfrom, "-") == 0) {
 		f = stdin;
@@ -2947,7 +3124,7 @@ read_filesfrom(struct sess *sess, const char *basedir)
 	while (n != 0) {
 		if (sess->opts->filesfrom_host ||
 		    (strcmp(sess->opts->filesfrom, "-") == 0 &&
-		    sess->mode == FARGS_SENDER)) {
+		    sess->mode == FARGS_SENDER && sess->opts->server)) {
 			/*
 			 * This is doing single byte read system calls.
 			 * Before you change that consider:
@@ -2963,15 +3140,17 @@ read_filesfrom(struct sess *sess, const char *basedir)
 				ERR("fdgets: filesfrom_fd");
 				goto out;
 			}
+			if (n == 0 || (n == 1 && buf[0] == '\0'))
+				break;
 			if (append_filesfrom(sess, basedir, buf) == 0)
 				goto out;
-			if (buf[0] == '\0')
-				break;
 		} else {
 			if ((n = fdgets(sess, fileno(f), buf, PATH_MAX)) == -1) {
 				ERR("fdgets: '%s'", sess->opts->filesfrom);
 				goto out;
 			}
+			if (n == 0)
+				break;
 			if (append_filesfrom(sess, basedir, buf) == 0)
 				goto out;
 		}

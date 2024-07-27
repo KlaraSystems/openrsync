@@ -108,7 +108,9 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	 */
 	if (sess.opts->filesfrom_host && f->mode == FARGS_SENDER)
 		sess.filesfrom_fd = fd;
-	else if (sess.opts->filesfrom && strcmp(sess.opts->filesfrom, "-") == 0 && f->mode == FARGS_SENDER)
+	else if (sess.opts->filesfrom && sess.opts->server &&
+		 strcmp(sess.opts->filesfrom, "-") == 0 &&
+		 f->mode == FARGS_SENDER)
 		sess.filesfrom_fd = fd;
 	else
 		sess.mplex_reads = 1;
@@ -162,7 +164,8 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		ERRX1("data remains in read pipe");
 		rc = ERR_IPC;
 	} else if (sess.err_del_limit) {
-		assert(sess.total_deleted >= sess.opts->max_delete);
+		assert(sess.total_deleted >= sess.opts->max_delete ||
+		    sess.opts->dry_run);
 		rc = ERR_DEL_LIMIT;
 	} else if (sess.total_errors > 0) {
 		rc = ERR_PARTIAL;

@@ -330,7 +330,8 @@ pre_symlink(struct upload *p, struct sess *sess)
 			}
 		} else {
 			LOG3("%s: creating symlink: %s", f->path, f->link);
-			if (mktemplate(&temp, f->path, sess->opts->recursive,
+			if (mktemplate(&temp, f->path,
+			    sess->opts->recursive || strchr(f->path, '/') != NULL,
 			    IS_TMPDIR) == -1) {
 				ERRX1("mktemplate");
 				return -1;
@@ -979,9 +980,11 @@ pre_dir(struct upload *p, struct sess *sess)
 			}
 		}
 	} else if (rc != -1) {
-		LOG3("%s: updating directory", f->path);
+		if ((f->iflags & IFLAG_NEW) == 0) {
+			LOG3("%s: updating directory", f->path);
 
-		itemize_changes(sess, &st, f);
+			itemize_changes(sess, &st, f);
+		}
 
 		if (sess->opts->dry_run)
 			return 0;

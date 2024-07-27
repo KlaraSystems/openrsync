@@ -424,6 +424,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		root_missing = true;
 		if (unveil(".", "rwc") == -1)
 			err(ERR_IPC, ".: unveil");
+		memset(&st, 0, sizeof(st));
 	}
 
 	/*
@@ -469,10 +470,6 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		read_filesfrom(sess, ".");
 		for (i = 0; i < sess->filesfrom_n; i++) {
 			length = strlen(sess->filesfrom[i]);
-			if (sess->filesfrom[i][length - 1] == '\n') {
-				sess->filesfrom[i][length - 1] = '\0';
-				length--;
-			}
 			if (length == 0) {
 				/* Don't send two \0's in a row */
 				continue;
@@ -612,8 +609,16 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				err(ERR_FILE_IO, "%s: mkpath", tofree);
 			free(tofree);
 
-			if (root_missing && flsz > 0)
+			/*
+			 * If we created the destination directory and the first
+			 * file in the flist is "." then we must set iflags here
+			 * because the uploader (i.e., pre_dir()) can't tell
+			 * that it was newly created.
+			 */
+			if (root_missing && flsz > 0 && S_ISDIR(fl[0].st.mode) &&
+			    strcmp(fl[0].path, ".") == 0) {
 				fl[0].iflags |= IFLAG_NEW | IFLAG_LOCAL_CHANGE;
+			}
 		}
 	}
 
