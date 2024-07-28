@@ -474,14 +474,16 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				/* Don't send two \0's in a row */
 				continue;
 			}
+
 			/* Send the terminating zero, too */
-			if (write(fdout, sess->filesfrom[i], length + 1) < 0) {
+			if (!io_write_blocking(fdout, sess->filesfrom[i], length + 1)) {
 				ERR("write files-from remote file");
 				return 0;
 			}
 		}
+
 		i = 0;
-		if (write(fdout, &i, 1) < 0) {
+		if (!io_write_blocking(fdout, &i, 1)) {
 			ERR("write files-from remote file terminator");
 			return 0;
 		}

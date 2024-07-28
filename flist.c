@@ -3046,26 +3046,26 @@ append_filesfrom(struct sess *sess, const char *basedir, char *file)
 }
 
 static int
-fdgets(struct sess *sess, int fd, char *buf, int bufsz)
+fdgets(struct sess *sess, int fd, char *buf, size_t bufsz)
 {
-	int length = 0;
-	ssize_t n = 1;
+	size_t length = 0;
+	ssize_t n;
 
-	while (n == 1 && length < bufsz) {
+	while (length < bufsz) {
 		n = read(fd, buf + length, 1);
 		if (n == -1) {
-			if (errno == EWOULDBLOCK || errno == EINTR ||
-				errno == EAGAIN) {
-				n = 1;
+			if (errno == EAGAIN || errno == EINTR)
 				continue;
-			} else {
-				ERR("read(2) of files-from file failed");
-				return -1;
-			}
-		} else if (n == 0) {
+
+			ERR("read(2) of files-from file failed");
+			return -1;
+		}
+
+		if (n == 0)
 			return 0;
-		} else
-			length++;
+
+		length += n;
+
 		if (*(buf + length - 1) == '\0')
 			break;
 		if (!sess->opts->from0 &&

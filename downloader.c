@@ -1615,7 +1615,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 			}
 		} else {
 			if (mktemplate(&p->fname, f->path,
-			    sess->opts->recursive || sess->opts->relative,
+			    sess->opts->recursive || strchr(f->path, '/') != NULL,
 			    IS_TMPDIR) == -1) {
 				ERRX1("mktemplate");
 				goto out;

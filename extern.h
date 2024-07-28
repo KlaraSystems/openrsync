@@ -902,6 +902,7 @@ int	io_write_line(struct sess *, int, const char *);
 int	io_write_long(struct sess *, int, int64_t);
 int	io_write_ulong(struct sess *, int, uint64_t);
 int	io_write_vstring(struct sess *, int, char *, size_t);
+int	io_write_blocking(int fd, const void *buf, size_t sz);
 
 int	io_data_written(struct sess *, int, const void *, size_t);
 

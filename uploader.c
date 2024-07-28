@@ -450,7 +450,8 @@ pre_dev(struct upload *p, struct sess *sess)
 				return -1;
 			}
 		} else {
-			if (mktemplate(&temp, f->path, sess->opts->recursive,
+			if (mktemplate(&temp, f->path,
+			    sess->opts->recursive || strchr(f->path, '/') != NULL,
 			    IS_TMPDIR) == -1) {
 				ERRX1("mktemplate");
 				return -1;
@@ -551,8 +552,9 @@ pre_fifo(struct upload *p, struct sess *sess)
 					return -1;
 				}
 			} else {
-				if (mktemplate(&temp, f->path, sess->opts->recursive,
-					       IS_TMPDIR) == -1) {
+				if (mktemplate(&temp, f->path,
+				    sess->opts->recursive || strchr(f->path, '/') != NULL,
+				    IS_TMPDIR) == -1) {
 					ERRX1("mktemplate");
 					return -1;
 				}
@@ -656,8 +658,9 @@ pre_sock(struct upload *p, struct sess *sess)
 					return -1;
 				}
 			} else {
-				if (mktemplate(&temp, f->path, sess->opts->recursive,
-					       IS_TMPDIR) == -1) {
+				if (mktemplate(&temp, f->path,
+				    sess->opts->recursive || strchr(f->path, '/') != NULL,
+				    IS_TMPDIR) == -1) {
 					ERRX1("mktemplate");
 					return -1;
 				}

@@ -431,6 +431,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		if (sess->opts->from0)
 			addargs(&args, "--from0");
 	} else if (sess->opts->filesfrom != NULL && f->mode == FARGS_RECEIVER) {
+		if (sess->opts->relative == 0)
+			addargs(&args, "--no-relative");
 		addargs(&args, "--files-from=-");
 		addargs(&args, "--from0");
 	}

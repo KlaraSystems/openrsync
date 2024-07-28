@@ -183,7 +183,7 @@ io_write_nonblocking(int fd, const void *buf, size_t bsz,
  * Blocking write of the full size of the buffer.
  * Returns 0 on failure, non-zero on success (all bytes written).
  */
-static int
+int
 io_write_blocking(int fd, const void *buf, size_t sz)
 {
 	size_t		wsz;
