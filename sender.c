@@ -460,7 +460,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		sess->total_files_xfer++;
 		sess->total_xfer_size += fl[up->cur->idx].st.size;
 
-		if (sess->lateprint || sess->itemize)
+		if (sess->lateprint)
 			log_item(sess, &fl[up->cur->idx]);
 
 		send_up_reset(up);
@@ -681,7 +681,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		sess->total_files_xfer++;
 		sess->total_xfer_size += fl[up->cur->idx].st.size;
 
-		if (sess->lateprint || sess->itemize)
+		if (sess->lateprint)
 			log_item(sess, &fl[up->cur->idx]);
 
 		send_up_reset(up);
@@ -1716,12 +1716,8 @@ rsync_sender(struct sess *sess, int fdin,
 			}
 			pfd[2].fd = up.stat.fd;
 
-			if (!sess->lateprint && !sess->itemize) {
-				if (!log_item(sess, f)) {
-					ERRX1("log_item");
-					return 0;
-				}
-			}
+			if (!sess->lateprint)
+				log_item(sess, f);
 		}
 	}
 

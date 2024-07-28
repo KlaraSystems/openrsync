@@ -59,10 +59,7 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	if (sess.opts->chmod != NULL)
 		chmod_parse(sess.opts->chmod, &sess);
 
-	int printflags = log_format(&sess, NULL);
-
-	sess.itemize = (printflags & LOG_FORMAT_ITEMIZE) != 0;
-	sess.lateprint = (printflags & LOG_FORMAT_LATEPRINT) != 0;
+	log_format_init(&sess);
 
 	LOG4("Printing(%d): itemize %d late %d", getpid(), sess.itemize, sess.lateprint);
 

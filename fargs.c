@@ -353,15 +353,15 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 	if (f->mode == FARGS_SENDER && sess->opts->fuzzy_basis)
 		addargs(&args, "--fuzzy");
 	if (sess->opts->outformat && f->mode == FARGS_SENDER) {
-		int printflags = log_format(sess, NULL);
+		log_format_init(sess);
 
 		/*
 		 * We don't send the full outformat to the other side,
 		 * but they need to know about %i or %o.
 		 */
-		if ((printflags & LOG_FORMAT_ITEMIZE) != 0) {
+		if (sess->itemize_i) {
 			addargs(&args, "--out-format=%%i");
-		} else if ((printflags & LOG_FORMAT_OPERATION) != 0) {
+		} else if (sess->itemize_o) {
 			addargs(&args, "--out-format=%%o");
 		}
 	}

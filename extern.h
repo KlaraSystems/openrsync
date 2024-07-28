@@ -106,11 +106,6 @@
 #define	SIGNIFICANT_IFLAGS	\
 	(~(IFLAG_BASIS_FOLLOWS | IFLAG_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE))
 
-#define LOG_FORMAT_SUCCESS	(1 << 0)
-#define LOG_FORMAT_ITEMIZE	(1 << 1)
-#define LOG_FORMAT_LATEPRINT	(1 << 2)
-#define LOG_FORMAT_OPERATION	(1 << 3)
-
 /*
  * Defaults from the reference rsync; the max password size is specifically for
  * password files, and not otherwise strictly enforced.
@@ -678,8 +673,10 @@ struct	sess {
 	int		   mplex_writes; /* multiplexing writes? */
 	double             last_time; /* last time printed --progress */  
 	uint64_t	   last_bytes; /* last bytes printed --progress */
-	int                itemize; /* --itemize or %i in --output-format */
-	int                lateprint; /* Does output format contain a flag requiring late print? */
+	uint8_t		   itemize; /* --itemize or %i in --output-format */
+	uint8_t		   itemize_i; /* --itemize or %i in --output-format */
+	uint8_t		   itemize_o; /* --itemize or %i in --output-format */
+	uint8_t		   lateprint; /* Does output format contain a flag requiring late print? */
 	char             **filesfrom; /* Contents of files-from */
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
 	int		   filesfrom_fd; /* --files-from */
@@ -1111,6 +1108,7 @@ sess_is_inplace(struct sess *sess)
 
 struct sbuf;
 int log_format(struct sess *sess, const struct flist *fl);
+void log_format_init(struct sess *sess);
 void our_strmode(mode_t mode, char *p);
 int print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
     struct sbuf *);

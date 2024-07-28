@@ -1434,7 +1434,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 			return 1;
 		}
 
-		if ((!sess->lateprint && !sess->itemize) || sess->opts->dry_run)
+		if (!sess->lateprint || sess->opts->dry_run)
 			log_item(sess, f);
 
 		/*
@@ -1967,7 +1967,7 @@ again:
 
 	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size, true);
 
-	if (sess->lateprint || sess->itemize)
+	if (sess->lateprint)
 		log_item(sess, f);
 
 done:

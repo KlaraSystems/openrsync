@@ -46,6 +46,11 @@
 #define	RSYNCD_SYSLOG_IDENT	"openrsyncd"
 #define	RSYNCD_SYSLOG_OPTIONS	(LOG_PID | LOG_NDELAY)
 
+#define LOG_FORMAT_SUCCESS	(1 << 0)
+#define LOG_FORMAT_ITEMIZE	(1 << 1)
+#define LOG_FORMAT_LATEPRINT	(1 << 2)
+#define LOG_FORMAT_OPERATION	(1 << 3)
+
 extern int verbose;
 
 #define	FACILITY(f)	{ #f, LOG_ ##f }
@@ -811,7 +816,7 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 		break;
 	}
 	case 'L': {
-
+#if 0
 		/*
 		 * Use "late print" here.  Theoretically late print is
 		 * only needed when hardlink printing is requested.
@@ -819,6 +824,7 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 		 * whether there will ever be hardlinks.
 		 */
 		*rval |= LOG_FORMAT_LATEPRINT;
+#endif
 
 		if (sbuf != NULL) {
 			if (fl->link != NULL) {
@@ -1014,6 +1020,22 @@ out:
 
 	return rval | LOG_FORMAT_SUCCESS;
 }
+
+void
+log_format_init(struct sess *sess)
+{
+	int flags = log_format(sess, NULL);
+
+	if ((flags & LOG_FORMAT_SUCCESS) == 0)
+		return;
+
+	sess->itemize_i = (flags & LOG_FORMAT_ITEMIZE) != 0;
+	sess->itemize_o = (flags & LOG_FORMAT_OPERATION) != 0;
+	sess->lateprint = (flags & LOG_FORMAT_LATEPRINT) != 0;
+
+	sess->itemize = sess->itemize_i;
+}
+
 
 /*
  * Print a number into the provided buffer depending on the current
