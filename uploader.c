@@ -79,7 +79,7 @@ struct	upload {
 	struct flist	   *dfl; /* delayed delete file list */
 	size_t		    dflsz; /* size of delayed delete list */
 	size_t		    dflmax; /* allocated size of delayed delete list */
-	bool		   *newdir; /* non-zero if mkdir'd */
+	int8_t		   *newdir; /* non-zero if mkdir'd */
 	int		    phase; /* current uploader phase (transfer, redo) */
 	char               *lastimp; /* Last implied dir (dir cache) */
 };
@@ -1099,12 +1099,12 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 				return 0;
 			}
 
-			f->iflags |= IFLAG_NEW;
+			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
 			return 3;
 		}
 
 		if (sess->opts->dry_run) {
-			f->iflags |= IFLAG_NEW;
+			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
 			return 2;
 		}
 
@@ -1120,11 +1120,11 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		 */
 		if (find_hl(f, hl)) {
 			if (st->st_nlink == 1) {
-				f->iflags |= IFLAG_NEW;
+				f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
 				return 3;
 			}
 		} else if (st->st_nlink > 1) {
-			f->iflags |= IFLAG_NEW;
+			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
 			return 3;
 		}
 		/*
@@ -1301,7 +1301,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 	f->iflags = saved_iflags;
 	close(dfd);
 
-	return rc;
+	return 1;
 }
 
 /*
@@ -1514,7 +1514,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		 * what we unlinked below.
 		 */
 		if (do_unlink) {
-			f->iflags |= IFLAG_NEW;
+			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
 			rc = 3;
 		}
 	}
@@ -1555,7 +1555,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 				return 0;
 			}
 
-			f->iflags |= IFLAG_NEW;
+			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
 			rc = 3;
 		}
 
@@ -2044,11 +2044,24 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 				continue;
 			}
 
-			if (u->fl[u->idx].iflags == IFLAG_NEW) {
-				assert(S_ISREG(u->fl[u->idx].st.mode));
-				assert(sess->opts->dry_run);
+			/*
+			 * iflags should never contain the NEW flag by itself.
+			 * If present, it should be accompanied by only one
+			 * of the TRANSFER or LOCAL_CHANGE flags, and at this
+			 * juncture it can be TRANSFER only in dry-run mode.
+			 */
+			if ((u->fl[u->idx].iflags & IFLAG_NEW) != 0) {
+				const int32_t iflags = u->fl[u->idx].iflags;
 
-				u->fl[u->idx].iflags |= IFLAG_TRANSFER;
+				assert(iflags != IFLAG_NEW);
+
+				if ((iflags & IFLAG_TRANSFER) != 0) {
+					assert((iflags & IFLAG_LOCAL_CHANGE) == 0);
+					assert(sess->opts->dry_run);
+				} else {
+					assert((iflags & IFLAG_LOCAL_CHANGE) != 0);
+					assert((iflags & IFLAG_TRANSFER) == 0);
+				}
 			}
 
 			u->bufsz += sizeof(int32_t); /* identifier */
