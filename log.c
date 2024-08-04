@@ -827,7 +827,8 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 #endif
 
 		if (sbuf != NULL) {
-			if (fl->link != NULL) {
+			if (fl->link != NULL &&
+			    (fl->iflags & IFLAG_BASIS_FOLLOWS) == 0) {
 				const char *fmt = " -> %s";
 
 				if ((fl->iflags & IFLAG_HLINK_FOLLOWS) != 0)
@@ -1101,7 +1102,8 @@ log_item_impl(struct sess *sess, const struct flist *f)
 
 	default:
 		path = f->wpath;
-		if (f->link) {
+		if (f->link &&
+		    (f->iflags & IFLAG_BASIS_FOLLOWS) == 0) {
 			snprintf(pathbuf, sizeof(pathbuf), "%s => %s", f->wpath, f->link);
 			path = pathbuf;
 		}

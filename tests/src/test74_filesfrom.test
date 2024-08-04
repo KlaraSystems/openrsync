@@ -656,7 +656,6 @@ echo "Test 25.3"
 rm -rf dst
 rsync -a --from0 --files-from=- < fffiles0 -- ${SRC}/ ${DST}/
 compare_trees src dst
-date
 
 
 # Test dirs ending in "/":

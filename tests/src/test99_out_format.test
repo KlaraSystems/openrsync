@@ -41,8 +41,8 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
 	[ "$1" = "OUTFMT:" ]
 	SIZE=$2
 	FNLONG=$3
-	UID=$4
-	GID=$5
+	XUID=$4
+	XGID=$5
 	FNSHORT=src/$6
 	XFER=$7
 	[ "$(basename ${FNLONG})" = "$(basename ${FNSHORT})" ]
@@ -51,8 +51,8 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
 	[ "X" = "$1" ]
 	[ "${SIZE}" -eq "$2" ]
 	[ "${FNSHORT}" = "$3" ]
-	[ "${UID}" = "DEFAULT" ] || [ "${UID}" -eq "$4" ]
-	[ "${GID}" = "DEFAULT" ] || [ "${GID}" -eq "$5" ]
+	[ "${XUID}" = "DEFAULT" ] || [ "${XUID}" -eq "$4" ]
+	[ "${XGID}" = "DEFAULT" ] || [ "${XGID}" -eq "$5" ]
 
 	# If it's a regular file the transferred size should
 	# be slightly larger than the file size:
@@ -90,10 +90,10 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
     compare_trees -t src dst
 
     # openrsync doesn't yet support --log-file nor --log-file-format
-    # in non-daemon mode.  Remove these three lines when those
-    # options become available in non-daemon mode.
+    # in non-daemon mode.  Remove this comment and the "continue"
+    # when those options become available in non-daemon mode.
     #
-    exit 0
+    continue
 
     # Check that --log-file-format works as expected:
     #
@@ -125,9 +125,55 @@ done
 
 # Check for robust handling of out-format:
 #
-rm -rf src
+rm -rf src dst
 mkdir src
 date > src/file
 
 rsync -a --out-format='% %% %+ %- %0 %08 %777 %-f %' -- src/ dst/
 compare_trees -t src dst
+
+
+# Test that source paths are normalized:
+#
+rm -rf dst
+DOTDIR="."
+set --
+
+for i in $(seq 9) ; do
+	#echo "chk 10 [$i] [${DOTDIR}]"
+	jot 3 $i > src/file
+	(cd src && rsync -a --out-format='OUTFMT: %f %n %l' -- ${DOTDIR}/${DOTDIR}/file ../dst/ > ../log 2>&1)
+	compare_trees src dst
+
+	grep ^OUTFMT log | while read line ; do
+		set -- ${line}
+		[ "$2" == "$3" ]
+		cmp src/$2 dst/$3
+	done
+
+	jot 5 $i > src/file
+	(cd src && rsync -a --out-format='OUTFMT: %f %n %l' -- ${DOTDIR} ../dst/ > ../log 2>&1)
+	compare_trees src dst
+
+	#echo "chk 20 [$i] log"
+	grep ^OUTFMT log | while read line ; do
+		set -- ${line}
+		[ "$(basename $2)" == "$(basename $3)" ]
+		[ -f "dst/$3" ] && echo "$2" | fgrep -qv -- './'
+		[ -f "dst/$3" ] && echo "$3" | fgrep -qv -- './'
+	done
+
+	#echo "chk 30 [$i] [${DOTDIR}]"
+	jot 7 $i > src/file
+	rsync -a --out-format='OUTFMT: %f %n %l' -- ${DOTDIR}/${DOTDIR}/src/${DOTDIR}/ dst/ > log 2>&1
+	compare_trees src dst
+
+	grep ^OUTFMT log | while read line ; do
+		set -- ${line}
+		[ "$(basename $2)" == "$(basename $3)" ]
+		[ -f "dst/$3" ] && echo "$2" | fgrep -qv -- './'
+		[ -f "dst/$3" ] && echo "$3" | fgrep -qv -- './'
+	done
+
+	DOTDIR="${DOTDIR}$(jot -n -b/. -s/ $i)$(jot -n -b/ -s/ $i)."
+done

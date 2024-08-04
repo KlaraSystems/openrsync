@@ -1025,7 +1025,7 @@ flist_append_dirs(struct sess *sess, const char *path, struct fl *fl)
 	if (sess->opts->filesfrom) {
 		assert(path[0] != '/');
 
-		if ((stat(path, &st)) == -1) {
+		if (stat(path, &st) == -1) {
 			ERR("%s: stat", path);
 			sess->total_errors++;
 			goto out;
@@ -1683,6 +1683,139 @@ flist_dir_recurse(const char *root)
 	return tc == '/' || tc == '.';
 }
 
+static void
+flist_dirent_normalize(const FTSENT * const ent, char *pathbuf, size_t pathbufsz,
+	ssize_t *stripdirp, char **pathp, size_t *lenp)
+{
+	size_t fts_pathlen = ent->fts_pathlen;
+	char *fts_path = ent->fts_path;
+
+	if (fts_pathlen > 2) {
+		if (strncmp(fts_path, "./", 2) == 0) {
+			if (*stripdirp >= 2)
+				*stripdirp -= 2;
+			fts_pathlen -= 2;
+			fts_path += 2;
+
+			while (*fts_path == '/') {
+				if (*stripdirp > 0)
+					*stripdirp -= 1;
+				fts_pathlen--;
+				fts_path++;
+			}
+
+			assert(*fts_path != '\0');
+		}
+	}
+
+#ifdef __APPLE__
+	assert(pathbufsz > fts_pathlen);
+
+	/*
+	 * On macOS/Darwin fts_read() returns an extra slash when fts_open()
+	 * is called with a directory name ending in "/".  For example,
+	 * if fts_open is given a directory named "./" or "some/path/",
+	 * then fts_read() will return ".//file" or "some/path//file",
+	 * respectively.
+	 */
+	for (const char *src = fts_path; *src != '\0'; src++) {
+		if (src[0] == '/' && src[1] == '/') {
+			ptrdiff_t delta = src - fts_path;
+			char *dst = pathbuf;
+
+			memcpy(dst, fts_path, delta);
+			dst += delta;
+			memcpy(dst, src + 1, fts_pathlen - delta + 1);
+
+			fts_path = pathbuf;
+			fts_pathlen--;
+
+			if (*stripdirp > delta + 1)
+				*stripdirp = delta + 1;
+			break;
+		}
+	}
+
+	assert(fts_path[0] != '\0');
+#endif
+
+	*lenp = fts_pathlen;
+	*pathp = fts_path;
+}
+
+static size_t
+flist_path_normalize(const char *path, char *pathbuf, size_t pathbufsz)
+{
+	size_t pathlen = strlen(path);
+
+	while (pathlen > 1 && path[0] == '/' && path[1] == '/') {
+		pathlen--;
+		path++; /* Remove leading "/" */
+	}
+
+	while (pathlen > 2 && path[0] == '.' && path[1] == '/') {
+		pathlen -= 2;
+		path += 2; /* Remove leading "./" */
+
+		while (*path == '/') {
+			pathlen--;
+			path++;
+		}
+	}
+
+	if (pathlen > 1 && path[pathlen - 1] == '.' && path[pathlen - 2] == '/')
+		pathlen--; /* Remove trailing "." */
+
+	for (;;) {
+		while (pathlen > 1 && path[pathlen - 1] == '/' && path[pathlen - 2] == '/')
+			pathlen--; /* Remove trailing "/" */
+
+		if (pathlen < 3 || strncmp(&path[pathlen - 3], "/./", 3) != 0)
+			break;
+
+		pathlen -= 2; /* Remove trailing "./" */
+	}
+
+	if (pathlen == 0) {
+		pathlen = 1;
+		path = ".";
+	}
+
+	assert(pathbufsz > 0);
+	memcpy(pathbuf, path, MIN(pathlen, pathbufsz - 1));
+	pathbuf[MIN(pathlen, pathbufsz - 1)] = '\0';
+
+	/*
+	 * At this point we've inexpensively trimmed all unneeded leading
+	 * and trailing combinations of "./" and slashes from the path
+	 * path and copied it into pathbuf[].
+	 *
+	 * Although unlikely, there may still be some combinations of
+	 * "./" and/or "//" within the remaining path.  For example,
+	 * paths like "src/./.././src" and ".//src///..///src/" should
+	 * reduce to "src/../src" and "src/../src/", respectively.
+	 */
+	for (char *pc = pathbuf; *pc != '\0'; /* do nothing */) {
+		if (pc[0] == '/') {
+			if (pc[1] == '.' && pc[2] == '/') {
+				memmove(pc, pc + 2, pathlen - (pc - pathbuf) - 1);
+				pathlen -= 2;
+				continue;
+			}
+
+			if (pc[1] == '/') {
+				memmove(pc, pc + 1, pathlen - (pc - pathbuf));
+				pathlen--;
+				continue;
+			}
+		}
+
+		pc++;
+	}
+
+	return pathlen;
+}
+
 static ssize_t
 flist_dirent_strip(struct sess *sess, const char *root)
 {
@@ -1713,7 +1846,7 @@ flist_dirent_strip(struct sess *sess, const char *root)
 }
 
 static int
-flist_normalize_path(const char *root, char *rootbuf, size_t rootbufsz)
+flist_root_normalize(const char *root, char *rootbuf, size_t rootbufsz)
 {
 	size_t rootlen;
 
@@ -1834,7 +1967,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		return flist_gen_dirent_file(sess, "dir", root, fl, &st, prefix);
 	}
 
-	if (!flist_normalize_path(root, rootbuf, sizeof(rootbuf))) {
+	if (!flist_root_normalize(root, rootbuf, sizeof(rootbuf))) {
 		/*
 		 * If we failed to normalize the path, that's catastrophic and
 		 * we should bail out to be safe.  Notably, we could end up with
@@ -1848,7 +1981,8 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	if (stripdir == -1)
 		stripdir = flist_dirent_strip(sess, rootbuf);
 
-	/* The net effect of flist_normalize_path() is that it will copy
+	/*
+	 * The net effect of flist_normalize_path() is that it will copy
 	 * root[] to rootbuf[] and will append "." to rootbuf[] if it ends
 	 * with "/", thereby affecting the computation of stripdir made by
 	 * flist_dirent_strip().  That done, we can remove the trailing "."
@@ -1857,9 +1991,9 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	rootbuflen = strlen(rootbuf);
 	if (rootbuflen >= 2) {
 		if (strncmp(rootbuf + rootbuflen - 2, "/.", 2) == 0) {
-			if ((size_t)stripdir >= rootbuflen && stripdir > 0)
-				stripdir--;
 			rootbuflen--;
+			if (stripdir > (ssize_t)rootbuflen)
+				stripdir--;
 			rootbuf[rootbuflen] = '\0';
 		}
 	}
@@ -1886,19 +2020,14 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	errno = 0;
 
 	while ((ent = fts_read(fts)) != NULL) {
-		size_t fts_pathlen = ent->fts_pathlen;
-		char *fts_path = ent->fts_path;
+		char fts_pathbuf[PATH_MAX];
+		size_t fts_pathlen;
+		char *fts_path;
 
 		stripdir = stripdir_saved;
 
-		if (fts_pathlen > 2) {
-			if (strncmp(fts_path, "./", 2) == 0) {
-				fts_pathlen -= 2;
-				fts_path += 2;
-				if (stripdir >= 2)
-					stripdir -= 2;
-			}
-		}
+		flist_dirent_normalize(ent, fts_pathbuf, sizeof(fts_pathbuf),
+		    &stripdir, &fts_path, &fts_pathlen);
 
 		if (ent->fts_info == FTS_D && ent->fts_level > 0 &&
 		    !sess->opts->recursive)
@@ -1987,6 +2116,12 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		}
 
 		/* This is for macOS fts, which returns "foo//bar" */
+		/*
+		 * It is no longer possible for "//" to appear in fts_path,
+		 * but the code below cannot currently be removed because
+		 * it has a side-effect wherein it strips the leading "/"
+		 * from an absolute root path in --relative mode.
+		 */
 		if (fts_path[stripdir] == '/') {
 			stripdir++;
 		}
@@ -2116,14 +2251,23 @@ out:
 static int
 flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
-	const char	*dname;
-	size_t		 i;
+	char		 dname[PATH_MAX];
+	size_t		 dnamelen, i;
 	int		 errors = 0;
 
 	for (i = 0; i < argc; i++) {
-		dname = argv[i];
+		dnamelen = flist_path_normalize(argv[i], dname, sizeof(dname));
+		if (dnamelen >= sizeof(dname)) {
+			errno = ENAMETOOLONG;
+			ERR("'%s' flist_path_normalize", dname);
+			sess->total_errors++;
+			errors++;
+			continue;
+		}
+
 		if (dname[0] == '\0')
-			dname = ".";
+			strcpy(dname, ".");
+
 		rules_base(dname);
 		if (sess->opts->relative) {
 			if (!sess->opts->noimpdirs &&
@@ -2149,8 +2293,8 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 static int
 flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 {
-	const char	*fname;
-	size_t		 i;
+	char		 fname[PATH_MAX];
+	size_t		 fnamelen, i;
 	struct stat	 st;
 	int              ret;
 
@@ -2165,9 +2309,17 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	fl->sz = 0;
 
 	for (i = 0; i < argc; i++) {
-		fname = argv[i];
+		fnamelen = flist_path_normalize(argv[i], fname, sizeof(fname));
+		if (fnamelen >= sizeof(fname)) {
+			errno = ENAMETOOLONG;
+			ERR("'%s' flist_path_normalize", fname);
+			sess->total_errors++;
+			continue;
+		}
+
 		if (fname[0] == '\0')
-			fname = ".";
+			strcpy(fname, ".");
+
 		if (sess->opts->copy_links)
 			ret = stat(fname, &st);
 		else

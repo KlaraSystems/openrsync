@@ -15,8 +15,8 @@ rm -rf src
 mkdir src
 date > src/foo
 
-echo "chk 10"
 for i in 01 02 03 037 060 071 0101 0176 0200 0255 ; do
+    echo "chk 10 [$i]"
     fmt=$(printf "src/\\\\%03ofilex" $i)
     echo $i > "$(printf ${fmt})"
 
