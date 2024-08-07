@@ -1822,6 +1822,9 @@ flist_dirent_strip(struct sess *sess, const char *root)
 	char	 *cp;
 	ssize_t	 stripdir;
 
+	if (sess->opts->relative)
+		return 0;
+
 	/*
 	 * If we end with a slash, it means that we're not supposed to
 	 * copy the directory part itself---only the contents.
@@ -1829,40 +1832,18 @@ flist_dirent_strip(struct sess *sess, const char *root)
 	 */
 	stripdir = strlen(root);
 	assert(stripdir > 0);
-	if (root[stripdir - 1] != '/')
-		stripdir = 0;
+	if (root[stripdir - 1] == '/')
+		return stripdir;
 
 	/*
 	 * If we're not stripping anything, then see if we need to strip
-	 * out the leading material in the path up to and including the
-	 * last directory component.
+	 * out the leading material in the path up to but not including
+	 * the last component.
 	 */
+	if ((cp = strrchr(root, '/')) != NULL)
+		return cp - root + 1;
 
-	if (stripdir == 0 && !sess->opts->relative)
-		if ((cp = strrchr(root, '/')) != NULL)
-			stripdir = cp - root + 1;
-
-	return (stripdir);
-}
-
-static int
-flist_root_normalize(const char *root, char *rootbuf, size_t rootbufsz)
-{
-	size_t rootlen;
-
-	rootlen = strlen(root);
-	/* Convert trailing '/./' -> '/.' */
-	if (rootlen >= 3 && strcmp(&root[rootlen - 3], "/./") == 0)
-		rootlen--;
-	if (rootlen >= rootbufsz)
-		return (0);
-
-	memcpy(rootbuf, root, rootlen);
-	/* Convert trailing '/' -> '/.' */
-	if (rootbuf[rootlen - 1] == '/')
-		rootbuf[rootlen++] = '.';
-	rootbuf[rootlen] = '\0';
-	return (1);
+	return 0;
 }
 
 /*
@@ -1875,18 +1856,17 @@ static int
 flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t stripdir, const char *prefix)
 {
 	const char	*cargv[2];
+	int		 fts_options;
 	int		 rc = 0, flag;
 	FTS		*fts;
 	FTSENT		*ent;
 	struct flist	*f;
 	size_t		 i, nxdev = 0;
-	ssize_t		 pstripdir = stripdir;
 	ssize_t		 stripdir_saved;
 	dev_t		*newxdev, *xdev = NULL;
 	struct stat	 st, st2;
 	int              ret;
-	char             buf[PATH_MAX], buf2[PATH_MAX], rootbuf[BIGPATH_MAX];
-	size_t		 rootbuflen;
+	char             buf[PATH_MAX], buf2[PATH_MAX];
 
 	/*
 	 * If we're a file, then revert to the same actions we use for
@@ -1967,38 +1947,10 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		return flist_gen_dirent_file(sess, "dir", root, fl, &st, prefix);
 	}
 
-	if (!flist_root_normalize(root, rootbuf, sizeof(rootbuf))) {
-		/*
-		 * If we failed to normalize the path, that's catastrophic and
-		 * we should bail out to be safe.  Notably, we could end up with
-		 * sorting issues that lead to us being very confused about what
-		 * we're transferring.
-		 */
-		ERR("%s: flist_normalize_path", root);
-		return 0;
-	}
-
 	if (stripdir == -1)
-		stripdir = flist_dirent_strip(sess, rootbuf);
+		stripdir = flist_dirent_strip(sess, root);
 
-	/*
-	 * The net effect of flist_normalize_path() is that it will copy
-	 * root[] to rootbuf[] and will append "." to rootbuf[] if it ends
-	 * with "/", thereby affecting the computation of stripdir made by
-	 * flist_dirent_strip().  That done, we can remove the trailing "."
-	 * so that "./" doesn't wind up in the middle of fts_path.
-	 */
-	rootbuflen = strlen(rootbuf);
-	if (rootbuflen >= 2) {
-		if (strncmp(rootbuf + rootbuflen - 2, "/.", 2) == 0) {
-			rootbuflen--;
-			if (stripdir > (ssize_t)rootbuflen)
-				stripdir--;
-			rootbuf[rootbuflen] = '\0';
-		}
-	}
-
-	cargv[0] = rootbuf;
+	cargv[0] = root;
 	cargv[1] = NULL;
 
 	/*
@@ -2008,9 +1960,13 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	 * We'll make sense of it in flist_send.
 	 */
 
-	if ((fts = fts_open((char * const *)cargv,
-		    sess->opts->copy_links ? FTS_LOGICAL: FTS_PHYSICAL |
-		    FTS_NOCHDIR, NULL)) == NULL) {
+	fts_options = FTS_PHYSICAL | FTS_NOCHDIR;
+	if (sess->opts->copy_links)
+		fts_options = FTS_LOGICAL;
+	if (sess->opts->one_file_system)
+		fts_options |= FTS_XDEV;
+
+	if ((fts = fts_open((char * const *)cargv, fts_options, NULL)) == NULL) {
 		sess->total_errors++;
 		ERR("fts_open");
 		return 0;
@@ -2066,7 +2022,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			}
 			if (sess->opts->copy_dirlinks ||
 			    (sess->opts->copy_unsafe_links &&
-			    is_unsafe_link(buf, rootbuf, prefix))) {
+			    is_unsafe_link(buf, root, prefix))) {
 				if (S_ISDIR(st2.st_mode)) {
 					ret = flist_gen_dirent(sess, fts_path,
 					    fl, stripdir, prefix);
@@ -2151,6 +2107,8 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		/* Our path defaults to "." for the root. */
 
 		if (fts_path[stripdir] == '\0') {
+			assert(stripdir > 0 && fts_path[stripdir - 1] == '/');
+
 			if (asprintf(&f->path, "%s.", fts_path) == -1) {
 				ERR("asprintf");
 				f->path = NULL;
@@ -2161,31 +2119,13 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				ERR("strdup");
 				goto out;
 			}
-		}
 
-		if (pstripdir != -1 || sess->opts->filesfrom || sess->opts->relative) {
-			size_t sz2 = fts_pathlen;
+			if (f->path[fts_pathlen - 1] == '/') {
+				assert(stripdir < (ssize_t)fts_pathlen);
+				assert(fts_pathlen > 1);
 
-			/*
-			 * We recursed; must not have "foo/." dir specs.
-			 * If we do mkdir fails.
-			 */
-			if (sz2 >= 2 && f->path[sz2 - 1] == '.' &&
-			    f->path[sz2 - 2] == '/') {
-				(f->path)[sz2 - 2] = '\0';
-				sz2 -= 2;
+				f->path[fts_pathlen - 1] = '\0';
 			}
-			/*
-			 * If we recursed a symlink or --files-from is in
-			 * play we must remove any trailing "/" to avoid
-			 * issues sorting the flist.
-			 */
-			if (sz2 >= 1 && f->path[sz2 - 1] == '/') {
-				(f->path)[sz2 - 1] = '\0';
-				sz2 -= 1;
-			}
-
-			fts_pathlen = sz2;
 		}
 
 		f->wpath = f->path + stripdir;

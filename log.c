@@ -1088,10 +1088,10 @@ log_item_impl(struct sess *sess, const struct flist *f)
 
 	switch (IFTODT(f->st.mode)) {
 	case DT_DIR:
-		sz = strlen(f->path);
+		sz = strlen(f->wpath);
 		assert(sz > 0);
 		snprintf(pathbuf, sizeof(pathbuf), "%s%s",
-		    f->wpath, (f->path[sz - 1] == '/') ? "" : "/");
+		    f->wpath, (f->wpath[sz - 1] == '/') ? "" : "/");
 		path = pathbuf;
 		break;
 
