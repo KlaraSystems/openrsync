@@ -88,7 +88,7 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		sess.protocol = sess.rver;
 	}
 
-	LOG2("client detected client version %d, server version %d, "
+	LOG3("client detected client version %d, server version %d, "
 	    "negotiated protocol version %d, seed %d",
 	    sess.lver, sess.rver, sess.protocol, sess.seed);
 
@@ -113,8 +113,11 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		sess.mplex_reads = 1;
 
 	assert(sess.opts->whole_file != -1);
-	LOG2("Delta transmission %s for this transfer",
-	    sess.opts->whole_file ? "disabled" : "enabled");
+
+	if (verbose > 1 && f->mode == FARGS_RECEIVER) {
+		LOG0("Delta transmission %s for this transfer",
+		    sess.opts->whole_file ? "disabled" : "enabled");
+	}
 
 	/*
 	 * Now we need to get our list of files.
@@ -122,16 +125,21 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	 */
 
 	if (f->mode != FARGS_RECEIVER) {
-		LOG2("client starting sender: %s",
+		LOG3("client starting sender: %s",
 		    f->host == NULL ? "(local)" : f->host);
+
+		sess.lreceiver = (f->host == NULL);
+
 		if (!rsync_sender(&sess, fd, fd, f->sourcesz,
 		    f->sources)) {
 			ERRX1("rsync_sender");
 			goto out;
 		}
 	} else {
-		LOG2("client starting receiver: %s",
+		LOG3("client starting receiver: %s",
 		    f->host == NULL ? "(local)" : f->host);
+
+		sess.lreceiver = true;
 
 		/*
 		 * The client traditionally doesn't multiplex writes, but it

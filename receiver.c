@@ -83,6 +83,9 @@ rsync_set_metadata(struct sess *sess, int newfile,
 	struct stat      st;
 	bool		 pres_exec;
 
+	if (sess->opts->dry_run)
+		return 1;
+
 	pres_exec = !newfile && S_ISREG(f->st.mode) &&
 	    (sess->opts->preserve_executability && !sess->opts->preserve_perms);
 
@@ -112,13 +115,17 @@ rsync_set_metadata(struct sess *sess, int newfile,
 	 * means that we're mapping into an unknown (or disallowed)
 	 * group identifier.
 	 */
-	if ((sess->opts->supermode == SMODE_ON || geteuid() == 0) &&
-	    sess->opts->preserve_uids && sess->opts->supermode != SMODE_OFF)
+
+	if (sess->opts->preserve_uids &&
+	    (sess->opts->supermode == SMODE_ON ||
+	     (sess->opts->supermode == SMODE_UNSET && geteuid() == 0)))
 		uid = f->st.uid;
+
 	if (sess->opts->preserve_gids)
 		gid = f->st.gid;
 
 	mode = f->st.mode;
+
 	if (uid != (uid_t)-1 || gid != (gid_t)-1) {
 		if (fchown(fd, uid, gid) == -1) {
 			if (errno != EPERM) {
@@ -167,6 +174,9 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	struct stat      st;
 	bool		 pres_exec;
 
+	if (sess->opts->dry_run)
+		return 1;
+
 	pres_exec = !newfile && S_ISREG(f->st.mode) &&
 	    (sess->opts->preserve_executability && !sess->opts->preserve_perms);
 
@@ -199,9 +209,12 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	 * means that we're mapping into an unknown (or disallowed)
 	 * group identifier.
 	 */
-	if ((sess->opts->supermode == SMODE_ON || geteuid() == 0) &&
-	    sess->opts->preserve_uids && sess->opts->supermode != SMODE_OFF)
+
+	if (sess->opts->preserve_uids &&
+	    (sess->opts->supermode == SMODE_ON ||
+	     (sess->opts->supermode == SMODE_UNSET && geteuid() == 0)))
 		uid = f->st.uid;
+
 	if (sess->opts->preserve_gids)
 		gid = f->st.gid;
 
@@ -527,7 +540,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	} else if (!sess->opts->server)
 		LOG1("Transfer starting: %zu files", flsz);
 
-	LOG2("%s: receiver destination", root);
+	LOG3("%s: receiver destination", root);
 
 	/*
 	 * Create the path for our destination directory, if we're not
@@ -781,7 +794,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 
 	cleanup_set_download(cleanup_ctx, dl);
 
-	LOG2("%s: ready for phase 1 data", root);
+	LOG3("%s: ready for phase 1 data", root);
 
 	for (;;) {
 		if ((c = poll(pfd, PFD__MAX, poll_timeout)) == -1) {
@@ -880,7 +893,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				if (phase == max_phase + 1)
 					break;
 
-				LOG2("%s: receiver ready for phase %d data (%zu to redo)",
+				LOG3("%s: receiver ready for phase %d data (%zu to redo)",
 				    root, phase + 1, download_needs_redo(dl));
 
 				sess->role->append = 0;
@@ -942,7 +955,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		goto out;
 	}
 
-	LOG2("receiver finished updating");
+	LOG3("receiver finished updating");
 	rc = 1;
 out:
 	free(derived_root);

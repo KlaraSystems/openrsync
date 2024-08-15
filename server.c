@@ -118,21 +118,24 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		sess.protocol = sess.rver;
 	}
 
-	LOG2("server detected client version %d, server version %d, "
+	LOG3("server detected client version %d, server version %d, "
 	    "negotiated protocol version %d, seed %d",
 	    sess.rver, sess.lver, sess.protocol, sess.seed);
 
 	sess.mplex_writes = 1;
 
 	assert(sess.opts->whole_file != -1);
-	LOG2("Delta transmission %s for this transfer",
-	    sess.opts->whole_file ? "disabled" : "enabled");
+
+	if (verbose > 1 && !sess.opts->sender) {
+		LOG0("Delta transmission %s for this transfer",
+		    sess.opts->whole_file ? "disabled" : "enabled");
+	}
 
 	for (int i = 0; argv[i] != NULL; i++)
-		LOG2("exec[%d] = %s", i, argv[i]);
+		LOG3("exec[%d] = %s", i, argv[i]);
 
 	if (sess.opts->sender) {
-		LOG2("server starting sender");
+		LOG3("server starting sender");
 
 		/*
 		 * At this time, I always get a period as the first
@@ -168,7 +171,7 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 			goto out;
 		}
 	} else {
-		LOG2("server starting receiver");
+		LOG3("server starting receiver");
 
 		/*
 		 * I don't understand why this calling convention

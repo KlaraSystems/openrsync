@@ -30,6 +30,7 @@ find src | xargs touch -A -03
 # are generated as expected:
 #
 for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
+    echo "Test 1 [$opt]"
     rm -rf dst log
     rsync -a ${opt} --out-format='OUTFMT: %l %f %U %G %n %b %L' -- src/ dst/ > log 2>&1
 
@@ -37,6 +38,7 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
 
     grep ^OUTFMT log | while read line ; do
 	set -- ${line}
+	echo "Test 1.1 [$opt] [$line]"
 	[ $# -eq 7 -o $# -eq 9 ]
 	[ "$1" = "OUTFMT:" ]
 	SIZE=$2
@@ -70,10 +72,12 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
     #
     touch -A -13 $(find dst)
 
+    echo "Test 2 [$opt]"
     rsync -a ${opt} --no-W --out-format='OUTFMT: %064l %16f %-8b' -- src/ dst/ > log 2>&1
 
     grep ^OUTFMT log | while read line ; do
 	set -- ${line}
+	echo "Test 2.1 [$opt] [$line]"
 	[ $# -eq 4 ]
 	[ "$1" = "OUTFMT:" ]
 	SIZE=$2
@@ -99,12 +103,14 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
     #
     rm -rf dst log
 
-    rsync -a ${opt} --log-file=log --log-file-format='OUTFMT: %063l %16f %-7b' -- src/ dst/ > /dev/null 2>&1
+    echo "Test 3"
+    rsync -a --log-file=log --log-file-format='OUTFMT: %063l %16f %-7b' -- src/ dst/ > /dev/null 2>&1
 
     [ "$(grep -c OUTFMT log)" -eq "$(find dst -type f | wc -l)" ]
 
     grep OUTFMT log | while read line ; do
 	set -- ${line}
+	echo "Test 3.1 [$line]"
 	[ $# -eq 7 ]
 	shift 3
 	[ "$1" = "OUTFMT:" ]
@@ -129,6 +135,7 @@ rm -rf src dst
 mkdir src
 date > src/file
 
+echo "Test 4"
 rsync -a --out-format='% %% %+ %- %0 %08 %777 %-f %' -- src/ dst/
 compare_trees -t src dst
 
@@ -140,36 +147,41 @@ DOTDIR="."
 set --
 
 for i in $(seq 9) ; do
-	#echo "chk 10 [$i] [${DOTDIR}]"
+	echo "Test 5 [$i]"
 	jot 3 $i > src/file
 	(cd src && rsync -a --out-format='OUTFMT: %f %n %l' -- ${DOTDIR}/${DOTDIR}/file ../dst/ > ../log 2>&1)
 	compare_trees src dst
 
 	grep ^OUTFMT log | while read line ; do
 		set -- ${line}
-		[ "$2" == "$3" ]
-		cmp src/$2 dst/$3
+		echo "Test 5.1 [$i] [$line]"
+		[ "$(basename $2)" == "$(basename $3)" ]
+		echo "$2" | fgrep -qv -- './'
+		echo "$3" | fgrep -qv -- './'
+		cmp src/$3 dst/$3
 	done
 
+	echo "Test 6 [$i]"
 	jot 5 $i > src/file
 	(cd src && rsync -a --out-format='OUTFMT: %f %n %l' -- ${DOTDIR} ../dst/ > ../log 2>&1)
 	compare_trees src dst
 
-	#echo "chk 20 [$i] log"
 	grep ^OUTFMT log | while read line ; do
 		set -- ${line}
+		echo "Test 6.1 [$i] [$line]"
 		[ "$(basename $2)" == "$(basename $3)" ]
 		[ -f "dst/$3" ] && echo "$2" | fgrep -qv -- './'
 		[ -f "dst/$3" ] && echo "$3" | fgrep -qv -- './'
 	done
 
-	#echo "chk 30 [$i] [${DOTDIR}]"
+	echo "Test 7 [$i]"
 	jot 7 $i > src/file
 	rsync -a --out-format='OUTFMT: %f %n %l' -- ${DOTDIR}/${DOTDIR}/src/${DOTDIR}/ dst/ > log 2>&1
 	compare_trees src dst
 
 	grep ^OUTFMT log | while read line ; do
 		set -- ${line}
+		echo "Test 7.1 [$i] [$line]"
 		[ "$(basename $2)" == "$(basename $3)" ]
 		[ -f "dst/$3" ] && echo "$2" | fgrep -qv -- './'
 		[ -f "dst/$3" ] && echo "$3" | fgrep -qv -- './'

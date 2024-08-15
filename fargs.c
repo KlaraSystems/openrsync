@@ -332,16 +332,10 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "--no-implied-dirs");
 	if (sess->opts->dlupdates > 0)
 		addargs(&args, "--delay-updates");
-	if (sess->opts->copy_links)
-		addargs(&args, "-L");
 	if (sess->opts->copy_unsafe_links)
 		addargs(&args, "--copy-unsafe-links");
 	if (sess->opts->safe_links)
 		addargs(&args, "--safe-links");
-	if (sess->opts->copy_dirlinks)
-		addargs(&args, "-k");
-	if (sess->opts->keep_dirlinks)
-		addargs(&args, "-K");
 	if (sess->opts->remove_source)
 		addargs(&args, "--remove-source-files");
 #ifdef __APPLE__
@@ -353,16 +347,23 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 	if (f->mode == FARGS_SENDER && sess->opts->fuzzy_basis)
 		addargs(&args, "--fuzzy");
 	if (sess->opts->outformat && f->mode == FARGS_SENDER) {
+		const char *ifmt = "%i";
+
 		log_format_init(sess);
+
+		if (sess->itemize_i && sess->opts->itemize > 1)
+			ifmt = "%i%I";
 
 		/*
 		 * We don't send the full outformat to the other side,
 		 * but they need to know about %i or %o.
 		 */
 		if (sess->itemize_i) {
-			addargs(&args, "--out-format=%%i");
+			addargs(&args, "--log-format=%s", ifmt);
 		} else if (sess->itemize_o) {
-			addargs(&args, "--out-format=%%o");
+			addargs(&args, "--log-format=%%o");
+		} else if (!verbose) {
+			addargs(&args, "--log-format=X");
 		}
 	}
 	if (sess->opts->list_only)
@@ -460,6 +461,14 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 				    sess->opts->basedir[j]);
 			}
 		}
+
+		if (sess->opts->keep_dirlinks)
+			addargs(&args, "-K");
+	} else {
+		if (sess->opts->copy_links)
+			addargs(&args, "-L");
+		if (sess->opts->copy_dirlinks)
+			addargs(&args, "-k");
 	}
 
 	/* Terminate with a full-stop for reasons unknown. */

@@ -1672,7 +1672,7 @@ rsync_sender(struct sess *sess, int fdin,
 				send_iflags(sess, &wbuf, &wbufsz,
 					&wbufmax, &pos, fl.flp, up.cur->idx);
 
-				if (sig || hlink) {
+				if (sig || hlink || sess->itemize) {
 					bool local = (f->iflags & IFLAG_LOCAL_CHANGE) != 0;
 					bool dir = S_ISDIR(f->st.mode);
 
@@ -1740,7 +1740,7 @@ rsync_sender(struct sess *sess, int fdin,
 		goto out;
 	}
 
-	LOG2("sender finished updating");
+	LOG3("sender finished updating");
 	rc = 1;
 out:
 	send_up_reset(&up);

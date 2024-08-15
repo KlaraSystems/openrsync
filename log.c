@@ -50,6 +50,7 @@
 #define LOG_FORMAT_ITEMIZE	(1 << 1)
 #define LOG_FORMAT_LATEPRINT	(1 << 2)
 #define LOG_FORMAT_OPERATION	(1 << 3)
+#define LOG_FORMAT_ITEMIZE_I	(1 << 4)
 
 extern int verbose;
 
@@ -668,6 +669,9 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 		}
 		break;
 	}
+	case 'I':
+		*rval |= LOG_FORMAT_ITEMIZE_I;
+		break;
 	case 'i': {
 		/* itemize string YXcstpogz */
 		int32_t ifl;
@@ -676,11 +680,7 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 		if (sbuf != NULL) {
 			ifl = fl->iflags;
 			if (ifl & IFLAG_DELETED) {
-				/*
-				 * TODO - this is not filled in by
-				 * mainline code yet.  Never gets here.
-				 */
-				strlcpy(buf, "*deleted", sizeof(buf));
+				/* Handled by flist_gen_dels() */
 				break;
 			}
 
@@ -695,7 +695,7 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 			if (ifl & IFLAG_LOCAL_CHANGE) {
 				buf[0] = (ifl & IFLAG_HLINK_FOLLOWS) ? 'h' : 'c';
 			} else if (ifl & IFLAG_TRANSFER) {
-				buf[0] = sess->mode == FARGS_SENDER ? '<' : '>';
+				buf[0] = sess->lreceiver ? '>' : '<';
 			}
 
 			if (S_ISDIR(fl->st.mode))
@@ -945,17 +945,17 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 	return fmt;
 }
 
-int
-log_format(struct sess *sess, const struct flist *fl)
+static int
+log_format(struct sess *sess, const char *format, const struct flist *fl)
 {
 	const bool do_print = (fl != NULL);
 	size_t len;
 	int end, rval = 0;
 	const char *start;
-	const char *fmt, *format;
+	const char *fmt;
 	struct sbuf *sbuf;
 
-	if (sess->opts->outformat == NULL)
+	if (format == NULL)
 		return 0;
 
 	sbuf = NULL;
@@ -967,7 +967,7 @@ log_format(struct sess *sess, const struct flist *fl)
 		}
 	}
 
-	fmt = format = sess->opts->outformat;
+	fmt = format;
 	len = strlen(fmt);
 	rval = end = 0;
 
@@ -1025,7 +1025,8 @@ out:
 void
 log_format_init(struct sess *sess)
 {
-	int flags = log_format(sess, NULL);
+	int flags = log_format(sess, sess->opts->outformat, NULL);
+	bool itemize_I;
 
 	if ((flags & LOG_FORMAT_SUCCESS) == 0)
 		return;
@@ -1034,7 +1035,13 @@ log_format_init(struct sess *sess)
 	sess->itemize_o = (flags & LOG_FORMAT_OPERATION) != 0;
 	sess->lateprint = (flags & LOG_FORMAT_LATEPRINT) != 0;
 
-	sess->itemize = sess->itemize_i;
+	itemize_I = (flags & LOG_FORMAT_ITEMIZE_I) != 0;
+
+	sess->itemize = sess->itemize_i + itemize_I;
+	if (sess->itemize == 1) {
+		if (sess->opts->itemize > 1 || verbose > 1)
+			sess->itemize++;
+	}
 }
 
 
@@ -1076,41 +1083,47 @@ rsync_humanize(struct sess *sess, char *buf, size_t len, int64_t val)
 int
 log_item_impl(struct sess *sess, const struct flist *f)
 {
-	char pathbuf[MAXPATHLEN * 2 + 8];
-	const char *path;
-	size_t sz;
+	const char *outformat = sess->opts->outformat;
 
-	if (sess->opts->outformat)
-		return log_format(sess, f);
+	if (sess->itemize) {
+		if (sess->protocol >= 29)
+			return log_format(sess, outformat, f);
 
-	if (verbose < 1)
-		return 1;
+		if (sess->lreceiver && (f->iflags != 0 || verbose > 1)) {
+			if (sess->opts->server)
+				outformat = "%i %n%L";
 
-	switch (IFTODT(f->st.mode)) {
-	case DT_DIR:
-		sz = strlen(f->wpath);
-		assert(sz > 0);
-		snprintf(pathbuf, sizeof(pathbuf), "%s%s",
-		    f->wpath, (f->wpath[sz - 1] == '/') ? "" : "/");
-		path = pathbuf;
-		break;
-
-	case DT_LNK:
-		snprintf(pathbuf, sizeof(pathbuf), "%s -> %s", f->wpath, f->link);
-		path = pathbuf;
-		break;
-
-	default:
-		path = f->wpath;
-		if (f->link &&
-		    (f->iflags & IFLAG_BASIS_FOLLOWS) == 0) {
-			snprintf(pathbuf, sizeof(pathbuf), "%s => %s", f->wpath, f->link);
-			path = pathbuf;
+			return log_format(sess, outformat, f);
 		}
-		break;
 	}
 
-	return print_7_or_8_bit(sess, "%s\n", path, NULL);
+	if (verbose > 1 && f->iflags == 0) {
+		if (S_ISDIR(f->st.mode))
+			return 1;
+
+		return print_7_or_8_bit(sess, "%s is uptodate\n", f->wpath, NULL);
+	}
+
+	if (sess->itemize) {
+		if (f->iflags != 0) {
+			if (S_ISREG(f->st.mode))
+				return log_format(sess, "%i %n", f);
+
+			if (verbose > 1 ||
+			    (verbose > 0 && !S_ISLNK(f->st.mode)))
+				return log_format(sess, "%n", f);
+		}
+
+		return 1;
+	}
+
+	if (outformat)
+		return log_format(sess, outformat, f);
+
+	if (verbose > 1 || (verbose > 0 && f->iflags != 0))
+		return log_format(sess, "%n%L", f);
+
+	return 1;
 }
 
 int

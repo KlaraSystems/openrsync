@@ -516,7 +516,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 
 	/* Double-check that we've no pending multiplexed data. */
 
-	LOG2("sending file metadata list: %zu", flsz);
+	LOG3("sending file metadata list: %zu", flsz);
 
 	sess->sender_flsz = flsz;
 
@@ -751,7 +751,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			sendidsz = uidsz;
 		else
 			sendidsz = 0;
-		LOG2("sending uid list: %zu", sendidsz);
+		LOG3("sending uid list: %zu", sendidsz);
 		if (!idents_send(sess, fdout, uids, sendidsz)) {
 			ERRX1("idents_send");
 			goto out;
@@ -764,7 +764,7 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 			sendidsz = gidsz;
 		else
 			sendidsz = 0;
-		LOG2("sending gid list: %zu", sendidsz);
+		LOG3("sending gid list: %zu", sendidsz);
 		if (!idents_send(sess, fdout, gids, sendidsz)) {
 			ERRX1("idents_send");
 			goto out;
@@ -1578,7 +1578,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			ERRX1("idents_recv");
 			goto out;
 		}
-		LOG2("received uid list: %zu", uidsz);
+		LOG3("received uid list: %zu", uidsz);
 	}
 
 	if (sess->opts->preserve_gids && sess->opts->numeric_ids != NIDS_FULL) {
@@ -1586,10 +1586,10 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			ERRX1("idents_recv");
 			goto out;
 		}
-		LOG2("received gid list: %zu", gidsz);
+		LOG3("received gid list: %zu", gidsz);
 	}
 
-	LOG2("received file metadata list: %zu", flsz);
+	LOG3("received file metadata list: %zu", flsz);
 
 	/* Remember the sender's flist size for keep-alive detection. */
 
@@ -2219,7 +2219,7 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 			errors++;
 	}
 
-	LOG2("recursively generated %zu filenames", fl->sz);
+	LOG3("recursively generated %zu filenames", fl->sz);
 
 	return errors ? 0 : 1;
 }
@@ -2786,6 +2786,9 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		f->wpath = f->path + stripdir;
 		flist_copy_stat(f, ent->fts_statp);
 		errno = 0;
+
+		if (sess->itemize)
+			print_7_or_8_bit(sess, "*deleting %s\n", rpath, NULL);
 	}
 
 	if (errno) {

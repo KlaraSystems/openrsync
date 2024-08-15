@@ -99,8 +99,8 @@
 /*
  * Not for transmission.
  */
-#define	IFLAG_MISSING_DATA	(1<<16)	/* used by log_formatted() */
-#define	IFLAG_DELETED		(1<<17)	/* used by log_formatted() */
+#define	IFLAG_MISSING_DATA	(1<<16)	/* used by log_format() */
+#define	IFLAG_DELETED		(1<<17)	/* used by log_format() */
 #define	IFLAG_HAD_BASIS		(1<<18) /* had basis, used by sender_get_iflags() */
 
 #define	SIGNIFICANT_IFLAGS	\
@@ -496,6 +496,7 @@ struct	opts {
 	char		*basedir[MAX_BASEDIR];
 	char            *filesfrom;             /* --files-from */
 	int		 from0;			/* -0 */
+	int		 itemize;		/* --itemize-changes, -i */
 	const char	*outformat;             /* --out-format */
 	const char	*sockopts;		/* --sockopts */
 	off_t		 bwlimit;		/* --bwlimit */
@@ -673,9 +674,9 @@ struct	sess {
 	int		   mplex_writes; /* multiplexing writes? */
 	double             last_time; /* last time printed --progress */  
 	uint64_t	   last_bytes; /* last bytes printed --progress */
-	uint8_t		   itemize; /* --itemize or %i in --output-format */
-	uint8_t		   itemize_i; /* --itemize or %i in --output-format */
-	uint8_t		   itemize_o; /* --itemize or %i in --output-format */
+	uint8_t		   itemize; /* %i + %I in --out-format */
+	uint8_t		   itemize_i; /* %i in --out-format */
+	uint8_t		   itemize_o; /* %o in --out-format */
 	uint8_t		   lateprint; /* Does output format contain a flag requiring late print? */
 	char             **filesfrom; /* Contents of files-from */
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
@@ -694,6 +695,7 @@ struct	sess {
 	uint64_t           total_errors; /* Total non-fatal errors */
 	long		   total_deleted; /* Total files deleted */
 	bool		   err_del_limit; /* --max-delete limit exceeded */
+	bool		   lreceiver; /* Receiver is local */
 	int		   protocol; /* negotiated protocol version */
 	char              *token_buf; /* used for protocol token processing */
 	size_t             token_bufsz; /* used for protocol token processing */
@@ -1107,7 +1109,6 @@ sess_is_inplace(struct sess *sess)
 #endif
 
 struct sbuf;
-int log_format(struct sess *sess, const struct flist *fl);
 void log_format_init(struct sess *sess);
 void our_strmode(mode_t mode, char *p);
 int print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,

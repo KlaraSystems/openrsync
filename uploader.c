@@ -41,6 +41,8 @@
 
 #include "extern.h"
 
+extern int verbose;
+
 /*
  * We're using O_RESOLVE_BENEATH in a couple of places just for some additional
  * safety on platforms that support it, so it's not a hard requirement.
@@ -85,6 +87,7 @@ struct	upload {
 };
 
 static int pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode);
+static bool check_path(int rootfd, const char *path);
 
 static inline bool
 force_delete_applicable(struct upload *p, struct sess *sess, mode_t mode)
@@ -114,9 +117,16 @@ dstat_save(const struct stat *st, struct fldstat *dstat)
 }
 
 static void
-itemize_changes(struct sess *sess, struct stat *st, struct flist *f)
+itemize_changes(const struct sess *sess, const struct stat *st, struct flist *f)
 {
-	if (sess->opts->preserve_perms && st->st_mode != f->st.mode)
+	bool superuser = false;
+
+	if (sess->opts->supermode == SMODE_ON ||
+	    (sess->opts->supermode == SMODE_UNSET && geteuid() == 0))
+		superuser = true;
+
+	if (sess->opts->preserve_perms && st->st_mode != f->st.mode &&
+	    (superuser || st->st_uid == geteuid()))
 		f->iflags |= IFLAG_PERMS;
 
 	if (sess->opts->preserve_times && st->st_mtime != f->st.mtime) {
@@ -125,11 +135,11 @@ itemize_changes(struct sess *sess, struct stat *st, struct flist *f)
 	}
 
 	if (sess->opts->preserve_uids && st->st_uid != f->st.uid &&
-	    f->st.uid != (uid_t)(-1))
+	    f->st.uid != (uid_t)(-1) && superuser)
 		f->iflags |= IFLAG_OWNER;
 
 	if (sess->opts->preserve_gids && st->st_gid != f->st.gid &&
-	    f->st.gid != (gid_t)(-1))
+	    f->st.gid != (gid_t)(-1) && (superuser || getegid() == f->st.gid))
 		f->iflags |= IFLAG_GROUP;
 }
 
@@ -966,6 +976,13 @@ pre_dir(struct upload *p, struct sess *sess)
 		}
 	}
 
+	if (sess->opts->dry_run) {
+		if (!check_path(p->rootfd, f->path)) {
+			f->iflags |= IFLAG_NEW | IFLAG_LOCAL_CHANGE;
+			return 0;
+		}
+	}
+
 	if (rc != -1 && !S_ISDIR(st.st_mode)) {
 		if (sess->opts->keep_dirlinks &&
 			keep_dirlinks_applies(&st, f, p->rootfd)) {
@@ -1070,6 +1087,74 @@ post_dir(struct sess *sess, const struct upload *u, size_t idx)
 }
 
 /*
+ * Returns true if each and every component of the given path (except
+ * the last) exists and is a real directory (i.e., not a symlink).
+ * Returns false otherwise.
+ */
+static bool
+check_path(int rootfd, const char *path)
+{
+	static char prev_pathbuf[PATH_MAX];
+	static size_t prev_pathlen;
+	static bool prev_isdir;
+	char pathbuf[PATH_MAX];
+	size_t pathlen;
+	bool isdir;
+	char *pc;
+
+	pc = strrchr(path, '/');
+	if (pc == NULL || pc[1] == '\0')
+		return true;
+
+	pathlen = pc - path;
+	assert(pathlen + 1 < sizeof(pathbuf));
+
+	if (pathlen >= prev_pathlen && prev_pathlen > 0 &&
+	    strncmp(prev_pathbuf, path, prev_pathlen) == 0) {
+		return prev_isdir;
+	}
+
+	memcpy(pathbuf, path, pathlen);
+	pathbuf[pathlen] = '\0';
+	isdir = false;
+
+	for (;;) {
+		struct stat sb;
+
+		if (fstatat(rootfd, pathbuf, &sb, AT_SYMLINK_NOFOLLOW) == -1)
+			return true;
+
+		isdir = S_ISDIR(sb.st_mode);
+		if (!isdir)
+			break;
+
+		pc = strrchr(pathbuf, '/');
+		if (pc == NULL || pc[1] == '\0')
+			break;
+
+		*pc = '\0';
+
+		if (prev_pathlen == (size_t)(pc - pathbuf) &&
+		    strcmp(prev_pathbuf, pathbuf) == 0) {
+			isdir = prev_isdir;
+			break;
+		}
+
+	}
+
+	/*
+	 * Cache the result to (hopefully) reduce the expense
+	 * of the next call.
+	 */
+	memcpy(prev_pathbuf, path, pathlen);
+	prev_pathbuf[pathlen] = '\0';
+	prev_pathlen = pathlen;
+	prev_isdir = isdir;
+
+	return isdir;
+}
+
+/*
  * Check if file exists in the specified root directory.
  * Returns:
  *    -1 on error
@@ -1099,17 +1184,40 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 				return 0;
 			}
 
-			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
+			f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
 			return 3;
 		}
 
 		if (sess->opts->dry_run) {
-			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
+			f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
 			return 2;
 		}
 
 		ERR("%s: fstatat", f->path);
 		return -1;
+	}
+
+	/*
+	 * In non-dry-run mode with either --copy-links and/or --copy-dirlinks
+	 * pre_dir() will have removed any component of path[] that is a symlink,
+	 * in which case the fstatat() above will fail and we cannot reach this
+	 * point.  However, in dry-run mode the fstatat() above will succeed,
+	 * so we must report that this is a new file if any component of path
+	 * contains a symlink.
+	 *
+	 * Note that the reference rsync does not send the -k nor -L options
+	 * to the receiver so we cannot key on those options here to avoid
+	 * the check.
+	 *
+	 * Note also that if neither --copy-links nor --copy-dirlinks are in
+	 * play then all components of f->path (except the last) should be
+	 * a real directory (i.e., never a symlink to a directory).
+	 */
+	if (sess->opts->dry_run) {
+		if (!check_path(rootfd, path)) {
+			f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
+			return 3;
+		}
 	}
 
 	if (!sess->opts->ign_exist && sess->opts->hard_links) {
@@ -1120,11 +1228,11 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		 */
 		if (find_hl(f, hl)) {
 			if (st->st_nlink == 1) {
-				f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
+				f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
 				return 3;
 			}
 		} else if (st->st_nlink > 1) {
-			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
+			f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
 			return 3;
 		}
 		/*
@@ -1172,7 +1280,7 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		 * would make it uglier.
 		 */
 		if (f->st.size != 0 && sess->opts->checksum) {
-			rc = hash_file_by_path(rootfd, f->path, f->st.size, md);
+			rc = hash_file_by_path(rootfd, path, st->st_size, md);
 			if (!(rc == 0 && memcmp(md, f->md, sizeof(md)) == 0))
 				f->iflags |= IFLAG_CHECKSUM;
 		}
@@ -1186,7 +1294,7 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 
 		if (sess->opts->checksum) {
 			if (rc == -1)
-				rc = hash_file_by_path(rootfd, f->path, f->st.size, md);
+				rc = hash_file_by_path(rootfd, path, st->st_size, md);
 			if (rc == 0 && memcmp(md, f->md, sizeof(md)) == 0)
 				return 0;
 			return 2;
@@ -1202,6 +1310,8 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 			}
 			return 1;
 		}
+	} else {
+		f->iflags |= IFLAG_SIZE;
 	}
 
 	/* file needs attention */
@@ -1513,10 +1623,10 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		 * Fix the return value so that we don't try to set metadata of
 		 * what we unlinked below.
 		 */
-		if (do_unlink) {
-			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
+		if (do_unlink)
 			rc = 3;
-		}
+
+		f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
 	}
 
 	/*
@@ -1672,6 +1782,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		}
 
 		*size = 0;
+		f->iflags |= IFLAG_TRANSFER;
 		return 0;
 	}
 
@@ -1688,6 +1799,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	}
 
 	/* file needs attention */
+	f->iflags |= IFLAG_TRANSFER;
 	return 1;
 }
 
@@ -2036,12 +2148,14 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 
 			u->fl[u->idx].flstate |= FLIST_SUCCESS;
 
-			if (u->fl[u->idx].iflags == 0)
-				continue;
-
 			if (!protocol_itemize) {
 				log_item_impl(sess, &u->fl[u->idx]);
 				continue;
+			}
+
+			if (u->fl[u->idx].iflags == 0) {
+				if (sess->itemize < 2 && verbose < 2)
+					continue;
 			}
 
 			/*
@@ -2345,7 +2459,7 @@ rsync_uploader_tail(struct upload *u, struct sess *sess)
 	    !sess->opts->preserve_perms)
 		return 1;
 
-	LOG2("fixing up directory times and permissions");
+	LOG3("fixing up directory times and permissions");
 
 	for (i = 0; i < u->flsz; i++)
 		if (S_ISDIR(u->fl[i].st.mode))

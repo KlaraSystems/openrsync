@@ -234,7 +234,21 @@ download_partial_fd(struct sess *sess, int rootfd, const struct flist *f)
 	}
 
 	if (ret == -1) {
-		ret = mkpathat(rootfd, partial_dir,
+		if (partial_dir != partial_reldir) {
+			size_t len;
+
+			/*
+			 * mkpathat() modifies partial_dir[] so we must
+			 * ensure it's in writable memory.
+			 */
+			len = strlcpy(partial_reldir, partial_dir, sizeof(partial_reldir));
+			if (len >= sizeof(partial_reldir)) {
+				errno = ENAMETOOLONG;
+				goto err;
+			}
+		}
+
+		ret = mkpathat(rootfd, partial_reldir,
 		    S_IRUSR|S_IWUSR|S_IXUSR);
 
 		/*
@@ -1423,12 +1437,14 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 			bool hlink = (f->iflags & IFLAG_HLINK_FOLLOWS) != 0;
 			bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
 
-			if (sig || hlink) {
+			if (sig || hlink || sess->itemize || verbose > 1) {
 				bool local = (f->iflags & IFLAG_LOCAL_CHANGE) != 0;
 				bool dir = S_ISDIR(f->st.mode);
 
 				if (local || dir || hlink || sess->itemize)
 					log_item(sess, f);
+				else if (verbose > 1)
+					log_item_impl(sess, f);
 			}
 
 			return 1;
