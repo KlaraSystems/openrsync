@@ -1,0 +1,122 @@
+#! /bin/sh
+
+. ${tstdir-.}/lib.sh
+. ${tstdir-.}/conf.sh
+
+rm -rf _.flag src dst
+mkdir -p src dst
+
+# If a file is truncated after the transfer has started, we expect to see a
+# clean failure exit with status = PARTIAL (23), rather than a signalled exit.
+fsz=$((1024 * 1024 * 32))
+ERR_PARTIAL=23
+
+dd if=/dev/random of=src/file bs="$fsz" count=1
+
+(
+	# We'll sleep until the transfer starts, then we'll immediately truncate
+	# the source file to trigger the error.
+	while [ ! -s dst/file ]; do
+		sleep 0.1
+	done
+
+	:> src/file
+	:> _.flag
+) &
+
+# Trigger the subshell truncation upon exit in case something went wrong and
+# the transfer never started.
+trap 'echo 1 > dst/file' EXIT
+
+set +e
+rsync --bwlimit=$((1024 * 8)) --partial --inplace -- src/file dst
+rc=$?
+set -e
+
+# Don't clobber dst/file, the sub-shell has already triggered.
+if [ -e _.flag ]; then
+	trap - EXIT
+fi
+
+if [ "$rc" -ne "$ERR_PARTIAL" ]; then
+	1>&2 echo "Expected exit $ERR_PARTIAL, got $rc"
+	exit 1
+fi
+
+# Assuming it got truncated, let's re-run the test; this time, we'll construct
+# a file with a repeating pattern then seed the destination with a partial
+# version of it so that some of the writes will come from an mmap of the
+# existing destination file.
+rm -rf dst _.flag
+mkdir dst
+
+partsz=$((fsz / 4))
+blocksz=$((partsz / 8))
+dd if=/dev/random of=src/file.part bs="$partsz" count=1
+cat src/file.part src/file.part src/file.part src/file.part > src/file
+cp src/file.part dst/file
+
+(
+	# We'll sleep until the transfer starts, then we'll immediately truncate
+	# the source file to trigger the error.
+	while true; do
+		fname=$(find dst -type f -name '.file.*' -not -empty | head -1)
+		[ -n "$fname" ] && break
+		sleep 0.1
+	done
+
+	ls -la dst
+	:> dst/file
+	:> "$fname"
+	:> _.flag
+) &
+
+# Trigger the subshell truncation upon exit in case something went wrong and
+# the transfer never started.
+trap 'echo 1 > dst/.file.flag' EXIT
+
+# This time no --inplace so that we can truncate it a dst/.file.* pops up.
+# It should succeed, even if we have to enter the redo phase to make it happen.
+rsync --no-W --bwlimit=1024 --partial -- src/file dst
+
+if [ ! -f _.flag ]; then
+	1>&2 echo "Destination file never got truncated"
+	exit 1
+fi
+
+cmp -s src/file dst/file
+
+rm -rf dst _.flag
+mkdir dst
+cp src/file.part dst/file
+
+# One last time, but this time with compression
+(
+	# We'll sleep until the transfer starts, then we'll immediately truncate
+	# the source file to trigger the error.
+	while true; do
+		fname=$(find dst -type f -name '.file.*' -not -empty | head -1)
+		[ -n "$fname" ] && break
+		sleep 0.1
+	done
+
+	ls -la dst
+	:> dst/file
+	:> "$fname"
+	:> _.flag
+) &
+
+# Trigger the subshell truncation upon exit in case something went wrong and
+# the transfer never started.
+trap 'echo 1 > dst/.file.flag' EXIT
+
+# This time no --inplace so that we can truncate it a dst/.file.* pops up.
+# It should succeed, even if we have to enter the redo phase to make it happen.
+rsync -vv --no-W -z --bwlimit=1024 --partial -- src/file dst
+
+if [ ! -f _.flag ]; then
+	1>&2 echo "Destination file never got truncated"
+	exit 1
+fi
+
+cmp -s src/file dst/file

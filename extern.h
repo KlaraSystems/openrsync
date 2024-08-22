@@ -18,9 +18,11 @@
 #ifndef EXTERN_H
 #define EXTERN_H
 
+#include <assert.h>
 #include <dirent.h>
 #include <getopt.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -571,7 +573,7 @@ struct	blkstat {
 	off_t		 total; /* total amount processed */
 	off_t		 dirty; /* total amount sent */
 	size_t		 hint; /* optimisation: next probable match */
-	void		*map; /* mapped file or MAP_FAILED otherwise */
+	struct fmap	*map; /* mapped file or NULL otherwise */
 	size_t		 mapsz; /* size of file or zero */
 	int		 fd; /* descriptor girding the map */
 	enum blkstatst	 curst; /* FSM for sending file blocks */
@@ -581,6 +583,7 @@ struct	blkstat {
 	struct blktab	*blktab; /* hashtable of blocks */
 	uint32_t	 s1; /* partial sum for computing fast hash */
 	uint32_t	 s2; /* partial sum for computing fast hash */
+	bool		 error;
 };
 
 /*
@@ -816,6 +819,40 @@ int	flist_gen_dels(struct sess *, const char *, struct flist **, size_t *,
 int	flist_add_del(struct sess *, const char *, size_t, struct flist **,
 	    size_t *, size_t *, const struct stat *st);
 
+struct fmap;
+extern volatile struct fmap	*fmap_trapped;
+extern sigjmp_buf		 fmap_signal_env;
+
+struct fmap	*fmap_open(int, size_t, int);
+void		*fmap_data(struct fmap *, size_t);
+size_t		 fmap_size(struct fmap *);
+void		 fmap_close(struct fmap *);
+
+#define fmap_trap(fm) __extension__ ({			\
+	bool _fmap_ok = true;				\
+	assert(fmap_trapped == NULL);			\
+							\
+	if (sigsetjmp(fmap_signal_env, 0) > 0) {	\
+		/*					\
+		 * Truncated while attempting to read	\
+		 * the file, return fail.		\
+		 */					\
+		fmap_trapped = NULL;			\
+		_fmap_ok = false;			\
+	} else {					\
+		fmap_trapped = fm;			\
+	}						\
+	_fmap_ok;					\
+})
+
+static inline void
+fmap_untrap(struct fmap *fm)
+{
+
+	assert(fmap_trapped == fm);
+	fmap_trapped = NULL;
+}
+
 const char	 *alt_base_mode(int);
 char		**fargs_cmdline(struct sess *, const struct fargs *, size_t *);
 
@@ -963,7 +1000,7 @@ void		 blkhash_free(struct blktab *);
 struct blkset	*blk_recv(struct sess *, int, struct iobuf *, const char *,
 		    struct blkset *, size_t *, enum send_dl_state *);
 void		 blk_recv_ack(char [16], const struct blkset *, int32_t);
-void		 blk_match(struct sess *, const struct blkset *,
+int		 blk_match(struct sess *, const struct blkset *,
 		    const char *, struct blkstat *);
 int		 blk_send(struct sess *, int, size_t, const struct blkset *,
 		    const char *);

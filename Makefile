@@ -12,6 +12,7 @@ OBJS	   = batch.o \
 	     downloader.o \
 	     fargs.o \
 	     flist.o \
+	     fmap.o \
 	     hash.o \
 	     ids.o \
 	     io.o \
