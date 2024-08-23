@@ -28,6 +28,7 @@ dd if=/dev/random of=src/file bs="$fsz" count=1
 # the transfer never started.
 trap 'echo 1 > dst/file' EXIT
 
+1>&2 echo ">>>> TRUNCATE - SENDER"
 set +e
 rsync --bwlimit=$((1024 * 8)) --partial --inplace -- src/file dst
 rc=$?
@@ -75,7 +76,9 @@ cp src/file.part dst/file
 # the transfer never started.
 trap 'echo 1 > dst/.file.flag' EXIT
 
-# This time no --inplace so that we can truncate it a dst/.file.* pops up.
+1>&2 echo ">>>> TRUNCATE - RECEIVER, UNCOMPRESSED"
+
+# This time no --inplace so that we can truncate it as dst/.file.* pops up.
 # It should succeed, even if we have to enter the redo phase to make it happen.
 rsync --no-W --bwlimit=1024 --partial -- src/file dst
 
@@ -109,6 +112,8 @@ cp src/file.part dst/file
 # Trigger the subshell truncation upon exit in case something went wrong and
 # the transfer never started.
 trap 'echo 1 > dst/.file.flag' EXIT
+
+1>&2 echo ">>>> TRUNCATE - RECEIVER, COMPRESSED"
 
 # This time no --inplace so that we can truncate it a dst/.file.* pops up.
 # It should succeed, even if we have to enter the redo phase to make it happen.

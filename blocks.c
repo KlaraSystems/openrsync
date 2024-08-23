@@ -172,7 +172,7 @@ blk_find(struct sess *sess, struct blkstat *st,
 		fhash = (st->s1 & 0xFFFF) | (st->s2 << 16);
 	} else {
 		if (!fmap_trap(st->map)) {
-			WARNX("file truncated while reading");
+			WARNX("%s: file truncated while reading", path);
 			return BLK_IOFAIL;
 		}
 
@@ -192,7 +192,7 @@ blk_find(struct sess *sess, struct blkstat *st,
 	    fhash == blks->blks[st->hint].chksum_short &&
 	    (size_t)osz == blks->blks[st->hint].len) {
 		if (!fmap_trap(st->map)) {
-			WARNX("file truncated while reading");
+			WARNX("%s: file truncated while reading", path);
 			return BLK_IOFAIL;
 		}
 		hash_slow(fmap_data(st->map, st->offs), (size_t)osz, md, sess);
@@ -231,7 +231,7 @@ blk_find(struct sess *sess, struct blkstat *st,
 
 		if (have_md == 0) {
 			if (!fmap_trap(st->map)) {
-				WARNX("file truncated while reading");
+				WARNX("%s: file truncated while reading", path);
 				return BLK_IOFAIL;
 			}
 			hash_slow(fmap_data(st->map, st->offs), (size_t)osz, md,
@@ -256,7 +256,7 @@ blk_find(struct sess *sess, struct blkstat *st,
 	 */
 
 	if (!fmap_trap(st->map)) {
-		WARNX("file truncated while reading");
+		WARNX("%s: file truncated while reading", path);
 		return BLK_IOFAIL;
 	}
 	map = fmap_data(st->map, st->offs);
@@ -319,7 +319,6 @@ blk_match(struct sess *sess, const struct blkset *blks,
 			if (blk == NULL) {
 				continue;
 			} else if (blk == BLK_IOFAIL) {
-				sess->total_errors++;
 				return 0;
 			}
 
@@ -346,7 +345,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 			sess->total_matched += blk->len;
 			st->offs += blk->len;
 			st->hint = blk->idx + 1;
-			return;
+			return 1;
 		}
 
 		/* Emit remaining data and send terminator token. */

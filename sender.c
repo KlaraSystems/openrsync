@@ -143,7 +143,8 @@ compress_reinit(struct sess *sess)
  * Returns 1 on success, 0 on error.
  */
 static int
-token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
+token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
+	struct flist *fl)
 {
 	char		*buf = NULL, *cbuf = NULL;
 	size_t		 sz, clen, rlen;
@@ -184,7 +185,8 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok)
 	rlen = sz;
 	clen = 0;
 	if (!fmap_trap(up->stat.map)) {
-		WARNX("file truncated while reading");
+		WARNX("%s: file truncated while reading",
+		    fl[up->cur->idx].path);
 		sess->total_errors++;
 		up->stat.error = true;
 		return 0;
@@ -266,7 +268,8 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			for (off_t i = 0; i < sz; i++)
 				io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
 
-			WARNX("file truncated while reading");
+			WARNX("%s: file truncated while reading",
+			    fl[up->cur->idx].path);
 			if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, isz)) {
 				ERRX1("io_lowbuffer_alloc");
 				return 0;
@@ -346,7 +349,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		io_lowbuffer_int(sess, *wb,
 			&pos, *wbsz, -(up->stat.curtok + 1));
 
-		token_ff_compressed(sess, up, -(up->stat.curtok + 1));
+		token_ff_compressed(sess, up, -(up->stat.curtok + 1), fl);
 		return 1;
 	case BLKSTAT_HASH:
 		/*
@@ -356,7 +359,8 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 */
 
 		if (!up->stat.error && !fmap_trap(up->stat.map)) {
-			WARNX("file truncated while hashing");
+			WARNX("%s: file truncated while hashing",
+			    fl[up->cur->idx].path);
 			sess->total_errors++;
 			up->stat.error = true;
 		}
@@ -437,6 +441,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			ERRX("io_lowbuffer_alloc");
 			return 0;
 		}
+		io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
 		comp_state = COMPRESS_DONE;
 		up->stat.curst = BLKSTAT_HASH;
 		return 1;
@@ -596,7 +601,8 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			for (size_t i = 0; i < tsz - pos; i++)
 				io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
 
-			WARNX("file truncated while reading");
+			WARNX("%s: file truncated while reading",
+			    fl[up->cur->idx].path);
 			if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, isz)) {
 				ERRX1("io_lowbuffer_alloc");
 				return 0;
@@ -642,7 +648,8 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		 */
 
 		if (!up->stat.error && !fmap_trap(up->stat.map)) {
-			WARNX("file truncated while hashing");
+			WARNX("%s: file truncated while hashing",
+			    fl[up->cur->idx].path);
 			sess->total_errors++;
 			up->stat.error = true;
 		}
