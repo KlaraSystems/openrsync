@@ -574,7 +574,7 @@ struct	blkstat {
 	off_t		 dirty; /* total amount sent */
 	size_t		 hint; /* optimisation: next probable match */
 	struct fmap	*map; /* mapped file or NULL otherwise */
-	size_t		 mapsz; /* size of file or zero */
+	size_t		 mapsz; /* (cache) size of file or zero */
 	int		 fd; /* descriptor girding the map */
 	enum blkstatst	 curst; /* FSM for sending file blocks */
 	off_t		 curpos; /* sending: position in file to send */
