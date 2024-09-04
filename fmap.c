@@ -134,12 +134,18 @@ size_t
 fmap_size(struct fmap *fm)
 {
 
+	if (fm == NULL)
+		return (0);
+
 	return fm->mapsz;
 }
 
 void
 fmap_close(struct fmap *fm)
 {
+
+	if (fm == NULL)
+		return;
 
 	munmap(fm->map, fm->mapsz);
 	free(fm);
