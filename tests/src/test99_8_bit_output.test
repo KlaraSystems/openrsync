@@ -15,7 +15,7 @@ rm -rf src
 mkdir src
 date > src/foo
 
-for i in 01 02 03 037 060 071 0101 0176 0200 0255 ; do
+for i in 01 02 03 037 060 071 0101 0176 ; do
     echo "chk 10 [$i]"
     fmt=$(printf "src/\\\\%03ofilex" $i)
     echo $i > "$(printf ${fmt})"
@@ -27,6 +27,21 @@ for i in 01 02 03 037 060 071 0101 0176 0200 0255 ; do
     ln -s foo "$(printf ${fmt})"
 done
 
+
+# Not all file systems allow creation of file names
+# containing 8-bit characters (e.g., APFS on macOS).
+#
+for i in 0200 0255 ; do
+    echo "chk 15 [$i]"
+    fmt=$(printf "src/\\\\%03ofilex" $i)
+    echo $i > "$(printf ${fmt})" || break
+
+    fmt=$(printf "src/xdir\\\\%03o" $i)
+    mkdir "$(printf ${fmt})"
+
+    fmt=$(printf "src/\\\\%03osymlink\\\\%03o" $i $i)
+    ln -s foo "$(printf ${fmt})"
+done
 
 for opt in " " "-v" "-8" "-8vvv" "--8-bit-output" "-888 --8-bit-output" ; do
     echo "chk 20 [${opt}]"
@@ -78,6 +93,9 @@ for opt in " " "-v" "-8" "-8vvv" "--8-bit-output" "-888 --8-bit-output" ; do
 
     for i in 0200 0255 ; do
 	echo "chk 50 [${opt}] [$i]"
+	fmt=$(printf "\\\\%03ofilex" $i)
+	test -e "$(printf src/${fmt})" || break
+
         fmt=$(printf "\\\\#%03ofilex" $i)
         grep -qF ${invert} "OUTFMT: ${fmt}" log
 
