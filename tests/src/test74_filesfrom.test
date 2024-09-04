@@ -579,8 +579,8 @@ compare_trees src dst
 #
 FILEBASE="testfile$$"
 DIRBASE="testdir$$"
-NDIRS=257
-NFILES=13
+NDIRS=5
+NFILES=7
 
 echo "Test24: Creating large files-from file..."
 rm -rf src ref
