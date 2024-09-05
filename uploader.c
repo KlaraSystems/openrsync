@@ -2255,16 +2255,17 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 		if (u->idx == u->flsz) {
 			assert(*fileinfd == -1);
 
-			if (u->bufsz > 0) {
-				u->state = UPLOAD_WRITE;
-				*fileoutfd = u->fdout;
-				return 1;
-			}
+			if (sess->opts->read_batch == NULL) {
+				if (u->bufsz > 0) {
+					u->state = UPLOAD_WRITE;
+					*fileoutfd = u->fdout;
+					return 1;
+				}
 
-			if (sess->opts->read_batch == NULL &&
-			    !io_write_int(sess, u->fdout, -1)) {
-				ERRX1("io_write_int");
-				return -1;
+				if (!io_write_int(sess, u->fdout, -1)) {
+					ERRX1("io_write_int");
+					return -1;
+				}
 			}
 			u->state = UPLOAD_FINISHED;
 			LOG4("uploader: finished");
