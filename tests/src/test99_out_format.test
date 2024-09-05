@@ -82,7 +82,7 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
 	[ "$1" = "OUTFMT:" ]
 	SIZE=$2
 	XFER=$4
-	[ "$(echo -n ${SIZE} | wc -c)" -eq 64 ]
+	[ "${#SIZE}" -eq 64 ]
 
 	# If it's a regular file the transferred size should
 	# be many times smaller than the file size:
@@ -116,7 +116,7 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
 	[ "$1" = "OUTFMT:" ]
 	SIZE=$2
 	XFER=$4
-	[ "$(echo -n ${SIZE} | wc -c)" -eq 63 ]
+	[ "${#SIZE}" -eq 63 ]
 
 	# If it's a regular file the transferred size should
 	# be slightly larger than the file size:
