@@ -734,8 +734,6 @@ struct	download;
 struct	upload;
 
 struct hardlinks;
-const struct flist *find_hl(const struct flist *this,
-			    const struct hardlinks *hl);
 
 extern const char rsync_shopts[];
 extern const struct option rsync_lopts[];
@@ -872,6 +870,10 @@ void	cleanup_set_args(struct cleanup_ctx *, struct fargs *);
 void	cleanup_set_child(struct cleanup_ctx *, pid_t);
 void	cleanup_set_session(struct cleanup_ctx *, struct sess *);
 void	cleanup_set_download(struct cleanup_ctx *, struct download *);
+
+const struct flist *find_hl(const struct flist *,
+			    const struct hardlinks *);
+int num_hl(const struct flist *, const struct hardlinks *);
 
 int	io_register_handler(enum iotag, io_tag_handler_fn *, void *);
 int	io_read_line(struct sess *, int, char *, size_t *);

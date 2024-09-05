@@ -368,6 +368,47 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	return NULL;
 }
 
+/*
+ * Similar to find_hl except we count how many hardlinks.
+ */
+int
+num_hl(const struct flist *const this, const struct hardlinks *const hl)
+{
+	int i, count = 0;
+	struct info_for_hardlink searchfor;
+	struct info_for_hardlink *found;
+
+	/*
+	 * bsearch(3) will return an unspecified match when multiple
+	 * matches are found.  We always have at least one match
+	 * and we are interested in multiple matches.  So we use
+	 * bsearch(3), then go backwards to the first match.
+	 */
+	searchfor.device = this->st.device;
+	searchfor.inode = this->st.inode;
+	found = bsearch(&searchfor, hl->infos, hl->n,
+		sizeof(struct info_for_hardlink), info_for_hardlink_compare);
+	if (found == NULL)
+		return 0;
+
+	assert(found->device == this->st.device);
+	assert(found->inode == this->st.inode);
+
+	i = ((void *)found - (void *)hl->infos) /
+		sizeof(struct info_for_hardlink);
+	/* Go back to the first match */
+	while (i > 0 && this->st.inode == hl->infos[i - 1].inode &&
+	    this->st.device == hl->infos[i - 1].device) {
+		i--;
+	}
+	while (this->st.inode == hl->infos[i].inode &&
+		this->st.device == hl->infos[i].device) {
+		count++;
+		i++;
+	}
+	return count;
+}
+
 static int
 make_hardlinks(struct sess *sess, const struct flist *fl, size_t flsz,
     const struct hardlinks *hl, int rootfd)
@@ -378,6 +419,8 @@ make_hardlinks(struct sess *sess, const struct flist *fl, size_t flsz,
 	for (i = 0; i < flsz; i++) {
 		f = &fl[i];
 		if (f->st.inode == 0 && f->st.device == 0)
+			continue;
+		if ((f->flstate & FLIST_NEED_HLINK) == 0)
 			continue;
 		hl_p = find_hl(f, hl);
 		if (hl_p == NULL)
