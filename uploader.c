@@ -2067,11 +2067,13 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 		if (u->bufpos < u->bufsz) {
 			sz = u->chunksz < (u->bufsz - u->bufpos) ?
 				u->chunksz : (u->bufsz - u->bufpos);
-			c = io_write_buf(sess, u->fdout,
-				u->buf + u->bufpos, sz);
-			if (c == 0) {
-				ERRX1("io_write_nonblocking");
-				return -1;
+			if (sess->opts->read_batch == NULL) {
+				c = io_write_buf(sess, u->fdout,
+					u->buf + u->bufpos, sz);
+				if (c == 0) {
+					ERRX1("io_write_nonblocking");
+					return -1;
+				}
 			}
 			u->bufpos += sz;
 			if (u->bufpos < u->bufsz)
