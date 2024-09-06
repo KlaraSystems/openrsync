@@ -66,7 +66,8 @@ rsync_client(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
 
-	if (!io_write_int(&sess, fd, sess.lver)) {
+	if (sess.opts->read_batch == NULL &&
+	    !io_write_int(&sess, fd, sess.lver)) {
 		ERRX1("io_write_int");
 		goto out;
 	} else if (!io_read_int(&sess, fd, &sess.rver)) {
