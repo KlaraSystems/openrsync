@@ -294,7 +294,7 @@ if [ -f "${SRC_PATH}" ] ; then
 
 	[ -n "${RSYNC_PREFIX_DEST}" ] && sed -i .orig 's/^>/</' rsync2-7.log
 
-	chmod u+w "dst/${SRC_BASENAME}"
+	chmod u+w,o-rwx "dst/${SRC_BASENAME}"
 	date >> "dst/${SRC_BASENAME}"
 	touch "dst/${SRC_BASENAME}"
 
