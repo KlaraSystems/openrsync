@@ -1844,6 +1844,9 @@ basedir:
 	if (opts.dirs && opts_no_dirs)
 		ERRX1("Cannot use --dirs and --no-dirs at the same time");
 
+	if (opts.recursive && opts.dirs == DIRMODE_OFF && !opts_no_dirs)
+		opts.dirs = DIRMODE_IMPLIED;
+
 	/*
 	 * XXX rsync started defaulting to --delete-during in later versions of
 	 * the protocol (30 and up).
