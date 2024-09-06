@@ -1568,8 +1568,6 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 			goto out;
 		}
 
-		hl_p = find_hl(f, hl);
-
 		if (p->ofd != -1 && st.st_size > 0) {
 			p->map = fmap_open(p->ofd, st.st_size, PROT_READ);
 			if (p->map == NULL) {
