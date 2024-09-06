@@ -332,8 +332,6 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	 * ones.
 	 */
 	int i;
-	int n_seen = 0;
-	const struct flist *returnthis = NULL;
 	struct info_for_hardlink searchfor;
 	struct info_for_hardlink *found;
 
@@ -341,8 +339,7 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	 * bsearch(3) will return an unspecified match when multiple
 	 * matches are found.  We always have at least one match
 	 * and we are interested in multiple matches.  So we use
-	 * bsearch(3), then go backwards to the first match, then go
-	 * forward to the second (if any) match.
+	 * bsearch(3), then go backwards to the first match.
 	 */
 	searchfor.device = this->st.device;
 	searchfor.inode = this->st.inode;
@@ -361,19 +358,12 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	    this->st.device == hl->infos[i - 1].device) {
 		i--;
 	}
-	for (; i < hl->n; i++) {
-		if (this->st.inode == hl->infos[i].inode &&
-			this->st.device == hl->infos[i].device) {
-			n_seen++;
-			if (n_seen == 1) {
-				if (this == hl->infos[i].ref)
-					return NULL;
-				else
-					returnthis = hl->infos[i].ref;
-			}
-			if (n_seen == 2)
-				return returnthis;
-		}
+	if (this->st.inode == hl->infos[i].inode &&
+		this->st.device == hl->infos[i].device) {
+		if (this == hl->infos[i].ref)
+			return NULL;
+		else
+			return hl->infos[i].ref;
 	}
 	return NULL;
 }
