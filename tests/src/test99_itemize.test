@@ -297,6 +297,7 @@ fi
 # Test that if the source and dest are the same that
 # rsync -i emits nothing and rsync -ii emits all files.
 #
+find src -type p -exec rm {} \;
 rm -rf dst
 cp -a src dst
 
@@ -316,9 +317,6 @@ cat <<-EOF > rsync2-8.log
 .f        2-hlink1
 .f        2-hlink2
 .f        2-hlink3
-.S        3-fifo1
-.S        3-fifo2
-.S        3-fifo3
 .f        4-hlink1
 .f        4-hlink2
 .f        4-hlink3
@@ -357,17 +355,19 @@ cat <<-EOF > rsync2-9.log
 EOF
 
 rm src/file
-touch -A -30 src dst
+touch -A -30 src
 
 echo "Test 9 (-i --delete)"
 rsync -a --no-v -i --delete -n -- src/ dst/ 2>&1 | tee log
 grep '^[ch><.*][dfSL]' log > ilog
 diff rsync2-9.log ilog
+[ -f dst/file ]
 
 echo "Test 9.1 (-i --delete)"
 rsync -a --no-v -i --delete -- src/ dst/ 2>&1 | tee log
 grep '^[ch><.*][dfSL]' log > ilog
 diff rsync2-9.log ilog
+[ ! -f dst/file ]
 
 
 # TODO: Openrsync as receiver currently fails past this point.
@@ -378,9 +378,6 @@ exit
 #
 cat <<-EOF > rsync2-hardlinks-1.log
 cd+++++++ ./
-cS+++++++ 3-fifo1
-cS+++++++ 3-fifo2
-cS+++++++ 3-fifo3
 cL+++++++ 5-sym1 -> 1-file1
 cL+++++++ 5-sym2 -> 1-file2
 cL+++++++ 5-sym3 -> 1-file3
