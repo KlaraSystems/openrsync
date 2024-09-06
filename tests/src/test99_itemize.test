@@ -254,41 +254,52 @@ diff rsync2-6.log ilog
 
 # Test a file that should have an owner and group different than $USER:
 #
-if [ -f /usr/bin/write -a $(id -u) -ne 0 ] ; then
+SRC_PATH="/usr/bin/stat"
+
+if [ -f "${SRC_PATH}" ] ; then
+	SRC_BASENAME=$(basename "${SRC_PATH}")
+
 	cat <<-EOF > rsync2-7.log
-	>f+++++++ write
+	>f+++++++ ${SRC_BASENAME}
 	EOF
 
 	[ -n "${RSYNC_PREFIX_DEST}" ] && sed -i .orig 's/^>/</' rsync2-7.log
 
-	echo "Test 7 (-ii) existing dest, /usr/bin/write"
-	rsync -a --no-v -ii -- /usr/bin/write dst/ 2>&1 | tee log
+	echo "Test 7 (-ii) existing dest, ${SRC_PATH}"
+	rsync -a --no-v -ii -- "${SRC_PATH}" dst/ 2>&1 | tee log
 	grep '^[ch><.][dfSL]' log > ilog
 	diff rsync2-7.log ilog
+	stat -x dst/${SRC_BASENAME}
 
 
 	cat <<-EOF > rsync2-7.log
-	.f        write
+	.f        ${SRC_BASENAME}
 	EOF
 
-	echo "Test 7.1 (-ii) existing dest, /usr/bin/write"
-	rsync -a --no-v -ii -- /usr/bin/write dst/ 2>&1 | tee log
+	echo "Test 7.1 (-ii) existing dest, ${SRC_PATH}"
+	rsync -a --no-v -ii -- "${SRC_PATH}" dst/ 2>&1 | tee log
 	grep '^[ch><.][dfSL]' log > ilog
 	diff rsync2-7.log ilog
 
 
+	UBIT=o
+	GBIT=g
+
+	[ $(stat -f %u "${SRC_PATH}") -eq $(stat -f %u "dst/${SRC_BASENAME}") ] && UBIT=.
+	[ $(stat -f %g "${SRC_PATH}") -eq $(stat -f %g "dst/${SRC_BASENAME}") ] && GBIT=.
+
 	cat <<-EOF > rsync2-7.log
-	>fcstpog. write
+	>fcstp${UBIT}${GBIT}. ${SRC_BASENAME}
 	EOF
 
 	[ -n "${RSYNC_PREFIX_DEST}" ] && sed -i .orig 's/^>/</' rsync2-7.log
 
-	chmod u+w dst/write
-	date >> dst/write
-	touch dst/write
+	chmod u+w "dst/${SRC_BASENAME}"
+	date >> "dst/${SRC_BASENAME}"
+	touch "dst/${SRC_BASENAME}"
 
-	echo "Test 7.2 (-ii -n --super -c) existing dest, /usr/bin/write"
-	rsync -a --no-v -ii -n --super -c -- /usr/bin/write dst/ 2>&1 | tee log
+	echo "Test 7.2 (-ii -n --super -c) existing dest, ${SRC_PATH}"
+	rsync -a --no-v -ii -n --super -c -- "${SRC_PATH}" dst/ 2>&1 | tee log
 	grep '^[ch><.][dfSL]' log > ilog
 	diff rsync2-7.log ilog
 fi
