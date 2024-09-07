@@ -2432,9 +2432,6 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 	if (u->bufsz < (MAX_CHUNK * 3 / 4) && protocol_itemize)
 		u->state = UPLOAD_FIND_NEXT;
 
-	sess->total_files_xfer++;
-	sess->total_xfer_size += u->fl[u->idx].st.size;
-
 nowrite:
 	u->idx++;
 
