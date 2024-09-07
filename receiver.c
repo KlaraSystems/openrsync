@@ -322,18 +322,17 @@ const struct flist *
 find_hl(const struct flist *const this, const struct hardlinks *const hl)
 {
 	/*
-	 * How does the hardlink handling work?
-	 * The first file with identical device/inode is written
-	 * to disk.  Every subsequent one is not written
-	 * and later hardlinked.
-	 * For this function that means we return NULL when "our"
-	 * flist entry is the first with same device/inode.  If it isn't then
-	 * that first one is returned.  We don't ever mess with subsequent
-	 * ones.
+	 * *hl is a copy of the flist sorted by device/inode.
+	 * Generally, the first file with identical device/inode is written
+	 * to disk.  Every subsequent one is not written and later hardlinked.
+	 * However, in some cases it isn't the first file that actually got
+	 * written to disk.  If any file has already been written, it becomes
+	 * the "leader" of the group of hardlinks.
 	 */
 	int i;
 	struct info_for_hardlink searchfor;
 	struct info_for_hardlink *found;
+	const struct flist *first = NULL, *leader = NULL;
 
 	/*
 	 * bsearch(3) will return an unspecified match when multiple
@@ -358,12 +357,33 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	    this->st.device == hl->infos[i - 1].device) {
 		i--;
 	}
-	if (this->st.inode == hl->infos[i].inode &&
+	first = hl->infos[i].ref;
+	while (this->st.inode == hl->infos[i].inode &&
 		this->st.device == hl->infos[i].device) {
-		if (this == hl->infos[i].ref)
+		if ((hl->infos[i].ref->flstate & FLIST_NEED_HLINK) == 0) {
+			leader = hl->infos[i].ref;
+			break;
+		}
+		i++;
+	}
+	/*
+	 * If a file has been written already, use it as the
+	 * "leader" of this group of hardlinks.
+	 */
+	if (leader && this->st.inode == leader->st.inode &&
+		this->st.device == leader->st.device) {
+		if (this == leader)
 			return NULL;
 		else
-			return hl->infos[i].ref;
+			return leader;
+	}
+	/* Otherwise use the first link in the group */
+	if (this->st.inode == first->st.inode &&
+		this->st.device == first->st.device) {
+		if (this == first)
+			return NULL;
+		else
+			return first;
 	}
 	return NULL;
 }

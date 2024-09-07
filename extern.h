@@ -410,6 +410,7 @@ struct	flist {
 #define	FLIST_SUCCESS		0x04	/* Finished and in place */
 #define	FLIST_FAILED		0x08	/* Failed */
 #define	FLIST_SUCCESS_ACKED	0x10	/* Sent success message */
+#define	FLIST_NEED_HLINK	0x20	/* Needs to be hardlinked */
 
 #define	FLIST_DONE_MASK		(FLIST_SUCCESS | FLIST_REDO | FLIST_FAILED)
 

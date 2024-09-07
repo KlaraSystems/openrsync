@@ -1182,6 +1182,9 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 			if (sess->opts->ign_non_exist) {
 				LOG1("Skip non existing '%s'", f->path);
 				return 0;
+			} else if (sess->opts->hard_links && find_hl(f, hl)) {
+				f->flstate |= FLIST_NEED_HLINK;
+				return 4;
 			}
 
 			f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
@@ -1555,6 +1558,8 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	assert(S_ISREG(f->st.mode));
 
 	if (sess->opts->read_batch != NULL) {
+		if (sess->opts->hard_links && num_hl(f, hl) > 1)
+			f->flstate |= FLIST_NEED_HLINK;
 		return 0;
 	}
 

@@ -1328,7 +1328,6 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
     const struct hardlinks *hl)
 {
 	int32_t		 idx;
-	const struct flist *hl_p = NULL;
 	struct  flist	*f = NULL;
 	struct stat	 st, st2;
 	unsigned char	 ourmd[MD4_DIGEST_LENGTH],
@@ -1929,8 +1928,6 @@ again:
 		usethis = buf2;
 	} else {
 		usethis = f->path;
-		if (sess->opts->hard_links)
-			hl_p = find_hl(f, hl);
 	}
 	if (!download_is_inplace(sess, p, false)) {
 		int fromfd;
@@ -1963,20 +1960,7 @@ again:
 		/* Status update is deferred until the update is done. */
 	} else {
 		f->flstate |= FLIST_SUCCESS;
-		if (hl_p != NULL) {
-			if (unlinkat(p->rootfd, f->path, 0) == -1)
-				if (errno != ENOENT)
-					ERRX1("unlink");
-
-			if (sess->itemize)
-				f->iflags |= IFLAG_HLINK_FOLLOWS;
-			if (linkat(p->rootfd, hl_p->path, p->rootfd, f->path,
-			    0) == -1) {
-				LOG0("Error while hard linking '%s' to '%s' ",
-				    hl_p->path, f->path);
-				ERR("linkat");
-			}
-		}
+		f->flstate &= ~FLIST_NEED_HLINK;
 	}
 
 	progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size, true);
