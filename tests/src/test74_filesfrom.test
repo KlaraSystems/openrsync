@@ -439,7 +439,7 @@ compare_trees src dst/src
 echo "Test 19.3"
 1>&2 echo "Test 19.3"
 rm -rf dst
-rsync -a --relative -- ${SRC}/ ${DST}/
+rsync -a --relative -L -- ${SRC}/ ${DST}/
 [ -d dst/src ] && compare_trees src dst/src
 
 echo "Test 19.4"
@@ -528,7 +528,7 @@ compare_trees src dst/src
 echo "Test 21.3"
 1>&2 echo "Test 21.3"
 rm -rf dst
-rsync -a --relative -- ${SRC}/ ${DST}/
+rsync -a --relative -L -- ${SRC}/ ${DST}/
 [ -d dst/src ] && compare_trees src dst/src
 
 
