@@ -33,10 +33,12 @@ for file in $(find src/); do
 done
 
 echo "Test 1"
+1>&2 echo "Test 1"
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/
 compare_trees src dst
 
 echo "Test 1.1"
+1>&2 echo "Test 1.1"
 cat flist | tr '\n' '\r' > flistr
 rm -rf dst
 rsync -a --files-from=flistr -- ${SRC}/ ${DST}/
@@ -46,6 +48,7 @@ compare_trees src dst
 
 rm -rf dst
 echo "Test 2"
+1>&2 echo "Test 2"
 rsync -a --files-from=/dev/null -- ${SRC}/ ${DST}/
 X=$(find dst 2>/dev/null | wc -l)
 [ "$X" -eq 1 -o "$X" -eq 0 ]
@@ -57,6 +60,7 @@ X=$(find dst 2>/dev/null | wc -l)
 # the source to the non-existing destination:
 #
 echo "Test 3"
+1>&2 echo "Test 3"
 for opt in "-0" "--from0" "-0 -F" "-0 -FF" "--from0 -F" "--from0 -FF" ; do
     rm -rf dst
     rsync -a ${opt} -- ${SRC}/ ${DST}/
@@ -66,6 +70,7 @@ done
 # Test that /dev/null as include/excludes files work as expected:
 #
 echo "Test 4"
+1>&2 echo "Test 4"
 for opt in "--exclude-from" "--include-from" "-0 --include-from" "-0 --exclude-from" ; do
     rm -rf dst
     rsync -a ${opt}=/dev/null -- ${SRC}/ ${DST}/
@@ -73,6 +78,7 @@ for opt in "--exclude-from" "--include-from" "-0 --include-from" "-0 --exclude-f
 done
 
 echo "Test 5"
+1>&2 echo "Test 5"
 for opt in "--files-from" "-0 --files-from" ; do
     rm -rf dst
     rsync -a ${opt}=/dev/null -- ${SRC}/ ${DST}/
@@ -87,6 +93,7 @@ rm -f patterns
 > patterns
 
 echo "Test 6"
+1>&2 echo "Test 6"
 for opt in "--exclude-from" "--include-from" ; do
     rm -rf dst
     rsync -a ${opt}=patterns -- ${SRC}/ ${DST}/
@@ -94,6 +101,7 @@ for opt in "--exclude-from" "--include-from" ; do
 done
 
 echo "Test 7"
+1>&2 echo "Test 7"
 for opt in "--exclude-from" "--include-from" ; do
     rm -f patterns
     > patterns
@@ -111,6 +119,7 @@ done
 # with only comments work as expected:
 #
 echo "Test 8"
+1>&2 echo "Test 8"
 for opt in "--files-from" "-O --files-from" ; do
     rm -f patterns
     > patterns
@@ -150,6 +159,7 @@ find ref -name \*.[oac] -exec rm -f {} \;
 touch -t 200102030405 $(find src ref)
 
 echo "Test 9"
+1>&2 echo "Test 9"
 for opt in "--from0" "-0" "--from0 -0" ; do
     rm -rf dst
     rsync -a ${opt} --exclude-from=excludes0 -- ${SRC}/ ${DST}/
@@ -158,6 +168,7 @@ done
 
 rm -rf dst
 echo "Test 10"
+1>&2 echo "Test 10"
 rsync -a --exclude-from=excludes -- ${SRC}/ ${DST}/
 compare_trees -t ref dst
 
@@ -169,6 +180,7 @@ cat patterns | tr '\n' '\0' > includes0
 cp patterns includes
 
 echo "Test 11"
+1>&2 echo "Test 11"
 for opt in "--from0" "-0" "--from0 -0" ; do
     rm -rf dst
     rsync -a ${opt} --include-from=includes0 -- ${SRC}/ ${DST}/
@@ -177,6 +189,7 @@ done
 
 rm -rf dst
 echo "Test 12"
+1>&2 echo "Test 12"
 rsync -a --include-from=includes -- ${SRC}/ ${DST}/
 compare_trees -t src dst
 
@@ -185,6 +198,7 @@ compare_trees -t src dst
 # source dir:
 #
 echo "Test 13"
+1>&2 echo "Test 13"
 for opt in "--from0" "-0" "--from0 -0" ; do
     rm -rf dst
     rsync -a ${opt} --exclude-from=excludes0 --include-from=excludes0 -- ${SRC}/ ${DST}/
@@ -193,6 +207,7 @@ done
 
 rm -rf dst
 echo "Test 14"
+1>&2 echo "Test 14"
 rsync -a --exclude-from=patterns --include-from=patterns -- ${SRC}/ ${DST}/
 compare_trees -t ref dst
 
@@ -206,6 +221,7 @@ cat patterns | tr '\n' '\0' > files0
 
 rm -rf dst
 echo "Test 15"
+1>&2 echo "Test 15"
 rsync -a --from0 --files-from=files0 -- ${SRC}/ ${DST}/
 compare_trees src dst
 
@@ -281,23 +297,27 @@ cat patterns | tr '\n' '\0' > patterns0
 
 rm -rf dst
 echo "Test 16"
+1>&2 echo "Test 16"
 rsync -a --files-from=patterns -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 [ -d dst ]
 compare_trees src dst
 
 echo "Test 16.1"
+1>&2 echo "Test 16.1"
 rm -rf dst
 rsync -a --files-from=- -- ${SRC}/ ${DST}/ < patterns || [ $? -eq 23 ]
 [ -d dst ]
 compare_trees src dst
 
 echo "Test 16.2"
+1>&2 echo "Test 16.2"
 rm -rf dst
 rsync -a --from0 --files-from=patterns0 -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 [ -d dst ]
 compare_trees src dst
 
 echo "Test 16.3"
+1>&2 echo "Test 16.3"
 rm -rf dst
 rsync -a --from0 --files-from=- -- ${SRC}/ ${DST}/ < patterns0 || [ $? -eq 23 ]
 [ -d dst ]
@@ -310,7 +330,8 @@ echo "/dir1/../dir2/" >> patterns
 cat patterns | tr '\n' '\0' > patterns0
 
 rm -rf dst
-echo "Test 16.1"
+echo "Test 16.4"
+1>&2 echo "Test 16.4"
 rsync -a --from0 --files-from=patterns0 -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 compare_trees src dst
 
@@ -329,6 +350,7 @@ echo "dir/././" >> patterns
 cat patterns | tr '\n' '\0' > patterns0
 
 echo "Test 17"
+1>&2 echo "Test 17"
 rm -rf dst
 rsync -an --from0 --files-from=patterns0 -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 [ ! -d dst ]
@@ -336,6 +358,7 @@ rsync -an --from0 --files-from=patterns0 -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 # Openrsync fails to create dest dir when acting as client-receiver.
 #
 echo "Test 17.1"
+1>&2 echo "Test 17.1"
 rsync -a --from0 --files-from=patterns0 -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 if [ -d dst ] ; then
     X=$(ls -a dst | wc -l)
@@ -355,12 +378,14 @@ jot -r 5 > src/file
 touch src ref
 
 echo "Test 18"
+1>&2 echo "Test 18"
 echo "dir0" > flist
 rm -rf dst
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 18.1"
+1>&2 echo "Test 18.1"
 echo "dir0/" > flist
 cp -a src/dir0/file ref/dir0/
 touch src/dir0 ref/dir0
@@ -369,6 +394,7 @@ rsync -a --files-from=flist -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 18.2"
+1>&2 echo "Test 18.2"
 echo "dir0/doesnotexist" > flist
 rm -rf dst
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/ || [ $? -eq 23 -o $? -eq 32 ]
@@ -378,6 +404,7 @@ if [ -d dst ] ; then
 fi
 
 echo "Test 18.3"
+1>&2 echo "Test 18.3"
 echo "dir0/doesnotexist/" > flist
 rm -rf dst
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
@@ -392,26 +419,31 @@ fi
 echo "dir0/" > flist
 
 echo "Test 19"
+1>&2 echo "Test 19"
 rm -rf dst
 rsync -a --files-from=flist --relative -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 19.1"
+1>&2 echo "Test 19.1"
 rm -rf dst
 rsync -a --files-from=flist -- ${SRC} ${DST}/
 compare_trees ref dst
 
 echo "Test 19.2"
+1>&2 echo "Test 19.2"
 rm -rf dst
 rsync -a -- ${SRC} ${DST}/
 compare_trees src dst/src
 
 echo "Test 19.3"
+1>&2 echo "Test 19.3"
 rm -rf dst
 rsync -a --relative -- ${SRC}/ ${DST}/
 [ -d dst/src ] && compare_trees src dst/src
 
 echo "Test 19.4"
+1>&2 echo "Test 19.4"
 rm -rf ref dst
 mkdir ref
 cp -a src/dir0/file ref/
@@ -419,6 +451,7 @@ rsync -a --files-from=flist --no-relative -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 19.5"
+1>&2 echo "Test 19.5"
 echo "dir1/" >> flist
 mkdir src/dir1
 jot -r 7 > src/dir1/file1
@@ -428,6 +461,7 @@ rsync -a --files-from=flist --no-relative -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 19.6"
+1>&2 echo "Test 19.6"
 rm -rf dst
 rsync -a --files-from=flist --no-relative --recursive -- ${SRC}/ ${DST}/
 compare_trees ref dst
@@ -445,22 +479,26 @@ date > src/dir0/file1
 touch src ref
 
 echo "Test 20"
+1>&2 echo "Test 20"
 echo "file0" > flist
 rm -rf dst
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 20.1"
+1>&2 echo "Test 20.1"
 echo "file0/" > flist
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 compare_trees ref dst
 
 echo "Test 20.2"
+1>&2 echo "Test 20.2"
 echo "file0/doesnotexist" > flist
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 compare_trees ref dst
 
 echo "Test 20.3"
+1>&2 echo "Test 20.3"
 echo "file0/doesnotexist/" > flist
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 [ -d dst ] && compare_trees ref dst
@@ -469,22 +507,26 @@ rsync -a --files-from=flist -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 # Same as above but with --relative:
 #
 echo "Test 21"
+1>&2 echo "Test 21"
 echo "file0" > flist
 rm -rf dst
 rsync -a --relative --files-from=flist -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 21.1"
+1>&2 echo "Test 21.1"
 rm -rf dst
 rsync -a --files-from=flist -- ${SRC} ${DST}/
 compare_trees ref dst
 
 echo "Test 21.2"
+1>&2 echo "Test 21.2"
 rm -rf dst
 rsync -a -- ${SRC} ${DST}/
 compare_trees src dst/src
 
 echo "Test 21.3"
+1>&2 echo "Test 21.3"
 rm -rf dst
 rsync -a --relative -- ${SRC}/ ${DST}/
 [ -d dst/src ] && compare_trees src dst/src
@@ -522,21 +564,25 @@ echo >> flist
 echo >> flist
 
 echo "Test 22"
+1>&2 echo "Test 22"
 rsync -a --files-from=flist -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 compare_trees ref dst
 
 echo "Test 22.1"
+1>&2 echo "Test 22.1"
 rm -rf dst
 rsync -a --files-from=- -- ${SRC}/ ${DST}/ < flist || [ $? -eq 23 ]
 compare_trees ref dst
 
 echo "Test 22.2"
+1>&2 echo "Test 22.2"
 cat flist | tr '\n' '\0' > flist0
 rm -rf dst
 rsync -a --from0 --files-from=flist0 -- ${SRC}/ ${DST}/ || [ $? -eq 23 ]
 compare_trees ref dst
 
-echo "Test 22.2"
+echo "Test 22.3"
+1>&2 echo "Test 22.3"
 rm -rf dst
 rsync -a --from0 --files-from=- -- ${SRC}/ ${DST}/ < flist0 || [ $? -eq 23 ]
 compare_trees ref dst
@@ -569,6 +615,7 @@ cat flist | tr '\n' '\0' > flistx
 cat flistx | tr 'x' '\n'  > flist0
 
 echo "Test 23"
+1>&2 echo "Test 23"
 rsync -a --from0 --files-from=flist0 -- ${SRC}/ ${DST}/
 compare_trees src dst
 
@@ -583,6 +630,7 @@ NDIRS=5
 NFILES=7
 
 echo "Test24: Creating large files-from file..."
+1>&2 echo "Test24: Creating large files-from file..."
 rm -rf src ref
 mkdir src
 
@@ -607,26 +655,31 @@ find src -type f | sed -En 's%^src/%%p' > fffiles
 # Test NL/CR terminated list, dirs not ending in "/":
 #
 echo "Test 24"
+1>&2 echo "Test 24"
 rm -rf dst
 rsync -a --files-from=ffdirs -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 24.1"
+1>&2 echo "Test 24.1"
 rm -rf dst
 rsync -a --files-from=- < ffdirs -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 24.2"
+1>&2 echo "Test 24.2"
 rm -rf dst
 rsync -a --files-from=ffdirs --recursive -- ${SRC}/ ${DST}/
 compare_trees src dst
 
 echo "Test 24.3"
+1>&2 echo "Test 24.3"
 rm -rf dst
 rsync -a --files-from=fffiles -- ${SRC}/ ${DST}/
 compare_trees src dst
 
 echo "Test 24.4"
+1>&2 echo "Test 24.4"
 rm -rf dst
 rsync -a --files-from=- < fffiles -- ${SRC}/ ${DST}/
 compare_trees src dst
@@ -638,21 +691,25 @@ cat ffdirs | tr '\n' '\0' > ffdirs0
 cat fffiles | tr '\n' '\0' > fffiles0
 
 echo "Test 25"
+1>&2 echo "Test 25"
 rm -rf dst
 rsync -a --from0 --files-from=ffdirs0 -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 25.1"
+1>&2 echo "Test 25.1"
 rm -rf dst
 rsync -a -0 --files-from=- < ffdirs0 -- ${SRC}/ ${DST}/
 compare_trees ref dst
 
 echo "Test 25.2"
+1>&2 echo "Test 25.2"
 rm -rf dst
 rsync -a -0 --files-from=fffiles0 -- ${SRC}/ ${DST}/
 compare_trees src dst
 
 echo "Test 25.3"
+1>&2 echo "Test 25.3"
 rm -rf dst
 rsync -a --from0 --files-from=- < fffiles0 -- ${SRC}/ ${DST}/
 compare_trees src dst
@@ -664,21 +721,25 @@ find ref | sed -En 's%^ref/(.*)%\1/%p' > ffdirs
 cat ffdirs | tr '\n' '\0' > ffdirs0
 
 echo "Test 26"
+1>&2 echo "Test 26"
 rm -rf dst
 rsync -a --files-from=ffdirs -- ${SRC}/ ${DST}/
 compare_trees src dst
 
 echo "Test 26.1"
+1>&2 echo "Test 26.1"
 rm -rf dst
 rsync -a --files-from=- < ffdirs -- ${SRC}/ ${DST}/
 compare_trees src dst
 
 echo "Test 26.2"
+1>&2 echo "Test 26.2"
 rm -rf dst
 rsync -a --from0 --files-from=ffdirs0 -- ${SRC}/ ${DST}/
 compare_trees src dst
 
 echo "Test 26.3"
+1>&2 echo "Test 26.3"
 rm -rf dst
 rsync -a --from0 --files-from=- < ffdirs0 -- ${SRC}/ ${DST}/
 compare_trees src dst
