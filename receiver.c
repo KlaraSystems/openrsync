@@ -457,6 +457,10 @@ make_hardlinks(struct sess *sess, const struct flist *fl, size_t flsz,
 			ERR("linkat");
 			return 1;
 		}
+		if (sess->itemize)
+			log_item(sess, f);
+		else if (verbose > 1)
+			log_item_impl(sess, f);
 	}
 
 	return 0;
