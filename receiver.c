@@ -368,6 +368,37 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	return NULL;
 }
 
+static int
+make_hardlinks(struct sess *sess, const struct flist *fl, size_t flsz,
+    const struct hardlinks *hl, int rootfd)
+{
+	const struct flist *f = NULL, *hl_p = NULL;
+	size_t i;
+
+	for (i = 0; i < flsz; i++) {
+		f = &fl[i];
+		if (f->st.inode == 0 && f->st.device == 0)
+			continue;
+		hl_p = find_hl(f, hl);
+		if (hl_p == NULL)
+			continue;
+
+		if (unlinkat(rootfd, f->path, 0) == -1)
+			if (errno != ENOENT)
+				ERR("unlink");
+
+		if (linkat(rootfd, hl_p->path, rootfd, f->path,
+		    0) == -1) {
+			LOG0("Error while making hard link '%s' to '%s' ",
+			    hl_p->path, f->path);
+			ERR("linkat");
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 /*
  * Pledges: unveil, unix, rpath, cpath, wpath, stdio, fattr, chown.
  * Pledges (dry-run): -unix, -cpath, -wpath, -fattr, -chown.
@@ -882,6 +913,9 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				phase++;
 				if (phase == max_phase + 1)
 					break;
+
+				if (sess->opts->hard_links && phase == 2)
+					make_hardlinks(sess, fl, flsz, &hls, dfd);
 
 				LOG3("%s: receiver ready for phase %d data (%zu to redo)",
 				    root, phase + 1, download_needs_redo(dl));
