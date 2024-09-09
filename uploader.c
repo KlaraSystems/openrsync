@@ -1183,6 +1183,11 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 				LOG1("Skip non existing '%s'", f->path);
 				return 0;
 			} else if (sess->opts->hard_links && find_hl(f, hl)) {
+				/*
+				 * If we are not the "leading" hardlink, we
+				 * don't need to be transferred, since we can
+				 * just be created with linkat() later.
+				 */
 				f->flstate |= FLIST_NEED_HLINK;
 				return 4;
 			}

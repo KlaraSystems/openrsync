@@ -689,9 +689,9 @@ delayed_renames(struct sess *sess)
 
 			if (linkat(p->rootfd, hl_p->path, p->rootfd, path,
 			    0) == -1) {
+				ERR("linkat");
 				LOG0("Error while delayed hard linking '%s' "
 				    "to '%s' ", hl_p->path, path);
-				ERR("linkat");
 			}
 
 			hl_p = NULL;
@@ -1960,6 +1960,12 @@ again:
 		/* Status update is deferred until the update is done. */
 	} else {
 		f->flstate |= FLIST_SUCCESS;
+		/*
+		 * This file has been transferred, so unmark it to be
+		 * hardlinked, and it will be come the "leader" of this
+		 * group of hardlinks, and the other files will be linked
+		 * to this first transferred file in the group.
+		 */
 		f->flstate &= ~FLIST_NEED_HLINK;
 	}
 

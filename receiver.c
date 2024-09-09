@@ -446,15 +446,14 @@ make_hardlinks(struct sess *sess, const struct flist *fl, size_t flsz,
 		if (hl_p == NULL)
 			continue;
 
-		if (unlinkat(rootfd, f->path, 0) == -1)
-			if (errno != ENOENT)
-				ERR("unlink");
+		if (unlinkat(rootfd, f->path, 0) == -1 && errno != ENOENT)
+			ERR("unlink");
 
 		if (linkat(rootfd, hl_p->path, rootfd, f->path,
 		    0) == -1) {
+			ERR("linkat");
 			LOG0("Error while making hard link '%s' to '%s' ",
 			    hl_p->path, f->path);
-			ERR("linkat");
 			return 1;
 		}
 		if (sess->itemize)
