@@ -359,7 +359,7 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	}
 	first = hl->infos[i].ref;
 	while (this->st.inode == hl->infos[i].inode &&
-		this->st.device == hl->infos[i].device) {
+		this->st.device == hl->infos[i].device && i < hl->n) {
 		if ((hl->infos[i].ref->flstate & FLIST_NEED_HLINK) == 0) {
 			leader = hl->infos[i].ref;
 			break;
@@ -422,7 +422,7 @@ num_hl(const struct flist *const this, const struct hardlinks *const hl)
 		i--;
 	}
 	while (this->st.inode == hl->infos[i].inode &&
-		this->st.device == hl->infos[i].device) {
+		this->st.device == hl->infos[i].device && i < hl->n) {
 		count++;
 		i++;
 	}
@@ -454,7 +454,8 @@ make_hardlinks(struct sess *sess, const struct flist *fl, size_t flsz,
 			ERR("linkat");
 			LOG0("Error while making hard link '%s' to '%s' ",
 			    hl_p->path, f->path);
-			return 1;
+			sess->total_errors++;
+			continue;
 		}
 		if (sess->itemize)
 			log_item(sess, f);
