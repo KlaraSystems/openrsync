@@ -898,7 +898,11 @@ send_rules(struct sess *sess, int fd)
 	size_t cmdlen, len, postlen, i;
 	int batch_saved = sess->wbatch_fd;
 
-	/* Don't send rules to the batch file */
+	/*
+	 * Don't send rules to the batch file, they are transfered
+	 * via the batch shell script that is created beside the
+	 * batch file.
+	 */
 	sess->wbatch_fd = -1;
 
 	for (i = 0; i < global_ruleset.numrules; i++) {
