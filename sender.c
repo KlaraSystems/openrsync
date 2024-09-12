@@ -230,7 +230,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 	off_t		 sz, ssz;
 	char		 buf[16];
 	char		*sbuf = NULL, *cbuf = NULL;
-	int		 res;
+	int		 res, flush = Z_NO_FLUSH;
 
 	switch (up->stat.curst) {
 	case BLKSTAT_DATA:
@@ -287,8 +287,15 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		cctx.next_out = (Bytef *)(cbuf + 2);
 		cctx.avail_out = TOKEN_MAX_DATA;
 
-		while ((res = deflate(&cctx, Z_NO_FLUSH)) == Z_OK) {
+		if ((up->stat.curpos + sz) == up->stat.curlen) {
+			flush = Z_SYNC_FLUSH;
+		}
+		while ((res = deflate(&cctx, flush)) == Z_OK) {
 			ssz = TOKEN_MAX_DATA - cctx.avail_out;
+			if (flush != Z_NO_FLUSH) {
+				assert(ssz >= 4);
+				ssz -= 4;
+			}
 			if (ssz == 0) {
 				break;
 			}
@@ -307,6 +314,11 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 				cctx.next_out = (Bytef *)(cbuf + 2);
 				/* Save room for the 4 byte trailer */
 				cctx.avail_out = TOKEN_MAX_DATA;
+				if (flush != Z_NO_FLUSH) {
+					memcpy(cctx.next_out, cbuf+TOKEN_MAX_DATA-2, 4);
+					cctx.next_out += 4;
+					cctx.avail_out -= 4;
+				}
 			}
 		}
 		fmap_untrap(up->stat.map);
