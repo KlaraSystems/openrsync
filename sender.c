@@ -242,7 +242,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 */
 
 		sz = MINIMUM(MAX_CHUNK,
-			up->stat.mapsz - up->stat.curpos);
+			up->stat.curlen - up->stat.curpos);
 		sbuf = fmap_data(up->stat.map, up->stat.curpos);
 
 		cbuf = sess->token_cbuf;
@@ -317,6 +317,8 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		up->stat.curpos += sz;
 		if (up->stat.curpos == up->stat.mapsz) {
 			up->stat.curst = BLKSTAT_FLUSH;
+		} else if (up->stat.curpos == up->stat.curlen) {
+			up->stat.curst = BLKSTAT_TOK;
 		}
 		return 1;
 	case BLKSTAT_TOK:
