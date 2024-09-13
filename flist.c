@@ -2530,14 +2530,14 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
     size_t *sz,	const struct flist *wfl, size_t wflsz)
 {
 	char		**cargv = NULL;
-	int		  rc = 0, skip_post = 0, c, flag;
+	int		  rc = 0, skip_post = 0, c;
 	FTS		 *fts = NULL;
 	FTSENT		 *ent, *perish_ent = NULL;
 	struct flist	 *f;
-	struct stat	  st;
 	size_t		  cargvs = 0, i, j, max = 0, stripdir;
 	ENTRY		  hent;
 	ENTRY		 *hentp;
+	int		  fts_flags;
 
 	*fl = NULL;
 	*sz = 0;
@@ -2644,8 +2644,12 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 	 * directories stipulated by the file list.
 	 * If the directories don't exist, it's ok.
 	 */
+	fts_flags = FTS_PHYSICAL;
 
-	if ((fts = fts_open(cargv, FTS_PHYSICAL, NULL)) == NULL) {
+	if (sess->opts->one_file_system)
+		fts_flags |= FTS_XDEV;
+
+	if ((fts = fts_open(cargv, fts_flags, NULL)) == NULL) {
 		sess->total_errors++;
 		ERR("fts_open");
 		goto out;
@@ -2684,29 +2688,6 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 			continue;
 
 		assert(ent->fts_statp != NULL);
-
-		/*
-		 * If rsync is told to avoid crossing a filesystem
-		 * boundary when recursing, then exclude all entries
-		 * from the list with a device inode, which does not
-		 * match that of one of the top-level directories.
-		 */
-
-		if (sess->opts->one_file_system) {
-			flag = 0;
-			for (i = 0; i < wflsz; i++) {
-				if (stat(wfl[i].path, &st) == -1) {
-					ERR("%s: stat", wfl[i].path);
-					goto out;
-				}
-				if (ent->fts_statp->st_dev == st.st_dev) {
-					flag = 1;
-					break;
-				}
-			}
-			if (!flag)
-				continue;
-		}
 
 		/* This is for macOS fts, which returns "foo//bar" */
 		if (ent->fts_path[stripdir] == '/') {

@@ -2482,7 +2482,7 @@ rsync_uploader_tail(struct upload *u, struct sess *sess)
 	for (i = 0; i < u->flsz; i++)
 		if (S_ISDIR(u->fl[i].st.mode))
 			if (!post_dir(sess, u, i))
-				return 0;
+				sess->total_errors++;
 
 	return 1;
 }
