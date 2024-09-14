@@ -934,7 +934,7 @@ enum {
 	OP_LISTONLY,
 };
 
-const char rsync_shopts[] = "0468B:CDEFHIKLOPRSVWabcde:f:ghiklmnopqrtuvxyz";
+const char rsync_shopts[] = "0468B:CDEFHIKLOPRST:VWabcde:f:ghiklmnopqrtuvxyz";
 const struct option	 rsync_lopts[] = {
     { "address",	required_argument, NULL,		OP_ADDRESS },
     { "append",		no_argument,	NULL,			OP_APPEND },
