@@ -1894,13 +1894,17 @@ main(int argc, char *argv[])
 	struct fargs	*fargs;
 	char		**args;
 
+	/* We cannot safely log to stdout until we are certain that we're
+	 * the client (i.e., the server must enable multiplexing before
+	 * logging to stdout).
+	 */
+	rsync_set_logfile(isatty(STDOUT_FILENO) ? stdout : stderr, NULL);
+
 	/* Global pledge. */
 
 	if (pledge("stdio unix rpath wpath cpath dpath inet fattr chown dns getpw proc exec unveil",
 	    NULL) == -1)
 		err(ERR_IPC, "pledge");
-
-	rsync_set_logfile(stderr);
 
 	setlocale(LC_ALL, "");
 	setlocale(LC_CTYPE, "");
@@ -1938,6 +1942,8 @@ main(int argc, char *argv[])
 			opts.dry_run = DRY_FULL;
 		exit(rsync_server(cleanup_ctx, &opts, (size_t)argc, argv));
 	}
+
+	rsync_set_logfile(stdout, NULL);
 
 	/*
 	 * To simplify the cleanup process, we create a new process group now so
@@ -2080,6 +2086,8 @@ main(int argc, char *argv[])
 			     msg ? msg : args[0], ptr ? "" : " ...", i);
 			free(msg);
 		}
+
+		fflush(stdout);
 
 		/* Make sure the child's stdin is from the sender. */
 		if (dup2(fds[1], STDIN_FILENO) == -1)

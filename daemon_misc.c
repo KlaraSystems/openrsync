@@ -1277,9 +1277,9 @@ daemon_open_logfile(const char *logfile, bool printerr)
 		 * Logging infrastructure will take the FILE and close it if we
 		 * switch away later.
 		 */
-		rsync_set_logfile(fp);
+		rsync_set_logfile(fp, NULL);
 	} else {
-		rsync_set_logfile(NULL);
+		rsync_set_logfile(NULL, NULL);
 	}
 
 	return 1;

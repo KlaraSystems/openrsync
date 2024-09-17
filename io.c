@@ -586,11 +586,13 @@ io_read_flush(struct sess *sess, int fd)
 
 	/*
 	 * Always print the server's messages, as the server
-	 * will control its own log levelling.
+	 * will control its own log leveling.
 	 */
 	if (tag >= IT_ERROR_XFER && tag <= IT_WARNING) {
-		if (mpbufsz != 0)
-			LOG0("%.*s", (int)mpbufsz, mpbuf);
+		if (mpbufsz > 0) {
+			mpbuf[mpbufsz] = '\0';
+			rsync_log_tag(tag, "%s\n", mpbuf);
+		}
 
 		if (tag == IT_ERROR_XFER || tag == IT_ERROR) {
 			sess->total_errors++;

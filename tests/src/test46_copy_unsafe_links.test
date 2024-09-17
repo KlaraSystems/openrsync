@@ -165,7 +165,7 @@ X=$(find dst -type l | wc -l) && [ "$X" -eq 2 ]
 # Finally, we should be able to restore the destination
 # directory with a little help from --force:
 #
-rsync -a -- src/ dst/ && false || [ $? -eq 23 ]
+rsync -a -- src/ dst/ || [ $? -eq 23 ]
 
 rsync -a --force -- src/ dst/
 X=$(find dst -type d | wc -l) && [ "$X" -eq "${NDSRC}" ]

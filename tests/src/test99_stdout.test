@@ -1,0 +1,54 @@
+#! /bin/sh
+
+# Test that error output goes to stderr and non-error output
+# goes to stdout.
+
+set -e
+set -u
+
+. ${tstdir-.}/lib.sh
+. ${tstdir-.}/conf.sh
+
+# Cleanup from previous run:
+#
+echo "chk 1"
+chmod 755 dst/file2 || true
+rm -rf src dst
+
+# Create the source tree:
+#
+echo "chk 2"
+mkdir -p src
+date > src/file1
+date > src/file2
+
+echo "Test 1 (stdout)"
+rm -rf test.stdout test.stderr
+rsync -av -- src/ dst/ > test.stdout 2>test.stderr
+compare_trees src dst
+
+X=$(grep -c 'file[12]' test.stdout)
+[ $X -eq 2 ]
+
+
+rm dst/file2
+mkdir dst/file2
+date > dst/file2/file2
+chmod 0 dst/file2
+date >> src/file1
+
+echo "Test 2 (stderr)"
+rm -rf test.out test.err
+rsync -av -- src/ dst/ > test.stdout 2>test.stderr || [ $? -eq 23 ]
+
+X=$(grep -c 'file[12]' test.stdout)
+[ $X -eq 1 ]
+
+X=$(grep -c 'file1' test.stdout)
+[ $X -eq 1 ]
+
+Y=$(egrep 'fail|error' test.stderr | grep -c 'file[12]')
+[ $Y -eq 1 ]
+
+Y=$(egrep 'fail|error' test.stderr | grep -c 'file2')
+[ $Y -eq 1 ]

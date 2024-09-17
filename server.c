@@ -70,8 +70,6 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 
 	log_format_init(&sess);
 
-	LOG4("Printing(%d): itemize %d late %d", getpid(), sess.itemize, sess.lateprint);
-
 	cleanup_set_session(cleanup_ctx, &sess);
 	cleanup_release(cleanup_ctx);
 
@@ -118,11 +116,12 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 		sess.protocol = sess.rver;
 	}
 
+	sess.mplex_writes = 1;
+	rsync_set_logfile(stdout, &sess);
+
 	LOG3("server detected client version %d, server version %d, "
 	    "negotiated protocol version %d, seed %d",
 	    sess.rver, sess.lver, sess.protocol, sess.seed);
-
-	sess.mplex_writes = 1;
 
 	assert(sess.opts->whole_file != -1);
 
@@ -133,6 +132,8 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 
 	for (int i = 0; argv[i] != NULL; i++)
 		LOG3("exec[%d] = %s", i, argv[i]);
+
+	LOG4("Printing(%d): itemize %d late %d", getpid(), sess.itemize, sess.lateprint);
 
 	if (sess.opts->sender) {
 		LOG3("server starting sender");
@@ -222,5 +223,11 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	}
 out:
 	sess_cleanup(&sess);
+
+	/* Disassociate sess from the logging subsystem before sess
+	 * goes out of scope.
+	 */
+	rsync_set_logfile(stderr, NULL);
+
 	return rc;
 }

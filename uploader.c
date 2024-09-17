@@ -932,10 +932,8 @@ keep_dirlinks_applies(const struct stat *st, const struct flist *f,
 	 */
 	if (!S_ISLNK(st->st_mode))
 		return 0;
-	if (fstatat(rootfd, f->path, &st2, 0) == -1) {
-		ERR("%s: fstatat", f->path);
+	if (fstatat(rootfd, f->path, &st2, 0) == -1)
 		return 0;
-	}
 	if (!S_ISDIR(st2.st_mode)) {
 		return 0;
 	}
@@ -1574,11 +1572,11 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	}
 
 	if (sess->opts->max_size >= 0 && f->st.size > sess->opts->max_size) {
-		WARNX("skipping over max-size file %s", f->path);
+		LOG1("%s is over max-size", f->path);
 		return 0;
 	}
 	if (sess->opts->min_size >= 0 && f->st.size < sess->opts->min_size) {
-		WARNX("skipping under min-size file %s", f->path);
+		LOG1("%s is under min-size", f->path);
 		return 0;
 	}
 

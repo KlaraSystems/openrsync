@@ -89,6 +89,7 @@ const struct syslog_facility {
 };
 
 static FILE *log_file;
+static struct sess *log_sess;
 static int log_facility = LOG_DAEMON;
 
 int
@@ -114,7 +115,7 @@ rsync_logfile_changed(FILE *old_logfile, FILE *new_logfile)
 {
 
 	/* We're the last reference to the log file; close it. */
-	if (old_logfile != stderr && old_logfile != NULL)
+	if (old_logfile != stdout && old_logfile != stderr && old_logfile != NULL)
 		fclose(old_logfile);
 
 	if (old_logfile != NULL && new_logfile == NULL) {
@@ -127,12 +128,23 @@ rsync_logfile_changed(FILE *old_logfile, FILE *new_logfile)
 }
 
 void
-rsync_set_logfile(FILE *new_logfile)
+rsync_set_logfile(FILE *new_logfile, struct sess *sess)
 {
 	FILE *prev_logfile;
 
+	/* Only the server should supply a non-null sess argument,
+	 * which causes log_vwritef() to send log messages to
+	 * the client via the multiplexed return channel.
+	 */
+	if (sess != NULL) {
+		assert(new_logfile == stdout);
+		assert(sess->opts->server);
+		assert(sess->mplex_writes);
+	}
+
 	prev_logfile = log_file;
 	log_file = new_logfile;
+	log_sess = sess;
 
 	rsync_logfile_changed(prev_logfile, new_logfile);
 }
@@ -141,16 +153,62 @@ static void __printflike(2, 0)
 log_vwritef(int priority, const char *fmt, va_list ap)
 {
 
-	if (log_file == NULL)
+	if (log_file == NULL) {
 		vsyslog(priority, fmt, ap);
-	else
+		return;
+	}
+
+	if (log_sess != NULL) {
+		char buf[1024];
+		enum iotag tag;
+		int n;
+
+		if (LOG_PRI(priority) == LOG_INFO) {
+			tag = IT_INFO;
+		} else if (LOG_PRI(priority) == LOG_WARNING) {
+			tag = IT_INFO;
+		} else {
+			tag = IT_ERROR_XFER;
+		}
+
+		n = vsnprintf(buf, sizeof(buf), fmt, ap);
+		if (n > 0)
+			io_write_buf_tagged(log_sess, fileno(log_file), buf, n, tag);
+		return;
+	}
+
+	if (log_file == stdout && LOG_PRI(priority) != LOG_INFO) {
+		fflush(stdout);
+		vfprintf(stderr, fmt, ap);
+	} else {
 		vfprintf(log_file, fmt, ap);
+	}
 }
 
 static void __printflike(2, 3)
 log_writef(int priority, const char *fmt, ...)
 {
 	va_list ap;
+
+	va_start(ap, fmt);
+	log_vwritef(priority, fmt, ap);
+	va_end(ap);
+}
+
+void
+rsync_log_tag(enum iotag tag, const char *fmt, ...)
+{
+	int priority;
+	va_list ap;
+
+	if (tag == IT_INFO) {
+		priority = LOG_INFO;
+	} else if (tag == IT_ERROR_XFER || tag == IT_ERROR) {
+		priority = LOG_ERR;
+	} else {
+		assert(tag == IT_WARNING);
+		priority = LOG_WARNING;
+	}
 
 	va_start(ap, fmt);
 	log_vwritef(priority, fmt, ap);
@@ -1132,7 +1190,7 @@ log_item(struct sess *sess, const struct flist *f)
 	if (sess->opts->server || sess->opts->daemon) {
 		bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
 
-		if (log_file == stderr || sess->opts->dry_run)
+		if (log_file == stdout || sess->opts->dry_run)
 			return 1;
 
 		if (!(sess->itemize && (sig || verbose > 1)))

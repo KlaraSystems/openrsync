@@ -67,8 +67,9 @@ EOF
 #
 for opt in "--specials" "" ; do
     	echo "Test 1 [$opt] nonexistent dest"
+	1>&2 echo "Test 1 [$opt] nonexistent dest"
 	rm -rf dst
-	rsync -a --no-v -i ${opt} -- src/ dst/ 2>&1 | tee log
+	rsync -a --no-v -i ${opt} -- src/ dst/ | tee log
 	grep '^[ch><.][dfSL]' log > ilog
 	diff rsync2-1.log ilog
 done
@@ -101,7 +102,8 @@ chmod 711 src/dir/dir
 touch -h -A -45 src src/file src/symfile src/1-file[13] src/dir/dir/1-file3
 
 echo "Test 2 (-i) existing dest, src != dst"
-rsync -a --no-v -i -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 2 (-i) existing dest, src != dst"
+rsync -a --no-v -i -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 
 # xlog should be empty, but rsync2 fails to detect the time change
@@ -137,7 +139,8 @@ chmod 751 src/dir/dir
 touch -h -A -35 src src/file src/symdir src/1-file[13] src/dir/dir
 
 echo "Test 3 (-i --super) existing dest, src != dst"
-rsync -a --no-v -i --super -- src/ dst/ 2>&1 | tee log || [ $? -eq 23 ]
+2>&1 echo "Test 3 (-i --super) existing dest, src != dst"
+rsync -a --no-v -i --super -- src/ dst/ | tee log || [ $? -eq 23 ]
 grep '^[ch><.][dfSL]' log > ilog
 
 # xlog should be empty, but rsync2 fails to detect the time change
@@ -158,7 +161,8 @@ date >> src/file
 chmod 660 src/file
 
 echo "Test 4 (-i -n) existing dest, src != dst"
-rsync -a --no-v -i -n -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 4 (-i -n) existing dest, src != dst"
+rsync -a --no-v -i -n -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-4.log ilog
 
@@ -198,12 +202,14 @@ EOF
 [ -n "${RSYNC_PREFIX_DEST}" ] && sed -i .orig 's/^>/</' rsync2-5.log
 
 echo "Test 5 (-ii -n) existing dest, src != dst"
-rsync -a --no-v -ii -n -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 5 (-ii -n) existing dest, src != dst"
+rsync -a --no-v -ii -n -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-5.log ilog
 
 echo "Test 5.1 (-i -n -vv) existing dest, src != dst"
-rsync -a --no-v -i -n -vv -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 5.1 (-i -n -vv) existing dest, src != dst"
+rsync -a --no-v -i -n -vv -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-5.log ilog
 
@@ -247,7 +253,8 @@ EOF
 [ -n "${RSYNC_PREFIX_DEST}" ] && sed -i .orig 's/^>/</' rsync2-6.log
 
 echo "Test 6 (-ii -n --super -L) existing dest, src != dst"
-rsync -a --no-v -ii -n --super -L -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 6 (-ii -n --super -L) existing dest, src != dst"
+rsync -a --no-v -ii -n --super -L -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-6.log ilog
 
@@ -266,7 +273,8 @@ if [ -f "${SRC_PATH}" ] ; then
 	[ -n "${RSYNC_PREFIX_DEST}" ] && sed -i .orig 's/^>/</' rsync2-7.log
 
 	echo "Test 7 (-ii) existing dest, ${SRC_PATH}"
-	rsync -a --no-v -ii -- "${SRC_PATH}" dst/ 2>&1 | tee log
+	2>&1 echo "Test 7 (-ii) existing dest, ${SRC_PATH}"
+	rsync -a --no-v -ii -- "${SRC_PATH}" dst/ | tee log
 	grep '^[ch><.][dfSL]' log > ilog
 	diff rsync2-7.log ilog
 	stat -x dst/${SRC_BASENAME}
@@ -277,7 +285,8 @@ if [ -f "${SRC_PATH}" ] ; then
 	EOF
 
 	echo "Test 7.1 (-ii) existing dest, ${SRC_PATH}"
-	rsync -a --no-v -ii -- "${SRC_PATH}" dst/ 2>&1 | tee log
+	2>&1 echo "Test 7.1 (-ii) existing dest, ${SRC_PATH}"
+	rsync -a --no-v -ii -- "${SRC_PATH}" dst/ | tee log
 	grep '^[ch><.][dfSL]' log > ilog
 	diff rsync2-7.log ilog
 
@@ -299,7 +308,8 @@ if [ -f "${SRC_PATH}" ] ; then
 	touch "dst/${SRC_BASENAME}"
 
 	echo "Test 7.2 (-ii -n --super -c) existing dest, ${SRC_PATH}"
-	rsync -a --no-v -ii -n --super -c -- "${SRC_PATH}" dst/ 2>&1 | tee log
+	2>&1 echo "Test 7.2 (-ii -n --super -c) existing dest, ${SRC_PATH}"
+	rsync -a --no-v -ii -n --super -c -- "${SRC_PATH}" dst/ | tee log
 	grep '^[ch><.][dfSL]' log > ilog
 	diff rsync2-7.log ilog
 fi
@@ -313,7 +323,8 @@ rm -rf dst
 cp -a src dst
 
 echo "Test 8 (-i -n) existing dest, src == dst"
-rsync -a --no-v -i -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 8 (-i -n) existing dest, src == dst"
+rsync -a --no-v -i -n -- src/ dst/ | tee log
 compare_trees src dst
 if [ -s log ] ; then
     grep '^[ch><.][dfSL]' log || true > ilog
@@ -348,12 +359,14 @@ cat <<-EOF > rsync2-8.log
 EOF
 
 echo "Test 8.1 (-ii -n) existing dest, src == dst"
-rsync -a --no-v -ii -n -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 8.1 (-ii -n) existing dest, src == dst"
+rsync -a --no-v -ii -n -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-8.log ilog
 
 echo "Test 8.2 (-i -vv -n) existing dest, src == dst"
-rsync -a --no-v -i -vv -n -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 8.2 (-i -vv -n) existing dest, src == dst"
+rsync -a --no-v -i -vv -n -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-8.log ilog
 
@@ -369,13 +382,15 @@ rm src/file
 touch -A -30 src
 
 echo "Test 9 (-i --delete)"
-rsync -a --no-v -i --delete -n -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 9 (-i --delete)"
+rsync -a --no-v -i --delete -n -- src/ dst/ | tee log
 grep '^[ch><.*][dfSL]' log > ilog
-diff rsync2-9.log ilog
+diff rsync2-9.log ilog || sh -c '2>&1 echo Found unexpected diff; echo output:; cat log; false'
 [ -f dst/file ]
 
 echo "Test 9.1 (-i --delete)"
-rsync -a --no-v -i --delete -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 9.1 (-i --delete)"
+rsync -a --no-v -i --delete -- src/ dst/ | tee log
 grep '^[ch><.*][dfSL]' log > ilog
 diff rsync2-9.log ilog
 [ ! -f dst/file ]
@@ -422,7 +437,8 @@ touch -A -25 src/file
 rm -rf dst log
 
 echo "Test 10 (-i -H, nonexistent dest)"
-rsync -a --no-v -i -H -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 10 (-i -H, nonexistent dest)"
+rsync -a --no-v -i -H -- src/ dst/ | tee log
 compare_trees -t src dst
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-hardlinks-1.log ilog
@@ -453,7 +469,8 @@ chmod 755 src/dir/dir
 touch -A -20 src src/file src/1-file[13] src/dir/dir
 
 echo "Test 11 (-i -H)"
-rsync -a --no-v -i -H -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 11 (-i -H)"
+rsync -a --no-v -i -H -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-hardlinks-2.log ilog
 
@@ -470,7 +487,8 @@ rm dst/1-file2 dst/4-hlink1
 touch -A -15 src
 
 echo "Test 12 (-i -H)"
-rsync -a --no-v -i -H -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 12 (-i -H)"
+rsync -a --no-v -i -H -- src/ dst/ | tee log
 grep '^[ch><.][dfSL]' log > ilog
 diff rsync2-hardlinks-3.log ilog
 
@@ -493,6 +511,7 @@ rm src/1-file3 src/6-hlink3 src/dir/dir/1-file3
 touch -A -10 src src/4-hlink3 src/dir/dir
 
 echo "Test 13 (-i -H --delete)"
-rsync -a --no-v -i -H --delete -- src/ dst/ 2>&1 | tee log
+2>&1 echo "Test 13 (-i -H --delete)"
+rsync -a --no-v -i -H --delete -- src/ dst/ | tee log
 grep '^[ch><.*][dfSL]' log > ilog
 diff rsync2-hardlinks-4.log ilog

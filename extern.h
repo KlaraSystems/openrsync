@@ -777,7 +777,8 @@ extern int verbose;
 	rsync_errx( (_fmt), ##__VA_ARGS__)
 
 int	rsync_set_logfacility(const char *);
-void	rsync_set_logfile(FILE *);
+void	rsync_set_logfile(FILE *, struct sess *);
+void	rsync_log_tag(enum iotag, const char *, ...);
 void	rsync_log(int, const char *, ...)
 			__attribute__((format(printf, 2, 3)));
 void	rsync_warnx1(const char *, ...)
