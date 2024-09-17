@@ -1148,7 +1148,8 @@ file_deleted(void *cookie, const void *data, size_t datasz)
 	struct success_ctx *sctx = cookie;
 
 	if (sctx->sess->itemize)
-		rsync_log_tag(IT_INFO, "*deleting %.*s\n", (int)datasz, (char *)data);
+		LOG0("*deleting %.*s\n", (int)datasz, data);
+
 	return 1;
 }
 
