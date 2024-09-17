@@ -200,7 +200,7 @@ dd if=/dev/random of=${DSTD}file bs=512k count=1 conv=notrunc
 
 ls -al ${SRCD} ${DSTD}
 
-rsync -az --stats -- ${SRCD}/file ${DSTD} 2>&1 | tee log.txt
+rsync -az --stats --no-W -- ${SRCD}/file ${DSTD} 2>&1 | tee log.txt
 MATCHED=$(grep "Matched data" log.txt)
 set -- ${MATCHED}
 ls -al ${SRCD} ${DSTD}
