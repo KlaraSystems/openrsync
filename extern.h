@@ -707,6 +707,9 @@ struct	sess {
 	DIR               *fuzzy_dirp; /* cached fuzzy dir stream pointer */
 	int                fuzzy_rootfd; /* cached fuzzy root dir filedes */
 	char              *fuzzy_root; /* cached path from fuzzy_rootfd */
+	void		 **wbufp; /* address of senders's output buffer ptr */
+	size_t		  *wbufszp; /* ptr to senders's output buffer length */
+	size_t		  *wbufmaxp; /* ptr to senders's output buffer size */
 };
 
 /*

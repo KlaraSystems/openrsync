@@ -159,9 +159,19 @@ log_vwritef(int priority, const char *fmt, va_list ap)
 	}
 
 	if (log_sess != NULL) {
-		char buf[1024];
-		enum iotag tag;
+		char msgbuf[BIGPATH_MAX];
+		int32_t tag;
 		int n;
+
+		assert(log_sess->opts->server);
+		assert(log_sess->mplex_writes);
+
+		n = vsnprintf(msgbuf, sizeof(msgbuf), fmt, ap);
+		if (n < 1)
+			return;
+
+		if ((size_t)n > sizeof(msgbuf))
+			n = sizeof(msgbuf);
 
 		if (LOG_PRI(priority) == LOG_INFO) {
 			tag = IT_INFO;
@@ -171,9 +181,26 @@ log_vwritef(int priority, const char *fmt, va_list ap)
 			tag = IT_ERROR_XFER;
 		}
 
-		n = vsnprintf(buf, sizeof(buf), fmt, ap);
-		if (n > 0)
-			io_write_buf_tagged(log_sess, fileno(log_file), buf, n, tag);
+		if (log_sess->wbufp == NULL) {
+			io_write_buf_tagged(log_sess, fileno(log_file), msgbuf, n, tag);
+		} else {
+			size_t *wbufszp = log_sess->wbufszp;
+			size_t pos = *log_sess->wbufszp;
+			void **wbufp = log_sess->wbufp;
+			int32_t	tagbuf;
+
+			assert(log_sess->opts->sender);
+
+			if (!io_lowbuffer_alloc(log_sess, wbufp, wbufszp,
+			    log_sess->wbufmaxp, n))
+				return;
+
+			tagbuf = htole32(((tag + IOTAG_OFFSET) << 24) + n);
+
+			io_buffer_int(*wbufp, &pos, *wbufszp, tagbuf);
+			io_buffer_buf(*wbufp, &pos, *wbufszp, msgbuf, n);
+		}
+
 		return;
 	}
 

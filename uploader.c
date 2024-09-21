@@ -291,7 +291,7 @@ pre_symlink(struct upload *p, struct sess *sess)
 			    unlinkat(p->rootfd, f->path,
 				     S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0) == -1) {
 				ERR("%s: unlinkat", f->path);
-				sess->total_errors++;
+				f->flstate |= FLIST_FAILED;
 				return 0;
 			}
 		}
@@ -367,7 +367,7 @@ pre_symlink(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
-			sess->total_errors++;
+			f->flstate |= FLIST_FAILED;
 			free(temp);
 			return 0;
 		}
@@ -427,7 +427,7 @@ pre_dev(struct upload *p, struct sess *sess)
 			if (S_ISDIR(st.st_mode) &&
 			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
 				ERR("%s: unlinkat", f->path);
-				sess->total_errors++;
+				f->flstate |= FLIST_FAILED;
 				return 0;
 			}
 		}
@@ -488,7 +488,7 @@ pre_dev(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
-			sess->total_errors++;
+			f->flstate |= FLIST_FAILED;
 			free(temp);
 			return 0;
 		}
@@ -547,7 +547,7 @@ pre_fifo(struct upload *p, struct sess *sess)
 			if (S_ISDIR(st.st_mode) &&
 			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
 				ERR("%s: unlinkat", f->path);
-				sess->total_errors++;
+				f->flstate |= FLIST_FAILED;
 				return 0;
 			}
 		}
@@ -597,7 +597,7 @@ pre_fifo(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
-			sess->total_errors++;
+			f->flstate |= FLIST_FAILED;
 			free(temp);
 			return 0;
 		}
@@ -653,7 +653,7 @@ pre_sock(struct upload *p, struct sess *sess)
 			if (S_ISDIR(st.st_mode) &&
 			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
 				ERR("%s: unlinkat", f->path);
-				sess->total_errors++;
+				f->flstate |= FLIST_FAILED;
 				return 0;
 			}
 		}
@@ -701,7 +701,7 @@ pre_sock(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
-			sess->total_errors++;
+			f->flstate |= FLIST_FAILED;
 			free(temp);
 			return 0;
 		}
@@ -1627,8 +1627,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		if (do_unlink && !dry_run &&
 		    unlinkat(p->rootfd, f->path, uflags) == -1) {
 			ERR("%s: unlinkat", f->path);
-			sess->total_errors++;
-			f->iflags = 0;
+			f->flstate |= FLIST_FAILED;
 			return 0;
 		}
 
@@ -1658,8 +1657,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		    !rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {
 			if (errno != EACCES && errno != EPERM) {
 				ERRX1("rsync_set_metadata");
-				sess->total_errors++;
-				f->iflags = 0;
+				f->flstate |= FLIST_FAILED;
 				return 0;
 			}
 
@@ -1673,8 +1671,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 				sess->total_errors++;
 			if (unlinkat(p->rootfd, f->path, 0) == -1) {
 				ERR("%s: unlinkat", f->path);
-				sess->total_errors++;
-				f->iflags = 0;
+				f->flstate |= FLIST_FAILED;
 				return 0;
 			}
 
@@ -1744,7 +1741,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 				close(pdfd);
 			if (!dry_run && unlinkat(p->rootfd, download_partial_filepath(f), 0) == -1) {
 				ERR("%s: unlinkat", download_partial_filepath(f));
-				f->iflags = 0;
+				f->flstate |= FLIST_FAILED;
 				return 0;
 			}
 
@@ -1769,7 +1766,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 			sess->total_errors++;
 			if (!dry_run && unlinkat(p->rootfd, f->path, 0) == -1) {
 				ERR("%s: unlinkat", f->path);
-				f->iflags = 0;
+				f->flstate |= FLIST_FAILED;
 				return 0;
 			}
 
@@ -2163,6 +2160,11 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 				return -1;
 			else if (c > 0)
 				break;
+
+			if ((u->fl[u->idx].flstate & FLIST_FAILED) != 0) {
+				sess->total_errors++;
+				continue;
+			}
 
 			u->fl[u->idx].flstate |= FLIST_SUCCESS;
 

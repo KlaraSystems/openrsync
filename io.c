@@ -530,7 +530,7 @@ int
 io_read_flush(struct sess *sess, int fd)
 {
 	int32_t	 tagbuf, tag;
-	char	 mpbuf[1024];
+	char	 mpbuf[BIGPATH_MAX + 1];
 	size_t	 mpbufsz;
 	int	 ret;
 
@@ -548,6 +548,7 @@ io_read_flush(struct sess *sess, int fd)
 		ERRX1("io_read_blocking");
 		return 0;
 	}
+
 	tag = le32toh(tagbuf);
 	sess->mplex_read_remain = tag & 0xFFFFFF;
 	tag >>= 24;
@@ -555,8 +556,25 @@ io_read_flush(struct sess *sess, int fd)
 	if (tag == IT_DATA)
 		return 1;
 
-	if (sess->mplex_read_remain > sizeof(mpbuf)) {
-		ERRX("multiplex buffer overflow");
+	switch (tag) {
+	case IT_ERROR_XFER:
+	case IT_INFO:
+	case IT_ERROR:
+	case IT_WARNING:
+	case IT_SUCCESS:
+	case IT_DELETED:
+	case IT_NO_SEND:
+		break;
+
+	default:
+		ERRX("unexpected tag %d (0x%x), len %zu",
+		     tag, le32toh(tagbuf), sess->mplex_read_remain);
+		return 0;
+	}
+
+	if (sess->mplex_read_remain >= sizeof(mpbuf)) {
+		ERRX("multiplex buffer overflow (tag %d 0x%x, len %zu)",
+		     tag, le32toh(tagbuf), sess->mplex_read_remain);
 		return 0;
 	}
 

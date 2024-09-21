@@ -275,7 +275,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 	struct send_up *up, void **wb, size_t *wbsz, size_t *wbmax,
 	struct flist *fl)
 {
-	size_t		 pos = 0, isz = sizeof(int32_t),
+	size_t		 pos = *wbsz, isz = sizeof(int32_t),
 			 dsz = MD4_DIGEST_LENGTH;
 	unsigned char	 fmd[MD4_DIGEST_LENGTH];
 	off_t		 sz, ssz;
@@ -610,7 +610,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 	struct send_up *up, void **wb, size_t *wbsz, size_t *wbmax,
 	struct flist *fl)
 {
-	size_t		 pos = 0, isz = sizeof(int32_t),
+	size_t		 pos = *wbsz, isz = sizeof(int32_t),
 			 dsz = MD4_DIGEST_LENGTH, dpos;
 	unsigned char	 fmd[MD4_DIGEST_LENGTH];
 	off_t		 sz;
@@ -1148,7 +1148,7 @@ file_deleted(void *cookie, const void *data, size_t datasz)
 	struct success_ctx *sctx = cookie;
 
 	if (sctx->sess->itemize)
-		LOG0("*deleting %.*s\n", (int)datasz, data);
+		LOG0("*deleting %.*s\n", (int)datasz, (const char *)data);
 
 	return 1;
 }
@@ -1345,6 +1345,17 @@ rsync_sender(struct sess *sess, int fdin,
 	}
 
 	gettimeofday(&x_before, NULL);
+
+	/*
+	 * If we're the server then arrange for log_vwritef() to append
+	 * all tagged log messages to the sender's output buffer.
+	 */
+	if (sess->opts->server) {
+		sess->wbufp = &wbuf;
+		sess->wbufszp = &wbufsz;
+		sess->wbufmaxp = &wbufmax;
+	}
+
 	/*
 	 * Set up our poll events.
 	 * We start by polling only in receiver requests, enabling other
@@ -1779,6 +1790,13 @@ rsync_sender(struct sess *sess, int fdin,
 		}
 	}
 
+	/*
+	 * At this point there shouldn't be any data remaining
+	 * in the sender's output buffer.
+	 */
+	assert(wbufsz == 0);
+	sess->wbufp = NULL;
+
 	if (!TAILQ_EMPTY(&sdlq)) {
 		ERRX("phases complete with files still queued");
 		goto out;
@@ -1811,6 +1829,19 @@ out:
 	free(wbuf);
 	blkhash_free(up.stat.blktab);
 	cleanup_filesfrom(sess);
+
+	/*
+	 * If we're the server and there was an error then try to flush
+	 * any data remaining in the output buffer as it likely contains
+	 * an error message.
+	 */
+	if (sess->wbufp != NULL) {
+		if (wbufsz > 0) {
+			assert(wbufsz > wbufpos);
+			write(fdout, wbuf + wbufpos, wbufsz - wbufpos);
+		}
+		sess->wbufp = NULL;
+	}
 
 	return rc;
 }
