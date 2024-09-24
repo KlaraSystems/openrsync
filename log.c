@@ -719,10 +719,17 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 		 * "the filename (long form on sender; no trailing "/")"
 		 */
 		if (sbuf != NULL) {
+			const char *path = fl->path;
+
+			if (sess->opts->relative)
+				path = fl->wpath;
+
+			while (*path == '/')
+				path++;
+
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
-			if (!print_7_or_8_bit(sess, widthstring, fl->path,
-			    sbuf)) {
+			if (!print_7_or_8_bit(sess, widthstring, path, sbuf)) {
 				ERRX("print_7_or_8_bit");
 				return NULL;
 			}
@@ -938,15 +945,19 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 		/* Alternate file name print */
 
 		if (sbuf != NULL) {
+			const char *path = fl->wpath;
+
+			if (sess->opts->relative)
+				path = fl->path;
+
 			widthstring[l + 1] = 's';
 			widthstring[l + 2] = '\0';
 			/* "(short form; trailing "/" on dir)" */
-			if (S_ISDIR(fl->st.mode))
-				snprintf(buf, sizeof(buf), "%s/", fl->wpath);
-			else
-				snprintf(buf, sizeof(buf), "%s", fl->wpath);
-			if (!print_7_or_8_bit(sess, widthstring, buf,
-			    sbuf)) {
+			if (S_ISDIR(fl->st.mode)) {
+				snprintf(buf, sizeof(buf), "%s/", path);
+				path = buf;
+			}
+			if (!print_7_or_8_bit(sess, widthstring, path, sbuf)) {
 				ERRX("print_7_or_8_bit");
 				return NULL;
 			}

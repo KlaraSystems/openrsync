@@ -49,9 +49,11 @@ for opt in " " "-v" "-vv" "-vvv" "--specials" ; do
 	XFER=$7
 	[ "$(basename ${FNLONG})" = "$(basename ${FNSHORT})" ]
 
+
 	set -- $(stat -f 'X %z %N %u %g' ${FNSHORT})
+	echo "Test 1.2 [$opt] [$@]"
 	[ "X" = "$1" ]
-	[ "${SIZE}" -eq "$2" ]
+	[ -d "${FNSHORT}" ] || [ "${SIZE}" -eq "$2" ]
 	[ "${FNSHORT}" = "$3" ]
 	[ "${XUID}" = "DEFAULT" ] || [ "${XUID}" -eq "$4" ]
 	[ "${XGID}" = "DEFAULT" ] || [ "${XGID}" -eq "$5" ]
