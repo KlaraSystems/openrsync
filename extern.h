@@ -231,16 +231,6 @@ enum	fmode {
 
 #define	IOTAG_OFFSET	7
 
-enum	compat_loglvl {
-	LOGNONE = 0,
-	/* Protocol == * */
-	LOGERROR_XFER,
-	LOGINFO,
-	/* Protocols >= 30 */
-	LOGERROR,
-	LOGWARNING,
-};
-
 struct	iobuf {
 	uint8_t		*buffer;
 	size_t		 offset;
@@ -250,11 +240,10 @@ struct	iobuf {
 
 enum	iotag {
 	IT_DATA = 0,
-
-	IT_ERROR_XFER = LOGERROR_XFER,
-	IT_INFO = LOGINFO,
-	IT_ERROR = LOGERROR,
-	IT_WARNING = LOGWARNING,
+	IT_ERROR_XFER,
+	IT_INFO,
+	IT_ERROR, // protocol 30+
+	IT_WARNING, // protocol 30+
 
 	IT_SUCCESS = 100,
 	IT_DELETED,
@@ -781,7 +770,8 @@ extern int verbose;
 
 int	rsync_set_logfacility(const char *);
 void	rsync_set_logfile(FILE *, struct sess *);
-void	rsync_log_tag(enum iotag, const char *, ...);
+void	rsync_log_tag(enum iotag, const char *, ...)
+			__attribute__((format(printf, 2, 3)));
 void	rsync_log(int, const char *, ...)
 			__attribute__((format(printf, 2, 3)));
 void	rsync_warnx1(const char *, ...)

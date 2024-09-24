@@ -152,11 +152,14 @@ rsync_set_logfile(FILE *new_logfile, struct sess *sess)
 static void __printflike(2, 0)
 log_vwritef(int priority, const char *fmt, va_list ap)
 {
+	int pri;
 
 	if (log_file == NULL) {
 		vsyslog(priority, fmt, ap);
 		return;
 	}
+
+	pri = LOG_PRI(priority);
 
 	if (log_sess != NULL) {
 		char msgbuf[BIGPATH_MAX];
@@ -173,13 +176,7 @@ log_vwritef(int priority, const char *fmt, va_list ap)
 		if ((size_t)n > sizeof(msgbuf))
 			n = sizeof(msgbuf);
 
-		if (LOG_PRI(priority) == LOG_INFO) {
-			tag = IT_INFO;
-		} else if (LOG_PRI(priority) == LOG_WARNING) {
-			tag = IT_INFO;
-		} else {
-			tag = IT_ERROR_XFER;
-		}
+		tag = (pri == LOG_ERR) ? IT_ERROR_XFER : IT_INFO;
 
 		if (log_sess->wbufp == NULL) {
 			io_write_buf_tagged(log_sess, fileno(log_file), msgbuf, n, tag);
@@ -204,7 +201,7 @@ log_vwritef(int priority, const char *fmt, va_list ap)
 		return;
 	}
 
-	if (log_file == stdout && LOG_PRI(priority) != LOG_INFO) {
+	if (log_file == stdout && pri != LOG_INFO) {
 		fflush(stdout);
 		vfprintf(stderr, fmt, ap);
 	} else {
@@ -228,14 +225,7 @@ rsync_log_tag(enum iotag tag, const char *fmt, ...)
 	int priority;
 	va_list ap;
 
-	if (tag == IT_INFO) {
-		priority = LOG_INFO;
-	} else if (tag == IT_ERROR_XFER || tag == IT_ERROR) {
-		priority = LOG_ERR;
-	} else {
-		assert(tag == IT_WARNING);
-		priority = LOG_WARNING;
-	}
+	priority = (tag == IT_ERROR_XFER) ? LOG_WARNING : LOG_INFO;
 
 	va_start(ap, fmt);
 	log_vwritef(priority, fmt, ap);

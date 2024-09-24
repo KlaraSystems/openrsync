@@ -553,10 +553,11 @@ io_read_flush(struct sess *sess, int fd)
 	sess->mplex_read_remain = tag & 0xFFFFFF;
 	tag >>= 24;
 	tag -= IOTAG_OFFSET;
-	if (tag == IT_DATA)
-		return 1;
 
 	switch (tag) {
+	case IT_DATA:
+		return 1;
+
 	case IT_ERROR_XFER:
 	case IT_INFO:
 	case IT_ERROR:
