@@ -94,6 +94,7 @@ send_up_reset(struct send_up *p)
 	if (p->stat.map != NULL)
 		fmap_close(p->stat.map);
 	p->stat.map = NULL;
+	p->stat.mapsz = 0;
 
 	if (p->stat.fd != -1)
 		close(p->stat.fd);
@@ -137,6 +138,55 @@ compress_reinit(struct sess *sess)
 
 	return 1;
 }
+
+static int
+sender_terminate_file_data(struct sess *sess, size_t padsz, void **wb,
+	size_t pos, size_t *wbsz, size_t *wbmax)
+{
+	char zerobuf[1024] = { 0 };
+	bool need_alloc;
+
+	need_alloc = false;
+
+	while (padsz != 0) {
+		size_t chunksz;
+
+		/*
+		 * The caller has allocated enough for one frame + data
+		 * buffer, but if our block size exceeds the size of zerobuf
+		 * then we need multiple frames to cover it.  Thus, we need an
+		 * allocation for any subsequent write to the buffer to handle
+		 * multiplexing correctly.
+		 */
+		if (need_alloc && !io_lowbuffer_alloc(sess, wb, wbsz, wbmax,
+		    0)) {
+			ERRX("io_lowbuffer_alloc");
+			return 0;
+		}
+
+		chunksz = MIN(padsz, sizeof(zerobuf));
+		io_lowbuffer_buf(sess, *wb, &pos, *wbsz, zerobuf, chunksz);
+
+		need_alloc = true;
+		padsz -= chunksz;
+	}
+
+	return 1;
+}
+
+static void
+sender_terminate_file(struct sess *sess, struct send_up *up)
+{
+
+	up->stat.error = true;
+	if (sess->opts->compress) {
+		up->stat.curst = BLKSTAT_FLUSH;
+	} else {
+		up->stat.curst = BLKSTAT_TOK;
+		up->stat.curtok = 0;
+	}
+}
+
 /*
  * Fast forward through part of the file the other side already
  * has while keeping compression state intact.
@@ -188,7 +238,8 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 		WARNX("%s: file truncated while reading",
 		    fl[up->cur->idx].path);
 		sess->total_errors++;
-		up->stat.error = true;
+		sender_terminate_file(sess, up);
+		free(cbuf);
 		return 0;
 	}
 	while (rlen > 0) {
@@ -264,20 +315,10 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		}
 
 		if (!fmap_trap(up->stat.map)) {
-			/* Pad the data out to zero */
-			for (off_t i = 0; i < sz; i++)
-				io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
-
 			WARNX("%s: file truncated while reading",
 			    fl[up->cur->idx].path);
-			if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, isz)) {
-				ERRX1("io_lowbuffer_alloc");
-				return 0;
-			}
-			io_lowbuffer_int(sess, *wb, &pos, *wbsz, 0);
 			sess->total_errors++;
-			up->stat.curst = BLKSTAT_HASH;
-			up->stat.error = true;
+			sender_terminate_file(sess, up);
 			return 1;
 		}
 
@@ -409,45 +450,49 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 * Flush the end of the compressed stream.
 		 */
 
-		cbuf = sess->token_cbuf;
-		if (sess->token_cbufsz < TOKEN_MAX_BUF) {
-			cbuf = malloc(TOKEN_MAX_BUF);
-			if (cbuf == NULL) {
-				ERRX1("malloc");
-				return 0;
-			}
-
-			free(sess->token_cbuf);
-			sess->token_cbuf = cbuf;
-			sess->token_cbufsz = TOKEN_MAX_BUF;
-		}
-
-		cctx.avail_in = 0;
-		cctx.next_in = NULL;
-		cctx.next_out = (Bytef *)(cbuf + 2);
-		cctx.avail_out = TOKEN_MAX_DATA;
-
-		while ((res = deflate(&cctx, Z_SYNC_FLUSH)) == Z_OK) {
-			ssz = TOKEN_MAX_DATA - cctx.avail_out;
-			assert(ssz >= 4);
-			ssz -= 4; /* Trim off the trailer bytes */
-			if (ssz != 0 && res != Z_BUF_ERROR) {
-				if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, ssz + 2)) {
-					ERRX("io_lowbuffer_alloc");
+		if (!up->stat.error) {
+			cbuf = sess->token_cbuf;
+			if (sess->token_cbufsz < TOKEN_MAX_BUF) {
+				cbuf = malloc(TOKEN_MAX_BUF);
+				if (cbuf == NULL) {
+					ERRX1("malloc");
 					return 0;
 				}
-				cbuf[0] = (TOKEN_DEFLATED + (ssz >> 8)) & 0xff;
-				cbuf[1] = ssz & 0xff;
-				io_lowbuffer_buf(sess, *wb, &pos, *wbsz, cbuf, ssz + 2);
+
+				free(sess->token_cbuf);
+				sess->token_cbuf = cbuf;
+				sess->token_cbufsz = TOKEN_MAX_BUF;
 			}
+
+			cctx.avail_in = 0;
+			cctx.next_in = NULL;
 			cctx.next_out = (Bytef *)(cbuf + 2);
 			cctx.avail_out = TOKEN_MAX_DATA;
-			memcpy(cctx.next_out, cbuf+TOKEN_MAX_DATA-2, 4);
-			cctx.next_out += 4;
-			cctx.avail_out -= 4;
-		}
-		if (res != Z_OK && res != Z_BUF_ERROR) {
-			LOG2("final deflate() res=%d", res);
+
+			while ((res = deflate(&cctx, Z_SYNC_FLUSH)) == Z_OK) {
+				ssz = TOKEN_MAX_DATA - cctx.avail_out;
+				assert(ssz >= 4);
+				ssz -= 4; /* Trim off the trailer bytes */
+				if (ssz != 0 && res != Z_BUF_ERROR) {
+					if (!io_lowbuffer_alloc(sess, wb, wbsz,
+					    wbmax, ssz + 2)) {
+						ERRX("io_lowbuffer_alloc");
+						return 0;
+					}
+					cbuf[0] = (TOKEN_DEFLATED + (ssz >> 8)) & 0xff;
+					cbuf[1] = ssz & 0xff;
+					io_lowbuffer_buf(sess, *wb, &pos, *wbsz,
+					    cbuf, ssz + 2);
+				}
+				cctx.next_out = (Bytef *)(cbuf + 2);
+				cctx.avail_out = TOKEN_MAX_DATA;
+				memcpy(cctx.next_out, cbuf+TOKEN_MAX_DATA-2, 4);
+				cctx.next_out += 4;
+				cctx.avail_out -= 4;
+			}
+			if (res != Z_OK && res != Z_BUF_ERROR) {
+				LOG2("final deflate() res=%d", res);
+			}
 		}
 
 		/* Send the end of token marker */
@@ -504,7 +549,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		if (!blk_match(sess, up->cur->blks,
 		    fl[up->cur->idx].path, &up->stat)) {
 			sess->total_errors++;
-			return 0;
+			sender_terminate_file(sess, up);
 		}
 
 		return 1;
@@ -566,7 +611,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 	struct flist *fl)
 {
 	size_t		 pos = 0, isz = sizeof(int32_t),
-			 dsz = MD4_DIGEST_LENGTH, tsz;
+			 dsz = MD4_DIGEST_LENGTH, dpos;
 	unsigned char	 fmd[MD4_DIGEST_LENGTH];
 	off_t		 sz;
 	char		 buf[16];
@@ -592,23 +637,19 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			return 0;
 		}
 
-		tsz = pos + sz;
-
+		dpos = pos;
 		if (!fmap_trap(up->stat.map)) {
-			/* Pad the data out to zero */
-			for (size_t i = 0; i < tsz - pos; i++)
-				io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
-
 			WARNX("%s: file truncated while reading",
 			    fl[up->cur->idx].path);
-			if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, isz)) {
-				ERRX1("io_lowbuffer_alloc");
+
+			sess->total_errors++;
+			if (!sender_terminate_file_data(sess, sz, wb, dpos,
+			    wbsz, wbmax)) {
+				/* Allocation error, fatal */
 				return 0;
 			}
-			io_lowbuffer_int(sess, *wb, &pos, *wbsz, 0);
-			sess->total_errors++;
-			up->stat.curst = BLKSTAT_HASH;
-			up->stat.error = true;
+
+			sender_terminate_file(sess, up);
 			return 1;
 		}
 
@@ -724,7 +765,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		if (!blk_match(sess, up->cur->blks,
 		    fl[up->cur->idx].path, &up->stat)) {
 			sess->total_errors++;
-			return 0;
+			sender_terminate_file(sess, up);
 		}
 		return 1;
 	case BLKSTAT_NONE:
@@ -1505,6 +1546,7 @@ rsync_sender(struct sess *sess, int fdin,
 			assert(up.cur != NULL);
 			assert(up.stat.fd != -1);
 			assert(up.stat.map == NULL);
+			assert(up.stat.mapsz == 0);
 			f = &fl.flp[up.cur->idx];
 
 			if (fstat(up.stat.fd, &st) == -1) {
@@ -1633,6 +1675,7 @@ rsync_sender(struct sess *sess, int fdin,
 			assert(pfd[2].fd == -1);
 			assert(up.stat.fd == -1);
 			assert(up.stat.map == NULL);
+			assert(up.stat.mapsz == 0);
 
 			/*
 			 * Wait until all pending output has been written before

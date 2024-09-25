@@ -37,7 +37,7 @@ struct fmap {
 	size_t		 mapsz;
 };
 
-volatile struct fmap *fmap_trapped;
+volatile struct fmap *fmap_trapped, *fmap_trapped_prev;
 sigjmp_buf fmap_signal_env;
 
 static void
@@ -146,6 +146,12 @@ fmap_close(struct fmap *fm)
 
 	if (fm == NULL)
 		return;
+
+	/*
+	 * We want all callers to be very explicit about when they trap/untrap,
+	 * so consider it a leak if we're still trapped at fmap_close() time.
+	 */
+	assert(fmap_trapped != fm && fmap_trapped_prev != fm);
 
 	munmap(fm->map, fm->mapsz);
 	free(fm);

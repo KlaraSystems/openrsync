@@ -3,6 +3,12 @@
 . ${tstdir-.}/lib.sh
 . ${tstdir-.}/conf.sh
 
+### NOTE THAT THE TIMING OF THE RECEIVE-TRUNCATE TESTS IS CRITICAL!  If we do
+### not hit the window in which the reference file is being used, we run the
+### risk of a spurious failure in which we truncated the destination but didn't
+### succeed at testing mmap() handling.  We may need to throttle the bandwidth
+### even more and speed up the subshell that checks + truncates if we hit it.
+
 rm -rf _.flag src dst
 mkdir -p src dst
 
@@ -52,9 +58,16 @@ rm -rf dst _.flag
 mkdir dst
 
 partsz=$((fsz / 4))
-blocksz=$((partsz / 8))
+blocksz=$(echo "sqrt(${fsz})" | bc)
 dd if=/dev/random of=src/file.part bs="$partsz" count=1
 cat src/file.part src/file.part src/file.part src/file.part > src/file
+
+# Now that we've constructed our full file, clobber the partial to let our
+# --bwlimit actually work.  All we need for these tests to succeed is one access
+# to the mmap region during or after our truncation.
+clobbersz=$((partsz - blocksz * 128))
+dd if=/dev/random of=src/file.part bs="$clobbersz" count=1 conv=notrunc
+
 cp src/file.part dst/file
 
 (
@@ -63,7 +76,7 @@ cp src/file.part dst/file
 	while true; do
 		fname=$(find dst -type f -name '.file.*' -not -empty | head -1)
 		[ -n "$fname" ] && break
-		sleep 0.1
+		sleep 0.05
 	done
 
 	ls -la dst
@@ -87,7 +100,14 @@ if [ ! -f _.flag ]; then
 	exit 1
 fi
 
-cmp -s src/file dst/file
+if ! cmp src/file dst/file 1>&2; then
+	1>&2 echo "file does not match"
+	1>&2 echo "-- src/ -- "
+	1>&2 ls -la src/
+	1>&2 echo "-- dst/ -- "
+	1>&2 ls -la dst/
+	exit 1
+fi
 
 rm -rf dst _.flag
 mkdir dst
@@ -100,10 +120,10 @@ cp src/file.part dst/file
 	while true; do
 		fname=$(find dst -type f -name '.file.*' -not -empty | head -1)
 		[ -n "$fname" ] && break
-		sleep 0.1
+		sleep 0.05
 	done
 
-	ls -la dst
+	1>&2 ls -la dst
 	:> dst/file
 	:> "$fname"
 	:> _.flag
@@ -117,11 +137,18 @@ trap 'echo 1 > dst/.file.flag' EXIT
 
 # This time no --inplace so that we can truncate it a dst/.file.* pops up.
 # It should succeed, even if we have to enter the redo phase to make it happen.
-rsync -vv --no-W -z --bwlimit=1024 --partial -- src/file dst
+rsync --no-W -z --bwlimit=1024 --partial -- src/file dst
 
 if [ ! -f _.flag ]; then
 	1>&2 echo "Destination file never got truncated"
 	exit 1
 fi
 
-cmp -s src/file dst/file
+if ! cmp src/file dst/file 1>&2; then
+	1>&2 echo "file does not match"
+	1>&2 echo "-- src/ -- "
+	1>&2 ls -la src/
+	1>&2 echo "-- dst/ -- "
+	1>&2 ls -la dst/
+	exit 1
+fi

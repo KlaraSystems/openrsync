@@ -1748,6 +1748,13 @@ again:
 		goto out;
 	}
 
+	/*
+	 * Just clear anything that was left in the output buffer; we weren't
+	 * going to waste disk writes on a failed file.
+	 */
+	if (p->state == DOWNLOAD_FLUSH_REMOTE)
+		p->obufsz = 0;
+
 	assert(p->fd < 0 || p->obufsz == 0);
 	assert(tokres == TOKEN_EOF);
 

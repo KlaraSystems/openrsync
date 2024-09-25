@@ -112,7 +112,7 @@ hash_file(const void *buf, size_t len,
 int
 hash_file_by_path(int rootfd, const char *path, size_t len, unsigned char *md)
 {
-	int fd, save;
+	int fd, rc, save;
 	struct fmap *map;
 
 	fd = openat(rootfd, path, O_RDONLY | O_NOFOLLOW);
@@ -127,7 +127,15 @@ hash_file_by_path(int rootfd, const char *path, size_t len, unsigned char *md)
 		return -1;
 	}
 
-	hash_file(fmap_data(map, 0), len, md, NULL);
+	rc = 0;
+	if (!fmap_trap(map)) {
+		ERRX("%s: file truncated while hashing", path);
+		rc = -1;
+	} else {
+		hash_file(fmap_data(map, 0), len, md, NULL);
+		fmap_untrap(map);
+	}
+
 	fmap_close(map);
 	close(fd);
 

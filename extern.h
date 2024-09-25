@@ -823,7 +823,7 @@ int	flist_add_del(struct sess *, const char *, size_t, struct flist **,
 	    size_t *, size_t *, const struct stat *st);
 
 struct fmap;
-extern volatile struct fmap	*fmap_trapped;
+extern volatile struct fmap	*fmap_trapped, *fmap_trapped_prev;
 extern sigjmp_buf		 fmap_signal_env;
 
 struct fmap	*fmap_open(int, size_t, int);
@@ -831,16 +831,20 @@ void		*fmap_data(struct fmap *, size_t);
 size_t		 fmap_size(struct fmap *);
 void		 fmap_close(struct fmap *);
 
+/* We support one level of recursion for hash_file_by_path(). */
 #define fmap_trap(fm) __extension__ ({			\
 	bool _fmap_ok = true;				\
-	assert(fmap_trapped == NULL);			\
+	assert(fmap_trapped == NULL || fmap_trapped_prev == NULL);	\
+	if (fmap_trapped != NULL)			\
+		fmap_trapped_prev = fmap_trapped;	\
 							\
 	if (sigsetjmp(fmap_signal_env, 0) > 0) {	\
 		/*					\
 		 * Truncated while attempting to read	\
 		 * the file, return fail.		\
 		 */					\
-		fmap_trapped = NULL;			\
+		fmap_trapped = fmap_trapped_prev;	\
+		fmap_trapped_prev = NULL;		\
 		_fmap_ok = false;			\
 	} else {					\
 		fmap_trapped = fm;			\
@@ -853,7 +857,8 @@ fmap_untrap(struct fmap *fm)
 {
 
 	assert(fmap_trapped == fm);
-	fmap_trapped = NULL;
+	fmap_trapped = fmap_trapped_prev;
+	fmap_trapped_prev = NULL;
 }
 
 const char	 *alt_base_mode(int);
