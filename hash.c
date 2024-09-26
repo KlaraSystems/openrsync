@@ -139,5 +139,5 @@ hash_file_by_path(int rootfd, const char *path, size_t len, unsigned char *md)
 	fmap_close(map);
 	close(fd);
 
-	return 0;
+	return rc;
 }

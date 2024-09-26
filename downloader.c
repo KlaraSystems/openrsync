@@ -961,8 +961,6 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 		dectx.next_out = (Bytef *)dbuf;
 		dectx.avail_out = MAX_CHUNK_BUF;
 		if (!fmap_trap(p->map)) {
-			WARNX("%s: file truncated while reading",
-			    p->fl[p->idx].path);
 			p->state = DOWNLOAD_FLUSH_REMOTE;
 			return TOKEN_NEXT;
 		}
@@ -1028,8 +1026,6 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 		}
 	} else {
 		if (!fmap_trap(p->map)) {
-			WARNX("%s: file truncated while reading",
-			    p->fl[p->idx].path);
 			p->state = DOWNLOAD_FLUSH_REMOTE;
 			return TOKEN_NEXT;
 		}
@@ -1061,8 +1057,6 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 	LOG4("%s: copied %zu B", p->fname, sz);
 
 	if (!fmap_trap(p->map)) {
-		WARNX("%s: file truncated while reading",
-		    p->fl[p->idx].path);
 		p->state = DOWNLOAD_FLUSH_REMOTE;
 		return TOKEN_NEXT;
 	}
@@ -1620,8 +1614,6 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 
 			if (sess->role->append && fmap_size(p->map) > 0) {
 				if (!fmap_trap(p->map)) {
-					WARNX("%s: file truncated while reading",
-					    p->fl[p->idx].path);
 					p->state = DOWNLOAD_FLUSH_REMOTE;
 				} else {
 					MD4_Update(&p->ctx, fmap_data(p->map, 0),
@@ -1761,8 +1753,11 @@ again:
 	 * Just clear anything that was left in the output buffer; we weren't
 	 * going to waste disk writes on a failed file.
 	 */
-	if (p->state == DOWNLOAD_FLUSH_REMOTE)
+	if (p->state == DOWNLOAD_FLUSH_REMOTE) {
+		WARNX("%s: file truncated while reading",
+		    p->fl[p->idx].path);
 		p->obufsz = 0;
+	}
 
 	assert(p->fd < 0 || p->obufsz == 0 || sess->opts->dry_run);
 	assert(tokres == TOKEN_EOF);

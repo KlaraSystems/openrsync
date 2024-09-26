@@ -17,6 +17,7 @@
 #include "config.h"
 
 #include <sys/mman.h>
+#include <sys/param.h>
 #if HAVE_SYS_QUEUE
 # include <sys/queue.h>
 #endif
@@ -235,10 +236,10 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 	rlen = sz;
 	clen = 0;
 	if (!fmap_trap(up->stat.map)) {
-		WARNX("%s: file truncated while reading",
-		    fl[up->cur->idx].path);
 		sess->total_errors++;
 		sender_terminate_file(sess, up);
+		WARNX("%s: file truncated while reading",
+		    fl[up->cur->idx].path);
 		free(cbuf);
 		return 0;
 	}
@@ -315,10 +316,10 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		}
 
 		if (!fmap_trap(up->stat.map)) {
-			WARNX("%s: file truncated while reading",
-			    fl[up->cur->idx].path);
 			sess->total_errors++;
 			sender_terminate_file(sess, up);
+			WARNX("%s: file truncated while reading",
+			    fl[up->cur->idx].path);
 			return 1;
 		}
 
@@ -639,9 +640,6 @@ send_up_fsm(struct sess *sess, size_t *phase,
 
 		dpos = pos;
 		if (!fmap_trap(up->stat.map)) {
-			WARNX("%s: file truncated while reading",
-			    fl[up->cur->idx].path);
-
 			sess->total_errors++;
 			if (!sender_terminate_file_data(sess, sz, wb, dpos,
 			    wbsz, wbmax)) {
@@ -650,6 +648,8 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			}
 
 			sender_terminate_file(sess, up);
+			WARNX("%s: file truncated while reading",
+			    fl[up->cur->idx].path);
 			return 1;
 		}
 
