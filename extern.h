@@ -404,6 +404,7 @@ struct	flist {
 #define	FLIST_FAILED		0x08	/* Failed */
 #define	FLIST_SUCCESS_ACKED	0x10	/* Sent success message */
 #define	FLIST_NEED_HLINK	0x20	/* Needs to be hardlinked */
+#define	FLIST_SKIPPED		0x40	/* File should be skipped */
 
 #define	FLIST_DONE_MASK		(FLIST_SUCCESS | FLIST_REDO | FLIST_FAILED)
 
@@ -886,8 +887,9 @@ void	cleanup_set_child(struct cleanup_ctx *, pid_t);
 void	cleanup_set_session(struct cleanup_ctx *, struct sess *);
 void	cleanup_set_download(struct cleanup_ctx *, struct download *);
 
-const struct flist *find_hl(const struct flist *,
-			    const struct hardlinks *);
+const struct flist *find_hl_impl(const struct flist *,
+	const struct hardlinks *, int, struct stat *);
+const struct flist *find_hl(const struct flist *, const struct hardlinks *);
 int num_hl(const struct flist *, const struct hardlinks *);
 
 int	io_register_handler(enum iotag, io_tag_handler_fn *, void *);
@@ -997,7 +999,7 @@ int	rsync_downloader(struct download *, struct sess *, int *, size_t,
 	    const struct hardlinks *);
 int	rsync_set_metadata(struct sess *, int, int, const struct flist *,
 	    const char *);
-int	rsync_set_metadata_at(struct sess *, int, int, struct flist *,
+int	rsync_set_metadata_at(struct sess *, int, int, const struct flist *,
 	    const char *);
 int	rsync_uploader(struct upload *, struct sess *, int, int *, int *,
 		       const struct hardlinks *);

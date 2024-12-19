@@ -116,10 +116,11 @@ dstat_save(const struct stat *st, struct fldstat *dstat)
 	dstat->gid = st->st_gid;
 }
 
-static void
-itemize_changes(const struct sess *sess, const struct stat *st, struct flist *f)
+static int32_t
+itemize_changes(const struct sess *sess, const struct stat *st, const struct flist *f)
 {
 	bool superuser = false;
+	int32_t iflags = 0;
 
 	if (sess->opts->supermode == SMODE_ON ||
 	    (sess->opts->supermode == SMODE_UNSET && geteuid() == 0))
@@ -127,20 +128,22 @@ itemize_changes(const struct sess *sess, const struct stat *st, struct flist *f)
 
 	if (sess->opts->preserve_perms && st->st_mode != f->st.mode &&
 	    (superuser || st->st_uid == geteuid()))
-		f->iflags |= IFLAG_PERMS;
+		iflags |= IFLAG_PERMS;
 
 	if (sess->opts->preserve_times && st->st_mtime != f->st.mtime) {
 		if (!S_ISDIR(f->st.mode) || !sess->opts->omit_dir_times)
-			f->iflags |= IFLAG_TIME;
+			iflags |= IFLAG_TIME;
 	}
 
 	if (sess->opts->preserve_uids && st->st_uid != f->st.uid &&
 	    f->st.uid != (uid_t)(-1) && superuser)
-		f->iflags |= IFLAG_OWNER;
+		iflags |= IFLAG_OWNER;
 
 	if (sess->opts->preserve_gids && st->st_gid != f->st.gid &&
 	    f->st.gid != (gid_t)(-1) && (superuser || getegid() == f->st.gid))
-		f->iflags |= IFLAG_GROUP;
+		iflags |= IFLAG_GROUP;
+
+	return iflags;
 }
 
 /*
@@ -318,7 +321,7 @@ pre_symlink(struct upload *p, struct sess *sess)
 		free(b);
 		b = NULL;
 
-		itemize_changes(sess, &st, f);
+		f->iflags |= itemize_changes(sess, &st, f);
 	} else {
 		f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
 	}
@@ -444,7 +447,7 @@ pre_dev(struct upload *p, struct sess *sess)
 			updatedev = 1;
 		}
 
-		itemize_changes(sess, &st, f);
+		f->iflags |= itemize_changes(sess, &st, f);
 	} else {
 		f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
 	}
@@ -581,7 +584,7 @@ pre_fifo(struct upload *p, struct sess *sess)
 	} else {
 		LOG3("%s: updating fifo", f->path);
 
-		itemize_changes(sess, &st, f);
+		f->iflags |= itemize_changes(sess, &st, f);
 	}
 
 	if (rc != -1)
@@ -688,7 +691,7 @@ pre_sock(struct upload *p, struct sess *sess)
 	} else {
 		LOG3("%s: updating sock", f->path);
 
-		itemize_changes(sess, &st, f);
+		f->iflags |= itemize_changes(sess, &st, f);
 	}
 
 	if (sess->opts->dry_run)
@@ -1001,7 +1004,7 @@ pre_dir(struct upload *p, struct sess *sess)
 		if ((f->iflags & IFLAG_NEW) == 0) {
 			LOG3("%s: updating directory", f->path);
 
-			itemize_changes(sess, &st, f);
+			f->iflags |= itemize_changes(sess, &st, f);
 		}
 
 		if (sess->opts->dry_run)
@@ -1185,14 +1188,38 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 			if (sess->opts->ign_non_exist) {
 				LOG1("Skip non existing '%s'", f->path);
 				return 0;
-			} else if (sess->opts->hard_links && find_hl(f, hl)) {
+			}
+
+			if (sess->opts->hard_links) {
+				const struct flist *leader;
+				struct stat lst;
+
+				/*
+				 * We don't need the leader's stat info, but we
+				 * need the semantics of find_hl_impl() caused by
+				 * requesting the leader's stat info (primarily
+				 * to generate correct itemization flags).
+				 */
+				leader = find_hl_impl(f, hl, rootfd, &lst);
+
 				/*
 				 * If we are not the "leading" hardlink, we
 				 * don't need to be transferred, since we can
 				 * just be created with linkat() later.
 				 */
-				f->flstate |= FLIST_NEED_HLINK;
-				return 4;
+				if (leader != NULL) {
+					f->flstate |= FLIST_NEED_HLINK;
+
+					f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE |
+						IFLAG_HLINK_FOLLOWS;
+					assert(f->link == NULL);
+					f->link = strdup(leader->path);
+					if (f->link == NULL) {
+						ERR("strdup");
+						return -1;
+					}
+					return 0;
+				}
 			}
 
 			f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
@@ -1231,35 +1258,6 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		}
 	}
 
-	if (!sess->opts->ign_exist && sess->opts->hard_links) {
-		/*
-		 * This covers the situation where a hardlink is sent,
-		 * but non-hardlinked files with identical contents
-		 * already exist.  They need to be replaced by a hardlink.
-		 */
-		if (find_hl(f, hl)) {
-			if (st->st_nlink == 1) {
-				f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
-				return 3;
-			}
-		} else if (st->st_nlink > 1) {
-			f->iflags = IFLAG_NEW | IFLAG_TRANSFER;
-			return 3;
-		}
-		/*
-		 * This covers the situation where two separate identical,
-		 * files are sent but they already exist as hardlink in
-		 * the destination.  They need to be un-hardlinked.
-		 *
-		 * TODO: write tests that try to send a 3-way hardlink,
-		 * overriding a 2-way hardlink and a plain file, all with
-		 * identical contents.
-		 */
-		if (!find_hl(f, hl) && st->st_nlink > 1) {
-			return 3;
-		}
-	}
-
 	if (sess->opts->update && st->st_mtime > f->st.mtime) {
 		LOG1("Skip newer '%s'", f->path);
 		return 4;
@@ -1268,6 +1266,55 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 	if (sess->opts->ign_exist) {
 		LOG1("Skip existing '%s'", f->path);
 		return 4;
+	}
+
+	if (sess->opts->hard_links) {
+		const struct flist *leader;
+		struct stat lst;
+
+		leader = find_hl_impl(f, hl, rootfd, &lst);
+
+		/*
+		 * If leader is nil then f is the first in a group of files
+		 * to be hard linked together so we just handle it like any
+		 * other regular file.
+		 */
+		if (leader != NULL) {
+			if (st->st_ino == lst.st_ino && st->st_dev == lst.st_dev) {
+				if ((leader->iflags & IFLAG_TRANSFER) == 0)
+					return 0;
+			}
+
+			f->flstate |= FLIST_NEED_HLINK;
+
+			f->iflags = IFLAG_LOCAL_CHANGE | IFLAG_HLINK_FOLLOWS;
+
+			assert(f->link == NULL);
+			f->link = strdup(leader->path);
+			if (f->link == NULL) {
+				ERR("strdup");
+				return -1;
+			}
+
+			if (st->st_ino == lst.st_ino && st->st_dev == lst.st_dev) {
+				assert(f->sendidx > leader->sendidx);
+				f->iflags |= leader->iflags & ~(IFLAG_NEW | IFLAG_TRANSFER);
+				return 0;
+			}
+
+			if (IFTODT(st->st_mode) != IFTODT(leader->st.mode)) {
+				if (f->sendidx < leader->sendidx) {
+					f->iflags |= IFLAG_NEW;
+				} else {
+					f->iflags |= itemize_changes(sess, st, leader);
+
+					if (st->st_size != leader->st.size)
+						f->iflags |= IFLAG_SIZE;
+				}
+			}
+
+			return 0;
+		}
 	}
 
 	/* non-regular file needs attention */
@@ -1283,7 +1330,7 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		return 2;
 	}
 
-	itemize_changes(sess, st, f);
+	f->iflags |= itemize_changes(sess, st, f);
 
 	if (sess->itemize) {
 		/*
@@ -1317,7 +1364,8 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 				if (f->st.mtime != st->st_mtime)
 					LOG3("%s: fits time modify window",
 						f->path);
-				return 0;
+				if (st->st_nlink == 1 || sess->opts->hard_links)
+					return 0;
 			}
 			return 1;
 		}
@@ -1367,7 +1415,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 			}
 		}
 
-		itemize_changes(sess, st, f);
+		f->iflags |= itemize_changes(sess, st, f);
 
 		switch (basemode) {
 		case BASE_MODE_COPY:
@@ -1405,7 +1453,7 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 
 	if ((x == 1 || x == 2) && *matchdir == NULL) {
 		/* found a local file that is a close match */
-		itemize_changes(sess, st, f);
+		f->iflags |= itemize_changes(sess, st, f);
 		*matchdir = root;
 		if (savedfd != NULL) {
 			int prevfd;
@@ -1606,8 +1654,10 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		sess->total_errors++;
 		return 0;
 	}
-	if (rc == 4)
+	if (rc == 4) {
+		f->flstate |= FLIST_SKIPPED;
 		return 0;
+	}
 	if (rc == 2 && !S_ISREG(st.st_mode)) {
 		int uflags = 0;
 		bool do_unlink = false;
@@ -1649,6 +1699,21 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	if (rc >= 0 && rc < 3) {
 		bool fix_metadata = (rc != 0 || !sess->opts->ign_non_exist) &&
 		    !dry_run;
+
+		/*
+		 * If the file is a hardlink to another file (or will become
+		 * one) then we must not change the metadata here as this file
+		 * might not currently link to the correct file.  In this case
+		 * we'll fix the metadata at the end of phase 2.
+		 */
+		if (fix_metadata) {
+			const int32_t hlink = IFLAG_HLINK_FOLLOWS | IFLAG_LOCAL_CHANGE;
+
+			if ((f->iflags & hlink) == hlink)
+				fix_metadata = false;
+			else if (st.st_nlink > 1 && S_ISREG(f->st.mode))
+				fix_metadata = false;
+		}
 
 		if (fix_metadata)
 			dstat_save(&st, &f->dstat);
@@ -2175,6 +2240,8 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 
 			if (u->fl[u->idx].iflags == 0) {
 				if (sess->itemize < 2 && verbose < 2)
+					continue;
+				if ((u->fl[u->idx].flstate & FLIST_SKIPPED) != 0)
 					continue;
 			}
 

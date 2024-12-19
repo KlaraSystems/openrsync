@@ -165,7 +165,7 @@ rsync_set_metadata(struct sess *sess, int newfile,
 
 int
 rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
-	struct flist *f, const char *path)
+	const struct flist *f, const char *path)
 {
 	uid_t		 uid = (uid_t)-1;
 	gid_t		 gid = (gid_t)-1;
@@ -269,8 +269,12 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 }
 
 struct info_for_hardlink {
-	int64_t device;
-	int64_t inode;
+	int64_t device; /* from flist */
+	int64_t inode; /* from flist */
+	int64_t st_dev; /* from stat of on-disk file */
+	int64_t st_ino; /* from stat of on-disk file */
+	mode_t st_mode; /* from stat of on-disk file */
+	int weight;
 	const struct flist *ref; /* Points to full entry */
 };
 struct hardlinks {
@@ -298,28 +302,62 @@ info_for_hardlink_compare(const void *onep, const void *twop)
 	return 0;
 }
 
+static int
+build_for_hardlinks_cmp(const void *onep, const void *twop)
+{
+	int rc;
+
+	rc = info_for_hardlink_compare(onep, twop);
+
+	if (rc == 0) {
+		const struct info_for_hardlink *one = onep;
+		const struct info_for_hardlink *two = twop;
+
+		/* Preserve flist relative ordering */
+		rc = one->weight - two->weight;
+	}
+
+	return rc;
+}
+
 /* Important: this needs to happen after fl is sorted. */
 static int
-build_for_hardlinks(struct info_for_hardlink *hl,
-	const struct flist *const fl, const size_t flsz)
+build_for_hardlinks(const struct sess *sess, struct info_for_hardlink *hl,
+	const struct flist *const fl, const size_t flsz, int rootfd)
 {
 	size_t i;
 	int hlsz = 0;
 
 	for (i = 0; i < flsz; i++) {
+		struct stat st;
+
 		if (fl[i].st.inode == 0 && fl[i].st.device == 0)
 			continue;
+
 		hl[hlsz].device = fl[i].st.device;
 		hl[hlsz].inode = fl[i].st.inode;
+
+		if (fstatat(rootfd, fl[i].path, &st, AT_SYMLINK_NOFOLLOW) == 0) {
+			if (sess->opts->update && st.st_mtime > fl[i].st.mtime)
+				continue;
+			if (sess->opts->ign_exist)
+				continue;
+
+			hl[hlsz].st_dev = st.st_dev;
+			hl[hlsz].st_ino = st.st_ino;
+			hl[hlsz].st_mode = st.st_mode;
+		}
+
+		hl[hlsz].weight = hlsz;
 		hl[hlsz++].ref = &fl[i];
 	}
-	qsort(hl, hlsz, sizeof(struct info_for_hardlink),
-		info_for_hardlink_compare);
+	qsort(hl, hlsz, sizeof(*hl), build_for_hardlinks_cmp);
 	return hlsz;
 }
 
 const struct flist *
-find_hl(const struct flist *const this, const struct hardlinks *const hl)
+find_hl_impl(const struct flist *const this, const struct hardlinks *const hl,
+	int rootfd, struct stat *lst)
 {
 	/*
 	 * *hl is a copy of the flist sorted by device/inode.
@@ -358,11 +396,28 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 		i--;
 	}
 	first = hl->infos[i].ref;
-	while (this->st.inode == hl->infos[i].inode &&
-		this->st.device == hl->infos[i].device && i < hl->n) {
+	while (i < hl->n && this->st.inode == hl->infos[i].inode &&
+		this->st.device == hl->infos[i].device) {
 		if ((hl->infos[i].ref->flstate & FLIST_NEED_HLINK) == 0) {
 			leader = hl->infos[i].ref;
-			break;
+			if (rootfd < 0 || lst == NULL)
+				break;
+
+			/*
+			 * If caller specified both a valid rootfd and stat buf
+			 * then it wants to be certain that the leader exists
+			 * on the local FS and matches its flist file type.
+			 */
+			if (rootfd >= 0 && lst != NULL && hl->infos[i].st_ino > 0) {
+				if (IFTODT(leader->st.mode) == IFTODT(hl->infos[i].st_mode)) {
+					memset(lst, 0, sizeof(*lst));
+					lst->st_dev = hl->infos[i].st_dev;
+					lst->st_ino = hl->infos[i].st_ino;
+					break;
+				}
+			}
+
+			leader = NULL;
 		}
 		i++;
 	}
@@ -387,6 +442,13 @@ find_hl(const struct flist *const this, const struct hardlinks *const hl)
 	}
 	return NULL;
 }
+
+const struct flist *
+find_hl(const struct flist *const this, const struct hardlinks *const hl)
+{
+	return find_hl_impl(this, hl, -1, NULL);
+}
+
 
 /*
  * Similar to find_hl except we count how many hardlinks.
@@ -434,32 +496,45 @@ make_hardlinks(struct sess *sess, const struct flist *fl, size_t flsz,
     const struct hardlinks *hl, int rootfd)
 {
 	const struct flist *f = NULL, *hl_p = NULL;
+	int64_t prev_device = 0;
+	int64_t prev_inode = 0;
 	size_t i;
 
 	for (i = 0; i < flsz; i++) {
 		f = &fl[i];
 		if (f->st.inode == 0 && f->st.device == 0)
 			continue;
-		if ((f->flstate & FLIST_NEED_HLINK) == 0)
+		if ((f->flstate & FLIST_NEED_HLINK) == 0) {
+			if (f->st.device != prev_device) {
+				prev_device = f->st.device;
+				prev_inode = 0;
+			}
+			if (f->st.inode != prev_inode && f->iflags != 0) {
+				if (!rsync_set_metadata_at(sess, 0, rootfd, f, f->path))
+					sess->total_errors++;
+				prev_inode = f->st.inode;
+			}
 			continue;
+		}
+
 		hl_p = find_hl(f, hl);
 		if (hl_p == NULL)
 			continue;
 
-		if (unlinkat(rootfd, f->path, 0) == -1 && errno != ENOENT)
-			ERR("unlink");
+		if (unlinkat(rootfd, f->path, 0) == -1 && errno != ENOENT) {
+			if (unlinkat(rootfd, f->path, AT_REMOVEDIR) == -1)
+				ERR("unlink");
+		}
 
-		if (linkat(rootfd, hl_p->path, rootfd, f->path,
-		    0) == -1) {
+		if (linkat(rootfd, hl_p->path, rootfd, f->path, 0) == -1) {
 			ERR("linkat");
-			LOG0("Error while making hard link '%s' to '%s' ",
-			    hl_p->path, f->path);
+			LOG0("Error while making hard link '%s => %s'",
+			    f->path, hl_p->path);
 			sess->total_errors++;
 			continue;
 		}
-		if (sess->itemize)
-			log_item(sess, f);
-		else if (verbose > 1)
+
+		if (!protocol_itemize)
 			log_item_impl(sess, f);
 	}
 
@@ -485,8 +560,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 	struct download	*dl = NULL;
 	struct upload	*ul = NULL;
 	mode_t		 oumask;
-	struct info_for_hardlink *hl = NULL;
-	struct hardlinks hls;
+	struct hardlinks hls = { 0 };
 	bool		 root_missing = false;
 	int		 max_phase = sess->protocol >= 29 ? 2 : 1;
 	size_t		 chunksz;
@@ -601,15 +675,8 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		goto out;
 	}
 
-	hl = reallocarray(NULL, flsz, sizeof(*hl));
-	if (hl == NULL) {
-		ERRX1("reallocarray receiver");
-		goto out;
-	}
 	sess->total_files = flsz;
 	sess->flist_size = sess->total_read - flist_bytes;
-	hls.n = build_for_hardlinks(hl, fl, flsz); /* Size is same */
-	hls.infos = hl;
 
 	/* The IO error is sent after the file list. */
 
@@ -807,6 +874,25 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 #endif
 
 	/*
+	 * Now that we have the root fd we can build the hardlinks table.
+	 * Use calloc() to allocate the hl array so as to minimize the
+	 * amount of physmem actually allocated (because flsz could be
+	 * very large whereas hl is typically very small).
+	 */
+	if (sess->opts->hard_links) {
+		struct info_for_hardlink *hl;
+
+		hl = calloc(flsz, sizeof(*hl));
+		if (hl == NULL) {
+			ERRX1("calloc hl");
+			goto out;
+		}
+
+		hls.n = build_for_hardlinks(sess, hl, fl, flsz, dfd);
+		hls.infos = hl;
+	}
+
+	/*
 	 * Begin by conditionally getting all files we have currently
 	 * available in our destination.
 	 */
@@ -981,7 +1067,8 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				if (phase == max_phase + 1)
 					break;
 
-				if (sess->opts->hard_links && phase == 2)
+				if (sess->opts->hard_links && phase == 2 &&
+				    !sess->opts->dry_run)
 					make_hardlinks(sess, fl, flsz, &hls, dfd);
 
 				LOG3("%s: receiver ready for phase %d data (%zu to redo)",
@@ -1053,9 +1140,8 @@ out:
 	delayed_renames(sess);
 	free(sess->dlrename);
 	sess->dlrename = NULL;
-	free(hl);
-	hl = NULL;
 	upload_free(ul);
+	free(hls.infos);
 
 	/*
 	 * If we get signalled, we'll need to also free the download from that

@@ -557,14 +557,19 @@ flist_send(struct sess *sess, int fdin, int fdout, const struct flist *fl,
 		 * For protocol 28+: Only non-directories that have nlink > 1
 		 * For protocols less than 28: All regular files
 		 */
-		if (sess->opts->hard_links && protocol_newflist &&
-		    (!S_ISDIR(f->st.mode) && f->st.nlink > 1)) {
-			flag |= FLIST_HARDLINKED;
-			if (minor(f->st.rdev) <= 0xff) {
-                                flag |= FLIST_RDEV_MINOR_8;
+		if (sess->opts->hard_links && !S_ISDIR(f->st.mode)) {
+			if (protocol_newflist) {
+				if (f->st.nlink > 1) {
+					flag |= FLIST_HARDLINKED;
+					if (minor(f->st.rdev) <= 0xff) {
+						flag |= FLIST_RDEV_MINOR_8;
+					}
+				}
+			} else {
+				if (S_ISREG(f->st.mode)) {
+					flag |= FLIST_HARDLINKED;
+				}
 			}
-		} else if (sess->opts->hard_links && S_ISREG(f->st.mode)) {
-			flag |= FLIST_HARDLINKED;
 		}
 
 		if (protocol_newflist) {
