@@ -373,6 +373,10 @@ modifiers_valid(enum rule_type rule, unsigned int *modifiers)
 		break;
 	case RULE_EXCLUDE:
 	case RULE_INCLUDE:
+	case RULE_SHOW:
+	case RULE_HIDE:
+	case RULE_RISK:
+	case RULE_PROTECT:
 		valid_mask = MOD_VALID_MASK & ~MOD_MERGE_MASK;
 		break;
 	default:
@@ -423,6 +427,13 @@ rule_modified(enum rule_type rule, unsigned int *modifiers)
 			rule = RULE_PROTECT;
 		}
 
+		/* FALLTHROUGH */
+	case RULE_HIDE:
+	case RULE_PROTECT:
+		/*
+		 * For all of the include/exclude rules, send/recv modifiers
+		 * don't make any sense and should be stripped.
+		 */
 		mod &= ~MOD_SENDRECV_MASK;
 		break;
 	case RULE_INCLUDE:
@@ -434,6 +445,9 @@ rule_modified(enum rule_type rule, unsigned int *modifiers)
 			rule = RULE_RISK;
 		}
 
+		/* FALLTHROUGH */
+	case RULE_SHOW:
+	case RULE_RISK:
 		mod &= ~MOD_SENDRECV_MASK;
 		break;
 	case RULE_MERGE:
