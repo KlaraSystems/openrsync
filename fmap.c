@@ -199,14 +199,18 @@ fmap_open(const char *path, int fd, size_t sz, int prot)
 }
 
 static bool
-fmap_buf_slide_read(struct fmap *fm, off_t bufpos, off_t offset, size_t datasz)
+fmap_buf_slide_read(struct fmap *fm, off_t bufpos, off_t offset, size_t reqsz)
 {
+	size_t targetsz, totalsz;
 
-	assert(datasz <= fm->bufsz);
-	while (datasz != 0) {
+	assert(bufpos + reqsz <= fm->bufsz);
+	targetsz = fm->bufsz - bufpos;
+	totalsz = 0;
+	while (totalsz < targetsz) {
 		ssize_t readsz;
 
-		readsz = pread(fm->fd, fm->buf + bufpos, datasz, offset);
+		readsz = pread(fm->fd, fm->buf + bufpos, targetsz - totalsz,
+		    offset);
 		if (readsz == -1 && errno == EINTR)
 			continue;
 		if (readsz == -1) {
@@ -219,7 +223,11 @@ fmap_buf_slide_read(struct fmap *fm, off_t bufpos, off_t offset, size_t datasz)
 
 		/* EOF that we weren't expecting; file was truncated. */
 		if (readsz == 0) {
-			assert(datasz != 0);
+			assert(totalsz != targetsz);
+
+			/* Not premature: just what the caller wanted. */
+			if (totalsz >= reqsz)
+				break;
 
 			fm->dataoff = 0;
 			fm->datasz = 0;
@@ -231,7 +239,7 @@ fmap_buf_slide_read(struct fmap *fm, off_t bufpos, off_t offset, size_t datasz)
 		}
 
 		fm->datasz += readsz;
-		datasz -= readsz;
+		totalsz += readsz;
 		offset += readsz;
 		bufpos += readsz;
 	}
@@ -265,23 +273,11 @@ fmap_buf_slide(struct fmap *fm, off_t offset, size_t datasz)
 		bufpos = fm->datasz;
 		datasz -= fm->datasz;
 		offset += fm->datasz;
-#if 0
-		LOG4("BUFFER REUSE");
-#endif
 	} else {
-#if 0
-		LOG4("BUFFER RESET (have [%lld, %lld); want [%lld, %lld)",
-		    fm->dataoff, fm->dataoff + fm->datasz,
-		    offset, offset + datasz);
-#endif
-
 		/* No overlap, buffer is completely invalid.  Reset it. */
 		fm->dataoff = offset;
 		fm->datasz = 0;
 	}
-
-	if (datasz < fm->bufsz)
-		datasz = fm->bufsz;
 
 	return fmap_buf_slide_read(fm, bufpos, offset, datasz);
 }
