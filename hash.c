@@ -166,7 +166,7 @@ hash_file_by_path(int rootfd, const char *path, size_t len, unsigned char *md)
 	if (fd == -1)
 		return -1;
 
-	map = fmap_open(path, fd, len, PROT_READ);
+	map = fmap_open(path, fd, len);
 	if (map == NULL) {
 		save = errno;
 		close(fd);

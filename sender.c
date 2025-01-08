@@ -1570,7 +1570,7 @@ rsync_sender(struct sess *sess, int fdin,
 
 			if ((up.stat.mapsz = st.st_size) > 0) {
 				up.stat.map = fmap_open(f->path, up.stat.fd,
-				    st.st_size, PROT_READ);
+				    st.st_size);
 				if (up.stat.map == NULL)
 					goto out;
 			}

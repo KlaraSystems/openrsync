@@ -130,10 +130,10 @@ fmap_env_type(void)
 }
 
 static bool
-fmap_open_mmap(struct fmap *fm, const char *path, int fd, size_t sz, int prot)
+fmap_open_mmap(struct fmap *fm, const char *path, int fd, size_t sz)
 {
 	fm->mapsz = sz;
-	fm->map = mmap(NULL, sz, prot, MAP_SHARED, fd, 0);
+	fm->map = mmap(NULL, sz, PROT_READ, MAP_SHARED, fd, 0);
 	if (fm->map == MAP_FAILED) {
 		int serrno = errno;
 
@@ -182,7 +182,7 @@ fmap_open_mmap(struct fmap *fm, const char *path, int fd, size_t sz, int prot)
  * output.
  */
 struct fmap *
-fmap_open(const char *path, int fd, size_t sz, int prot)
+fmap_open(const char *path, int fd, size_t sz)
 {
 	struct fmap *fm;
 
@@ -196,7 +196,7 @@ fmap_open(const char *path, int fd, size_t sz, int prot)
 	assert(fm->ftype != FT_NULL);
 	switch (fm->ftype) {
 	case FT_MMAP:
-		if (fmap_open_mmap(fm, path, fd, sz, prot))
+		if (fmap_open_mmap(fm, path, fd, sz))
 			break;
 
 		/*
