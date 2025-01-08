@@ -73,7 +73,7 @@ iszerobuf(const void *b, size_t len)
 static int
 count_dir_depth(const char *path, int dirdepth, int strict)
 {
-	const char *dp;
+	const char *dp, *lastp;
 	bool leading = true;
 
 	/* Blank or absolute symlinks are always unsafe */
@@ -82,7 +82,7 @@ count_dir_depth(const char *path, int dirdepth, int strict)
 		return 0;
 	}
 
-	dp = (char *)path;
+	dp = lastp = path;
 	while (dp != NULL) {
 		/* Skip any excess slashes */
 		while (*dp == '/') {
@@ -119,12 +119,27 @@ count_dir_depth(const char *path, int dirdepth, int strict)
 		if (strict && dirdepth < 0) {
 			return -1;
 		}
+		lastp = dp;
 		dp = strchr(dp, '/');
 		if (dp != NULL) {
 			dp++;
+
+			/*
+			 * If we had a trailing '/', we'll zap lastp and break
+			 * so that we don't examine the last component.
+			 */
+			if (*dp == '\0') {
+				lastp = NULL;
+				break;
+			}
 		}
 	}
-	if (dp != NULL && strcmp(dp, "..") == 0) {
+
+	/*
+	 * lastp will be NULL if we had a trailing slash, as we don't need to
+	 * inspect anything else -- it was properly accounted for in the loop.
+	 */
+	if (lastp != NULL && strcmp(lastp, "..") == 0) {
 		dirdepth--;
 		if (strict && !leading)
 			return -1;
