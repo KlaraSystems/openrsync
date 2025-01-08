@@ -1372,6 +1372,20 @@ iobuf_get_readsz(const struct iobuf *buf)
 	return buf->resid;
 }
 
+void
+iobuf_eof(struct iobuf *buf)
+{
+
+	buf->eof = true;
+}
+
+bool
+iobuf_seen_eof(const struct iobuf *buf)
+{
+
+	return buf->eof;
+}
+
 /*
  * Fill up an iobuf with as much data as is currently available.
  */

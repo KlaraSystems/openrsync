@@ -454,8 +454,14 @@ blk_recv(struct sess *sess, int fd, struct iobuf *buf, const char *path,
 	 * in reading the individual blocks for this file.
 	 */
 	if (meta) {
-		if (iobuf_get_readsz(buf) < (4 * sizeof(int32_t)))
+		if (iobuf_get_readsz(buf) < (4 * sizeof(int32_t))) {
+			if (iobuf_seen_eof(buf)) {
+				ERR("hangup awaiting block prologue");
+				goto out;
+			}
+
 			return s;
+		}
 
 		if (!iobuf_read_size(buf, &s->blksz)) {
 			ERRX1("iobuf_read_size");
@@ -507,8 +513,14 @@ blk_recv(struct sess *sess, int fd, struct iobuf *buf, const char *path,
 	 */
 
 	for (j = *blkidx; j < s->blksz; j++) {
-		if (iobuf_get_readsz(buf) < sizeof(int32_t) + s->csum)
+		if (iobuf_get_readsz(buf) < sizeof(int32_t) + s->csum) {
+			if (iobuf_seen_eof(buf)) {
+				ERR("hangup awaiting block information");
+				goto out;
+			}
+
 			break;
+		}
 
 		b = &s->blks[j];
 		iobuf_read_int(buf, &i);

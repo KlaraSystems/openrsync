@@ -239,6 +239,7 @@ struct	iobuf {
 	size_t		 offset;
 	size_t		 resid;
 	size_t		 size;
+	bool		 eof;
 };
 
 enum	iotag {
@@ -944,6 +945,8 @@ void	io_unbuffer_buf(const void *, size_t *, size_t, void *, size_t);
 int	iobuf_alloc(struct sess *, struct iobuf *, size_t);
 size_t	iobuf_get_readsz(const struct iobuf *);
 int	iobuf_fill(struct sess *, struct iobuf *, int);
+void	iobuf_eof(struct iobuf *);
+bool	iobuf_seen_eof(const struct iobuf *);
 void	iobuf_read_buf(struct iobuf *, void *, size_t);
 void	iobuf_read_byte(struct iobuf *, uint8_t *);
 int32_t	iobuf_peek_int(struct iobuf *);

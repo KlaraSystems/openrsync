@@ -820,8 +820,14 @@ sender_get_iflags(struct iobuf *buf, struct flist *fl, struct send_dl *sdl)
 	if ((fl->iflags & IFLAG_BASIS_FOLLOWS) != 0) {
 		uint8_t basis;
 
-		if (iobuf_get_readsz(buf) < sizeof(uint8_t))
+		if (iobuf_get_readsz(buf) < sizeof(uint8_t)) {
+			if (iobuf_seen_eof(buf)) {
+				ERR("hangup while awaiting iflags");
+				return -1;
+			}
+
 			return 0;
+		}
 
 		iobuf_read_byte(buf, &basis);
 
@@ -1367,7 +1373,7 @@ rsync_sender(struct sess *sess, int fdin,
 	for (;;) {
 #define	READ_AVAIL(pfd, iobuf) \
 	(((pfd)[0].revents & POLLIN) != 0 || iobuf_get_readsz((iobuf)) != 0)
-		assert(pfd[0].fd != -1);
+		assert(pfd[0].fd != -1 || iobuf_seen_eof(&rbuf));
 
 		if (iobuf_get_readsz(&rbuf) > 0) {
 			/*
@@ -1396,9 +1402,16 @@ rsync_sender(struct sess *sess, int fdin,
 				ERRX("poll: bad fd");
 				goto out;
 			} else if (pfd[i].revents & POLLHUP) {
-				ERRX("poll: hangup on sender idx %zd iobuf capacity %zu",
-				    i, iobuf_get_readsz(&rbuf));
-				goto out;
+				/*
+				 * We still ignore POLLHUP on pfd[1] if we have
+				 * data still to process, because we may not
+				 * need to respond.
+				 */
+				if (i >= 2 || !READ_AVAIL(pfd, &rbuf)) {
+					ERRX("poll: hangup on sender idx %zd iobuf capacity %zu",
+					    i, iobuf_get_readsz(&rbuf));
+					goto out;
+				}
 			}
 
 		/*
@@ -1432,6 +1445,15 @@ rsync_sender(struct sess *sess, int fdin,
 			}
 
 			pfd[0].revents &= ~POLLIN;
+
+			/*
+			 * If the other side hung up, we can stop polling this
+			 * fd and mark the readbuf as finished.
+			 */
+			if ((pfd[0].revents & POLLHUP) != 0) {
+				pfd[0].fd = -1;
+				iobuf_eof(&rbuf);
+			}
 		}
 
 		/*
@@ -1646,11 +1668,15 @@ rsync_sender(struct sess *sess, int fdin,
 		}
 
 		/*
-		 * Engage the FSM for the current transfer.
+		 * Engage the FSM for the current transfer.  If we're in the
+		 * BLKSTAT_PHASE state, then we won't need to write and it's
+		 * sufficient to enter the fsm with just data to read.
+		 *
 		 * If our phase changes, stop processing.
 		 */
 
-		if (pfd[1].revents & POLLOUT && up.cur != NULL) {
+		if ((up.stat.curst == BLKSTAT_PHASE && READ_AVAIL(pfd, &rbuf)) ||
+		    ((pfd[1].revents & POLLOUT)) && up.cur != NULL) {
 			struct flist *curfl;
 			size_t curidx;
 
