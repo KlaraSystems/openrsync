@@ -1374,7 +1374,8 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.address = optarg;
 			break;
 		case OP_CONTIMEOUT:
-			poll_contimeout = (int)strtonum(optarg, 0, 60*60, &errstr);
+			poll_contimeout = (int)strtonum(optarg, 0, INT_MAX,
+			    &errstr);
 			if (errstr != NULL)
 				errx(ERR_SYNTAX, "timeout is %s: %s",
 				    errstr, optarg);
@@ -1386,7 +1387,8 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.rsync_path = optarg;
 			break;
 		case OP_TIMEOUT:
-			opts_timeout = (int)strtonum(optarg, 0, 60*60, &errstr);
+			opts_timeout = (int)strtonum(optarg, 0, INT_MAX,
+			    &errstr);
 			if (errstr != NULL)
 				errx(ERR_SYNTAX, "timeout is %s: %s",
 				    errstr, optarg);
