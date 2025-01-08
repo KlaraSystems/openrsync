@@ -743,3 +743,10 @@ echo "Test 26.3"
 rm -rf dst
 rsync -a --from0 --files-from=- < ffdirs0 -- ${SRC}/ ${DST}/
 compare_trees src dst
+
+echo "Test 27"
+1>&2 echo "Test 27"
+rm -rf dst
+xfer=$(head -1 fffiles)
+echo "$xfer" | tr -d $'\n' | rsync -a --files-from=- -- ${SRC}/ ${DST}/
+cmp -s src/"$xfer" dst/"$xfer"

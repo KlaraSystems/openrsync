@@ -3139,7 +3139,7 @@ fdgets(struct sess *sess, int fd, char *buf, size_t bufsz)
 		}
 
 		if (n == 0)
-			return 0;
+			break;
 
 		length += n;
 
