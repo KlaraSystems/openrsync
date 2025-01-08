@@ -665,8 +665,12 @@ struct	sess {
 	int		   mplex_reads; /* multiplexing reads? */
 	size_t		   mplex_read_remain; /* remaining bytes */
 	int		   mplex_writes; /* multiplexing writes? */
-	double             last_time; /* last time printed --progress */  
-	uint64_t	   last_bytes; /* last bytes printed --progress */
+	struct {
+		size_t	   count;
+		double	   start_time; /* first time printed */
+		double	   last_time; /* last time printed */
+		uint64_t   last_bytes; /* last bytes printed */
+	} xferstat;			/* --progress stats, per-file */
 	uint8_t		   itemize; /* %i + %I in --out-format */
 	uint8_t		   itemize_i; /* %i in --out-format */
 	uint8_t		   itemize_o; /* %o in --out-format */
@@ -974,7 +978,7 @@ int	rsync_sender(struct sess *, int, int, size_t, char **);
 int	rsync_batch(struct cleanup_ctx *, struct opts *, const struct fargs *);
 int	rsync_client(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
-void	rsync_progress(struct sess *, uint64_t, uint64_t, bool);
+void	rsync_progress(struct sess *, uint64_t, uint64_t, bool, size_t, size_t);
 int	rsync_daemon(int, char *[], struct opts *);
 int	rsync_connect(const struct opts *, int *, const struct fargs *);
 int	rsync_listen(struct sess *, rsync_client_handler *);

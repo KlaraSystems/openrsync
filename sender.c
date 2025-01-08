@@ -1651,10 +1651,11 @@ rsync_sender(struct sess *sess, int fdin,
 
 		if (pfd[1].revents & POLLOUT && up.cur != NULL) {
 			struct flist *curfl;
+			size_t curidx;
 
 			assert(pfd[2].fd == -1);
 			assert(wbufpos == 0 && wbufsz == 0);
-			curfl = &fl.flp[up.cur->idx];
+			curidx = up.cur->idx;
 			if (sess->opts->compress) {
 				res = send_up_fsm_compressed(sess, &phase, &up,
 				    &wbuf, &wbufsz, &wbufmax, fl.flp);
@@ -1663,8 +1664,9 @@ rsync_sender(struct sess *sess, int fdin,
 				    &wbuf, &wbufsz, &wbufmax, fl.flp);
 			}
 
+			curfl = &fl.flp[curidx];
 			rsync_progress(sess, curfl->st.size, up.stat.curpos,
-			    up.stat.curst == BLKSTAT_DONE);
+			    up.stat.curst == BLKSTAT_DONE, curidx, fl.sz);
 
 			if (!res) {
 				ERRX1("send_up_fsm");

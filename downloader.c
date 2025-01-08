@@ -1660,7 +1660,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 #endif
 	}
 again:
-	rsync_progress(sess, p->fl[p->idx].st.size, p->total, false);
+	rsync_progress(sess, p->fl[p->idx].st.size, p->total, false,
+	    p->idx, p->flsz);
 
 	assert(p->state == DOWNLOAD_READ_REMOTE ||
 	    p->state == DOWNLOAD_FLUSH_REMOTE);
@@ -1921,7 +1922,7 @@ again:
 	}
 
 	rsync_progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size,
-	    true);
+	    true, p->idx, p->flsz);
 
 	if (sess->lateprint)
 		log_item(sess, f);

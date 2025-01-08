@@ -46,10 +46,10 @@ print_time(FILE *f, double time)
  */
 void
 rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
-    bool finished)
+    bool finished, size_t idx, size_t totalidx)
 {
 	struct timeval tv;
-	double now, remaining_time, rate;
+	double delta, now, remaining_time, rate;
 
 	if (!sess->opts->progress)
 		return;
@@ -61,17 +61,31 @@ rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
 	 * Print progress.
 	 * This calculates from previous transfer.
 	 */
-	if (sess->last_time == 0) {
-		sess->last_time = now;
-		sess->last_bytes = 0;
+	if (sess->xferstat.last_time == 0) {
+		sess->xferstat.count++;
+		sess->xferstat.start_time = sess->xferstat.last_time = now;
+		assert(sess->xferstat.last_bytes == 0);
 		return;
 	}
-	if ((now - sess->last_time) < 0.5 && !finished)
+	if ((now - sess->xferstat.last_time) < 0.5 && !finished)
 		return;
 	fprintf(stderr, " %14llu", (long long unsigned)so_far);
 	fprintf(stderr, " %3.0f%%", (double)so_far /
 	    (double)total_bytes * 100.0);
-	rate = (double)(so_far - sess->last_bytes) / (now - sess->last_time);
+
+	/*
+	 * Once we've finished, displaying 00:00:00 for all entries isn't really
+	 * useful for anyone; switch to the total time taken for all of our
+	 * stats.
+	 */
+	if (finished) {
+		delta = (now - sess->xferstat.start_time);
+		rate = (double)so_far / delta;
+	} else {
+		delta = (now - sess->xferstat.last_time);
+		rate = (double)(so_far - sess->xferstat.last_bytes) / delta;
+	}
+
 	if (rate > 1024.0 * 1024.0 * 1024.0) {
 		fprintf(stderr, " %7.2fGB/s", rate / 1024.0 / 1024.0 / 1024.0);
 	} else if (rate > 1024.0 * 1024.0) {
@@ -79,15 +93,22 @@ rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
 	} else if (rate > 1024.0) {
 		fprintf(stderr, " %7.2fKB/s", rate / 1024.0);
 	}
-	remaining_time = (total_bytes - so_far) / rate;
+
+	if (finished)
+		remaining_time = delta;
+	else
+		remaining_time = (total_bytes - so_far) / rate;
 	print_time(stderr, remaining_time);
-	fprintf(stderr, finished ? "\n" : "\r");
+
 	if (finished) {
-		sess->last_time = 0;
-		sess->last_bytes = 0;
+		fprintf(stderr, " (xfer#%zu, to-check=%d/%d)\n",
+		    sess->xferstat.count, idx, totalidx);
+		sess->xferstat.start_time = sess->xferstat.last_time = 0;
+		sess->xferstat.last_bytes = 0;
 	} else {
-		sess->last_time = now;
-		sess->last_bytes = so_far;
+		fprintf(stderr, "\r");
+		sess->xferstat.last_time = now;
+		sess->xferstat.last_bytes = so_far;
 	}
 }
 
