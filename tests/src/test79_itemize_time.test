@@ -29,7 +29,7 @@ echo "1: Initial sync, dest does not exist"
 rsync --no-v -avxSH -i -- src/ dst/ > log
 compare_trees -t src dst
 
-X=$(egrep -c '^.[dfLS]\+{7,} (dir|fifo|file|sym)' log)
+X=$(grep -E -c '^.[dfLS]\+{7,} (dir|fifo|file|sym)' log)
 [ "$X" -eq 12 ]
 
 
@@ -44,10 +44,10 @@ touch -h dst/*
 rsync --no-v -axSH -n -i -- src/ dst/ > log
 compare_trees src dst
 
-X=$(egrep -c '^.[dfLS]\.\.t\.{4,} (dir|fifo|file|sym)' log)
+X=$(grep -E -c '^.[dfLS]\.\.t\.{4,} (dir|fifo|file|sym)' log)
 [ "$X" -eq 9 ]
 
-X=$(egrep -c '^.[dfS]\.\.t\.{4,} (dir|fifo|file)' log)
+X=$(grep -E -c '^.[dfS]\.\.t\.{4,} (dir|fifo|file)' log)
 [ "$X" -eq 9 ]
 
 
@@ -55,8 +55,8 @@ echo "4: re-sync, archive mode minus -t, dest files are younger"
 rsync --no-v -nrlpgoD -i --delete -- src/ dst/ > log
 compare_trees src dst
 
-X=$(egrep -c '^.[dfLS]\.\.T\.{4,} (dir|fifo|file|sym)' log)
+X=$(grep -E -c '^.[dfLS]\.\.T\.{4,} (dir|fifo|file|sym)' log)
 [ "$X" -eq 3 ]
 
-X=$(egrep -c '^.[fS]\.\.T\.{4,} (file|sym)' log)
+X=$(grep -E -c '^.[fS]\.\.T\.{4,} (file|sym)' log)
 [ "$X" -eq 3 ]
