@@ -161,7 +161,7 @@ io_write_nonblocking(int fd, const void *buf, size_t bsz,
 		ERRX("poll: bad fd");
 		return 0;
 	} else if ((pfd.revents & POLLHUP)) {
-		ERRX("poll: hangup");
+		ERRX("poll: hangup on nonblocking write");
 		return 0;
 	} else if (!(pfd.revents & POLLOUT)) {
 		ERRX("poll: unknown event");

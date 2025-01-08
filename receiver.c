@@ -898,7 +898,7 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 				ERRX("poll: bad fd");
 				goto out;
 			} else if (pfd[i].revents & POLLHUP) {
-				ERRX("poll: hangup");
+				ERRX("poll: hangup on receiver idx %zd", i);
 				goto out;
 			}
 

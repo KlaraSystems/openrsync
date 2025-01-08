@@ -1396,7 +1396,8 @@ rsync_sender(struct sess *sess, int fdin,
 				ERRX("poll: bad fd");
 				goto out;
 			} else if (pfd[i].revents & POLLHUP) {
-				ERRX("poll: hangup");
+				ERRX("poll: hangup on sender idx %zd iobuf capacity %zu",
+				    i, iobuf_get_readsz(&rbuf));
 				goto out;
 			}
 
