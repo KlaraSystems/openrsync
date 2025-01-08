@@ -1180,8 +1180,17 @@ rule_match_action_xfer(struct rule *r, const char *path,
 {
 	const char *p = NULL;
 
-	if (r->onlydir && !ctx->isdir)
+	if (r->onlydir && !ctx->isdir) {
+		/*
+		 * Normally we take a neutral stance if the rule was meant for
+		 * a directory but we're not matching against a directory, but
+		 * if the rule is to be negated then we inherently do not match
+		 * it because of the type mismatch.
+		 */
+		if ((r->modifiers & MOD_NEGATE) != 0)
+			return rule_matched(r);
 		return 0;
+	}
 
 	if ((r->modifiers & MOD_ABSOLUTE) != 0) {
 		if (ctx->abspath[0] == '\0')
