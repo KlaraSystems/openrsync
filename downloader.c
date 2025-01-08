@@ -912,10 +912,16 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 	assert(sz);
 	assert(p->map != NULL);
 	off = tok * p->blk.len;
+
+	if (!fmap_trap(p->map)) {
+		p->state = DOWNLOAD_FLUSH_REMOTE;
+		return TOKEN_NEXT;
+	}
 	buf = fmap_data(p->map, off, sz);
 
 	if (!decompress_reinit()) {
 		ERRX("decompress_reinit");
+		fmap_untrap(p->map);
 		return TOKEN_ERROR;
 	}
 
@@ -924,6 +930,7 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 		dbuf = malloc(MAX_CHUNK_BUF);
 		if (dbuf == NULL) {
 			ERRX1("malloc");
+			fmap_untrap(p->map);
 			return TOKEN_ERROR;
 		}
 
@@ -960,15 +967,11 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 		}
 		dectx.next_out = (Bytef *)dbuf;
 		dectx.avail_out = MAX_CHUNK_BUF;
-		if (!fmap_trap(p->map)) {
-			p->state = DOWNLOAD_FLUSH_REMOTE;
-			return TOKEN_NEXT;
-		}
 
 		res = inflate(&dectx, Z_SYNC_FLUSH);
-		fmap_untrap(p->map);
 
 		if (res != Z_OK) {
+			fmap_untrap(p->map);
 			ERRX("inflate ff res=%d", res);
 			if (dectx.msg) {
 				ERRX("inflate error: %s", dectx.msg);
@@ -982,6 +985,7 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 		}
 	}
 
+	fmap_untrap(p->map);
 	return TOKEN_NEXT;
 }
 
@@ -1004,6 +1008,11 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 	assert(sz);
 	assert(p->map != NULL);
 	off = tok * p->blk.len;
+
+	if (!fmap_trap(p->map)) {
+		p->state = DOWNLOAD_FLUSH_REMOTE;
+		return TOKEN_NEXT;
+	}
 	buf = fmap_data(p->map, off, sz);
 
 	/*
@@ -1015,6 +1024,8 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 	 */
 
 	if (download_is_inplace(sess, p, true) && p->total == off) {
+		fmap_untrap(p->map);
+
 		/* Flush any pending data before we seek ahead. */
 		if (!sess->opts->dry_run && !buf_copy(NULL, 0, p, sess)) {
 			ERRX("buf_copy");
@@ -1025,11 +1036,6 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 			return TOKEN_ERROR;
 		}
 	} else {
-		if (!fmap_trap(p->map)) {
-			p->state = DOWNLOAD_FLUSH_REMOTE;
-			return TOKEN_NEXT;
-		}
-
 		if (!buf_copy(buf, sz, p, sess)) {
 			fmap_untrap(p->map);
 			ERRX("buf_copy");
@@ -1615,12 +1621,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 				if (!fmap_trap(p->map)) {
 					p->state = DOWNLOAD_FLUSH_REMOTE;
 				} else {
-					size_t mapsz;
-
-					mapsz = fmap_size(p->map);
-					/* XXX Break this up */
-					MD4_Update(&p->ctx,
-					    fmap_data(p->map, 0, mapsz), mapsz);
+					hash_fmap_chunks(p->map,
+					    fmap_size(p->map),  &p->ctx);
 					fmap_untrap(p->map);
 
 					if (lseek(p->fd, 0, SEEK_END) !=

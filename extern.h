@@ -61,6 +61,9 @@
 #define	BIGPATH_MAX	(PATH_MAX + 1024)
 #endif
 
+/* Chunk large fmaps into 4MB pieces, arbitrarily. */
+#define	HASH_LARGE_CHUNK_SIZE (4 * 1024 * 1024)
+
 #define	STRMODE_BUFSZ	12	/* Documented size of all strmode calls */
 
 /*
@@ -816,6 +819,12 @@ int	flist_gen_dels(struct sess *, const char *, struct flist **, size_t *,
 int	flist_add_del(struct sess *, const char *, size_t, struct flist **,
 	    size_t *, size_t *, const struct stat *st);
 
+enum fmap_type {
+	FT_NULL,
+	FT_MMAP,
+	FT_BUFIO,
+};
+
 struct fmap;
 extern volatile struct fmap	*fmap_trapped, *fmap_trapped_prev;
 extern sigjmp_buf		 fmap_signal_env;
@@ -823,12 +832,13 @@ extern sigjmp_buf		 fmap_signal_env;
 struct fmap	*fmap_open(const char *, int, size_t, int);
 void		*fmap_data(struct fmap *, off_t, size_t);
 size_t		 fmap_size(struct fmap *);
+enum fmap_type	 fmap_type(struct fmap *);
 void		 fmap_close(struct fmap *);
 
 /* We support one level of recursion for hash_file_by_path(). */
 #define fmap_trap(fm) __extension__ ({			\
 	bool _fmap_ok = true;				\
-	assert(fmap_trapped == NULL || fmap_trapped_prev == NULL);	\
+	assert(fmap_trapped == NULL || fmap_trapped_prev == NULL); \
 	if (fmap_trapped != NULL)			\
 		fmap_trapped_prev = fmap_trapped;	\
 							\
@@ -1017,6 +1027,9 @@ uint32_t	 hash_fast(const void *, size_t);
 void		 hash_slow(const void *, size_t, unsigned char *,
 		    const struct sess *);
 void		 hash_file(const void *, size_t, unsigned char *,
+		    const struct sess *);
+void		 hash_fmap_chunks(struct fmap *, size_t, MD4_CTX *);
+int		 hash_fmap(const char *, struct fmap *, size_t, unsigned char *,
 		    const struct sess *);
 int		 hash_file_by_path(int, const char *, size_t, unsigned char *);
 

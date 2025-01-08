@@ -212,6 +212,14 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 	assert(sz);
 	assert(up->stat.map != NULL);
 	off = tok * up->cur->blks->len;
+
+	if (!fmap_trap(up->stat.map)) {
+		sess->total_errors++;
+		sender_terminate_file(sess, up);
+		WARNX("%s: file truncated while reading",
+		    fl[up->cur->idx].path);
+		return 0;
+	}
 	buf = fmap_data(up->stat.map, off, sz);
 
 	cbuf = sess->token_cbuf;
@@ -219,6 +227,7 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 		cbuf = malloc(MAX_CHUNK_BUF);
 		if (cbuf == NULL) {
 			ERRX1("malloc");
+			fmap_untrap(up->stat.map);
 			return 0;
 		}
 
@@ -229,20 +238,13 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 
 	if (!compress_reinit(sess)) {
 		ERRX1("decompress_reinit");
+		fmap_untrap(up->stat.map);
 		return 0;
 	}
 
 	cctx.avail_in = 0;
 	rlen = sz;
 	clen = 0;
-	if (!fmap_trap(up->stat.map)) {
-		sess->total_errors++;
-		sender_terminate_file(sess, up);
-		WARNX("%s: file truncated while reading",
-		    fl[up->cur->idx].path);
-		free(cbuf);
-		return 0;
-	}
 	while (rlen > 0) {
 		clen = rlen;
 		if (clen > MAX_CHUNK) {
@@ -295,6 +297,14 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 
 		sz = MINIMUM(MAX_CHUNK,
 			up->stat.curlen - up->stat.curpos);
+
+		if (!fmap_trap(up->stat.map)) {
+			sess->total_errors++;
+			sender_terminate_file(sess, up);
+			WARNX("%s: file truncated while reading",
+			    fl[up->cur->idx].path);
+			return 1;
+		}
 		sbuf = fmap_data(up->stat.map, up->stat.curpos, sz);
 
 		cbuf = sess->token_cbuf;
@@ -302,6 +312,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			cbuf = malloc(TOKEN_MAX_BUF);
 			if (cbuf == NULL) {
 				ERRX1("malloc");
+				fmap_untrap(up->stat.map);
 				return 0;
 			}
 
@@ -312,15 +323,8 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 
 		if (!compress_reinit(sess)) {
 			ERRX1("decompress_reinit");
+			fmap_untrap(up->stat.map);
 			return 0;
-		}
-
-		if (!fmap_trap(up->stat.map)) {
-			sess->total_errors++;
-			sender_terminate_file(sess, up);
-			WARNX("%s: file truncated while reading",
-			    fl[up->cur->idx].path);
-			return 1;
 		}
 
 		assert(comp_state == COMPRESS_RUN);
@@ -414,21 +418,15 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		 * finished with the file.
 		 */
 
-		if (!up->stat.error && !fmap_trap(up->stat.map)) {
-			WARNX("%s: file truncated while hashing",
-			    fl[up->cur->idx].path);
+		if (!up->stat.error &&
+		    hash_fmap(fl[up->cur->idx].path, up->stat.map,
+		    up->stat.mapsz, fmd, sess) != 0) {
+			ERRX1("hash_fmap");
 			sess->total_errors++;
 			up->stat.error = true;
 		}
 
-		/* XXX Break this up */
-		if (!up->stat.error)
-			hash_file(fmap_data(up->stat.map, 0, up->stat.mapsz),
-			    up->stat.mapsz, fmd, sess);
-
-		if (!up->stat.error) {
-			fmap_untrap(up->stat.map);
-		} else {
+		if (up->stat.error) {
 			/*
 			 * At some point the file got truncated, so we pass off
 			 * a bogus hash to force a redo.  XXX This would be
@@ -686,22 +684,15 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		 * This is always followed by the state that we're
 		 * finished with the file.
 		 */
-
-		if (!up->stat.error && !fmap_trap(up->stat.map)) {
-			WARNX("%s: file truncated while hashing",
-			    fl[up->cur->idx].path);
+		if (!up->stat.error &&
+		    hash_fmap(fl[up->cur->idx].path, up->stat.map,
+		    up->stat.mapsz, fmd, sess) != 0) {
+			ERRX1("hash_fmap");
 			sess->total_errors++;
 			up->stat.error = true;
 		}
 
-		/* XXX Break this up */
-		if (!up->stat.error)
-			hash_file(fmap_data(up->stat.map, 0, up->stat.mapsz),
-			    up->stat.mapsz, fmd, sess);
-
-		if (!up->stat.error) {
-			fmap_untrap(up->stat.map);
-		} else {
+		if (up->stat.error) {
 			/*
 			 * At some point the file got truncated, so we pass off
 			 * a bogus hash to force a redo.  XXX This would be
