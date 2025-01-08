@@ -750,3 +750,15 @@ rm -rf dst
 xfer=$(head -1 fffiles)
 echo "$xfer" | tr -d $'\n' | rsync -a --files-from=- -- ${SRC}/ ${DST}/
 cmp -s src/"$xfer" dst/"$xfer"
+
+echo "Test 27.1"
+1>&2 echo "Test 27.1"
+rm -rf dst
+# This differs from the previous test in that it confirms that rsync is properly
+# nul-terminating the second entry that didn't have any EOL marker.
+flong="$DIRBASE-1/$DIRBASE-1/$FILEBASE-2"
+fshort="$DIRBASE-1/$FILEBASE-2"
+printf "$flong\n$fshort" | rsync -a --files-from=- -- ${SRC}/ ${DST}/
+for target in $flong $fshort; do
+	cmp -s src/"$target" dst/"$target"
+done

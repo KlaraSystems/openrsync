@@ -3128,31 +3128,35 @@ fdgets(struct sess *sess, int fd, char *buf, size_t bufsz)
 	size_t length = 0;
 	ssize_t n;
 
-	while (length < bufsz) {
-		n = read(fd, buf + length, 1);
+	while (length < bufsz - 1) {
+		char readc;
+
+		n = read(fd, &readc, 1);
 		if (n == -1) {
 			if (errno == EAGAIN || errno == EINTR)
 				continue;
 
 			ERR("read(2) of files-from file failed");
 			return -1;
-		}
-
-		if (n == 0)
-			break;
-
-		length += n;
-
-		if (*(buf + length - 1) == '\0')
-			break;
-		if (!sess->opts->from0 &&
-		    (*(buf + length - 1) == '\n' ||
-		     *(buf + length - 1) == '\r')) {
-			*(buf + length - 1) = '\0';
+		} else if (n == 0) {
+			if (length > 0)
+				buf[length++] = '\0';
 			break;
 		}
+
+		if (!sess->opts->from0 && (readc == '\n' || readc == '\r')) {
+			buf[length++] = '\0';
+			break;
+		}
+
+		buf[length++] = readc;
+		if (readc == '\0')
+			break;
 	}
 
+	if (length == bufsz - 1)
+		buf[length++] = '\0';
+	assert(length == 0 || buf[length - 1] == '\0');
 	return length;
 }
 
