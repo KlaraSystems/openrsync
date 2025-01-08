@@ -212,7 +212,8 @@ rsync_server(struct cleanup_ctx *cleanup_ctx, const struct opts *opts,
 	rc = 0;
 
 	if (io_read_check(&sess, fdin)) {
-		ERRX1("data remains in read pipe");
+		if (sess.mplex_read_remain > 0)
+			ERRX1("data remains in read pipe");
 		rc = ERR_IPC;
 	} else if (sess.err_del_limit) {
 		assert(sess.total_deleted >= sess.opts->max_delete ||

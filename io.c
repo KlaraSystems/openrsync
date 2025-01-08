@@ -88,14 +88,21 @@ int
 io_read_close(struct sess *sess, int fd)
 {
 	struct pollfd	 pfd;
-	int		 nbrecv, rc;
+	int		 hup, nbrecv, rc;
 
+	hup = 0;
 	pfd.fd = fd;
 	pfd.events = POLLIN;
 
-	while ((rc = poll(&pfd, 1, INFTIM)) || errno == EINTR) {
-		if (rc == -1)
-			continue;
+	while (!hup) {
+		rc = poll(&pfd, 1, INFTIM);
+		if (rc == -1) {
+			if (errno == EINTR)
+				continue;
+
+			ERR("poll");
+			break;
+		}
 
 		/*
 		 * FIONREAD == 0 on POLLIN to check for EOF of a socket, instead
@@ -107,8 +114,15 @@ io_read_close(struct sess *sess, int fd)
 			break;
 
 		if (nbrecv == 0 || (pfd.revents & POLLHUP) != 0) {
-			close(fd);
-			return 1;
+			hup = 1;
+
+			/*
+			 * We'll give the below flush a chance to push anything
+			 * out of the pipeline, then we'll terminate rather than
+			 * poll() again.
+			 */
+			if (nbrecv <= 0)
+				break;
 		}
 
 		/*
@@ -120,12 +134,21 @@ io_read_close(struct sess *sess, int fd)
 		 * We'll keep going as long as we're only getting out-of-band
 		 * messages.
 		 */
-		if (!io_read_flush(sess, fd) || sess->mplex_read_remain)
+		if (!io_read_flush(sess, fd) || sess->mplex_read_remain) {
+			/* Force an error for both of these cases. */
+			hup = 0;
 			break;
+		}
+
+		if ((pfd.revents & (POLLERR | POLLNVAL)) != 0) {
+			ERRX("socket error, poll=%x", pfd.revents);
+			hup = 0;
+			break;
+		}
 	}
 
 	close(fd);
-	return 0;
+	return hup;
 }
 
 /*
