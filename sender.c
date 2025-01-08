@@ -1664,9 +1664,13 @@ rsync_sender(struct sess *sess, int fdin,
 				    &wbuf, &wbufsz, &wbufmax, fl.flp);
 			}
 
-			curfl = &fl.flp[curidx];
-			rsync_progress(sess, curfl->st.size, up.stat.curpos,
-			    up.stat.curst == BLKSTAT_DONE, curidx, fl.sz);
+			if (curidx != -1) {
+				curfl = &fl.flp[curidx];
+				rsync_progress(sess, curfl->st.size,
+				    up.stat.curpos,
+				    up.stat.curst == BLKSTAT_DONE, curidx,
+				    fl.sz);
+			}
 
 			if (!res) {
 				ERRX1("send_up_fsm");
