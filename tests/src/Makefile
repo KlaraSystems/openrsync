@@ -1,9 +1,9 @@
 
 CFLAGS += -fno-omit-frame-pointer
 
-all: sparseme
+all: setsid sparseme
 
-run: sparseme
+run: setsid sparseme
 	./generate-kyua
 	-kyua test
 
