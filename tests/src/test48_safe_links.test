@@ -94,3 +94,40 @@ for i in $(seq 2) ; do
     rsync -a --safe-links -- src/ dst/
     compare_trees -t ref dst
 done
+
+# Check that non-leading ../ components will cause a symlink to be filtered
+# out, as earlier components could be replaced with something that makes it
+# unsafe.
+rm -rf src dst
+mkdir -p src/bar
+
+ln -s . src/safe_1
+ln -s ./. src/safe_2
+ln -s ../ src/bar/safe_3
+ln -s . src/bar/safe_4
+
+# These ones would clearly be unsafe just by looking at safe_1
+ln -s safe_1/.. src/unsafe_1
+ln -s safe_1/../.. src/unsafe_2
+
+# These ones look safe, but rsync 3.x will reject them out of an abundance of
+# caution because `safe_5` could have been replaced by a symlink that points
+# outside of the root.
+ln -s safe_4/.. src/bar/unsafe_3
+ln -s safe_4/../ src/bar/unsafe_4
+ln -s safe_4/../safe_1 src/bar/unsafe_5
+rsync -av --safe-links -- src/ dst/
+
+for wanted in safe_1 safe_2 bar/safe_3 bar/safe_4; do
+	if [ ! -L dst/"$wanted" ]; then
+		1>&2 echo "$wanted was not copied, but it should have been"
+		exit 1
+	fi
+done
+
+for unwanted in unsafe_1 unsafe_2 bar/unsafe_3 bar/unsafe_4 bar/unsafe_5; do
+	if [ -L dst/"$unwanted" ]; then
+		1>&2 echo "$unwanted should not have been copied, but it was"
+		exit 1
+	fi
+done
