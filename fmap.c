@@ -129,6 +129,54 @@ fmap_env_type(void)
 	return FT_MMAP;
 }
 
+static bool
+fmap_open_mmap(struct fmap *fm, const char *path, int fd, size_t sz, int prot)
+{
+	fm->mapsz = sz;
+	fm->map = mmap(NULL, sz, prot, MAP_SHARED, fd, 0);
+	if (fm->map == MAP_FAILED) {
+		int serrno = errno;
+
+		/*
+		 * If we got ENOMEM, we'll fallback to bufio
+		 */
+
+		if (errno == ENOMEM)
+			WARNX1("%s: mmap failed, fallback to bufio", path);
+		else
+			ERR("%s: mmap", path);
+
+		errno = serrno;
+		return false;
+	}
+
+	/*
+	 * We'll setup the signal handler on the first file mapped, then
+	 * the caller will trap/untrap around data accesses to configure
+	 * the trap a little more lightly.
+	 *
+	 * We'll catch SIGBUS even if it's ignored coming in so that we
+	 * can do some sensible detection of file truncation, but we
+	 * will never force the signal to be handled and abort if we
+	 * can't handle it here.
+	 */
+	if (mapped_files++ == 0) {
+		struct sigaction act = { .sa_flags = SA_SIGINFO };
+
+		sigemptyset(&act.sa_mask);
+		act.sa_sigaction = fmap_sigbus_handler;
+		if (sigaction(SIGBUS, &act, &sigbus_init) != 0) {
+			int serrno = errno;
+
+			ERR("sigaction");
+			errno = serrno;
+			return false;
+		}
+	}
+
+	return true;
+}
+
 /*
  * Open a mapping of the given fd.  Note that path is only taken for diagnostic
  * output.
@@ -148,44 +196,29 @@ fmap_open(const char *path, int fd, size_t sz, int prot)
 	assert(fm->ftype != FT_NULL);
 	switch (fm->ftype) {
 	case FT_MMAP:
-		fm->mapsz = sz;
-		fm->map = mmap(NULL, sz, prot, MAP_SHARED, fd, 0);
-		if (fm->map == MAP_FAILED) {
+		if (fmap_open_mmap(fm, path, fd, sz, prot))
+			break;
+
+		/*
+		 * If we got back an ENOMEM, there's a chance we can still
+		 * succeed.  We'll fallback to bufio, which has much lower
+		 * memory requirements by comparison.
+		 */
+		if (errno != ENOMEM) {
 			int serrno = errno;
 
-			ERR("%s: mmap", path);
 			free(fm);
 			errno = serrno;
 			return NULL;
 		}
 
-		/*
-		 * We'll setup the signal handler on the first file mapped, then
-		 * the caller will trap/untrap around data accesses to configure
-		 * the trap a little more lightly.
-		 *
-		 * We'll catch SIGBUS even if it's ignored coming in so that we
-		 * can do some sensible detection of file truncation, but we
-		 * will never force the signal to be handled and abort if we
-		 * can't handle it here.
-		 */
-		if (mapped_files++ == 0) {
-			struct sigaction act = { .sa_flags = SA_SIGINFO };
+		fm->ftype = FT_BUFIO;
 
-			sigemptyset(&act.sa_mask);
-			act.sa_sigaction = fmap_sigbus_handler;
-			if (sigaction(SIGBUS, &act, &sigbus_init) != 0) {
-				int serrno = errno;
+		/* Zapping the mmap state is not strictly required. */
+		fm->mapsz = 0;
+		fm->map = NULL;
 
-				ERR("sigaction");
-				free(fm);
-
-				errno = serrno;
-				return NULL;
-			}
-		}
-
-		break;
+		/* FALLTHROUGH */
 	case FT_BUFIO:
 		/* Reposition the fd to be sure we know where we're at. */
 		fm->fd = fd;
