@@ -1895,6 +1895,7 @@ main(int argc, char *argv[])
 	struct sess	 sess;
 	struct fargs	*fargs;
 	char		**args;
+	pid_t		 rpid;
 
 	/* We cannot safely log to stdout until we are certain that we're
 	 * the client (i.e., the server must enable multiplexing before
@@ -1951,7 +1952,8 @@ main(int argc, char *argv[])
 	 * To simplify the cleanup process, we create a new process group now so
 	 * that we can reliably send SIGUSR1 to any children.
 	 */
-	if (setpgid(0, getpid()) == -1)
+	rpid = getpid();
+	if (getsid(rpid) != rpid && setpgid(0, rpid) == -1)
 		err(ERR_IPC, "setpgid");
 
 	/*
