@@ -912,7 +912,7 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 	assert(sz);
 	assert(p->map != NULL);
 	off = tok * p->blk.len;
-	buf = fmap_data(p->map, off);
+	buf = fmap_data(p->map, off, sz);
 
 	if (!decompress_reinit()) {
 		ERRX("decompress_reinit");
@@ -1004,7 +1004,7 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 	assert(sz);
 	assert(p->map != NULL);
 	off = tok * p->blk.len;
-	buf = fmap_data(p->map, off);
+	buf = fmap_data(p->map, off, sz);
 
 	/*
 	 * Now we read from our block.
@@ -1615,8 +1615,12 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 				if (!fmap_trap(p->map)) {
 					p->state = DOWNLOAD_FLUSH_REMOTE;
 				} else {
-					MD4_Update(&p->ctx, fmap_data(p->map, 0),
-					    fmap_size(p->map));
+					size_t mapsz;
+
+					mapsz = fmap_size(p->map);
+					/* XXX Break this up */
+					MD4_Update(&p->ctx,
+					    fmap_data(p->map, 0, mapsz), mapsz);
 					fmap_untrap(p->map);
 
 					if (lseek(p->fd, 0, SEEK_END) !=

@@ -135,7 +135,8 @@ hash_file_by_path(int rootfd, const char *path, size_t len, unsigned char *md)
 		ERRX("%s: file truncated while hashing", path);
 		rc = -1;
 	} else {
-		hash_file(fmap_data(map, 0), len, md, NULL);
+		/* XXX Break this up */
+		hash_file(fmap_data(map, 0, len), len, md, NULL);
 		fmap_untrap(map);
 	}
 

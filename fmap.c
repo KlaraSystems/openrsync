@@ -134,7 +134,8 @@ fmap_open(const char *path, int fd, size_t sz, int prot)
 }
 
 void *
-fmap_data(struct fmap *fm, size_t offset)
+fmap_data(struct fmap *fm, off_t offset,
+    size_t datasz __attribute__((__unused__)))
 {
 
 	if (fm == NULL)

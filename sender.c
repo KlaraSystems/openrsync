@@ -212,7 +212,7 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 	assert(sz);
 	assert(up->stat.map != NULL);
 	off = tok * up->cur->blks->len;
-	buf = fmap_data(up->stat.map, off);
+	buf = fmap_data(up->stat.map, off, sz);
 
 	cbuf = sess->token_cbuf;
 	if (sess->token_cbufsz < MAX_CHUNK_BUF) {
@@ -295,7 +295,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 
 		sz = MINIMUM(MAX_CHUNK,
 			up->stat.curlen - up->stat.curpos);
-		sbuf = fmap_data(up->stat.map, up->stat.curpos);
+		sbuf = fmap_data(up->stat.map, up->stat.curpos, sz);
 
 		cbuf = sess->token_cbuf;
 		if (sess->token_cbufsz < TOKEN_MAX_BUF) {
@@ -421,9 +421,10 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			up->stat.error = true;
 		}
 
+		/* XXX Break this up */
 		if (!up->stat.error)
-			hash_file(fmap_data(up->stat.map, 0), up->stat.mapsz,
-			    fmd, sess);
+			hash_file(fmap_data(up->stat.map, 0, up->stat.mapsz),
+			    up->stat.mapsz, fmd, sess);
 
 		if (!up->stat.error) {
 			fmap_untrap(up->stat.map);
@@ -654,7 +655,7 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		}
 
 		io_lowbuffer_buf(sess, *wb, &pos, *wbsz,
-			fmap_data(up->stat.map, up->stat.curpos), sz);
+			fmap_data(up->stat.map, up->stat.curpos, sz), sz);
 		fmap_untrap(up->stat.map);
 
 		up->stat.curpos += sz;
@@ -693,9 +694,10 @@ send_up_fsm(struct sess *sess, size_t *phase,
 			up->stat.error = true;
 		}
 
+		/* XXX Break this up */
 		if (!up->stat.error)
-			hash_file(fmap_data(up->stat.map, 0), up->stat.mapsz,
-			    fmd, sess);
+			hash_file(fmap_data(up->stat.map, 0, up->stat.mapsz),
+			    up->stat.mapsz, fmd, sess);
 
 		if (!up->stat.error) {
 			fmap_untrap(up->stat.map);
