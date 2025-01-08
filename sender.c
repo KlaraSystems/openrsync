@@ -211,7 +211,9 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 	    up->cur->blks->rem : up->cur->blks->len;
 	assert(sz);
 	assert(up->stat.map != NULL);
-	off = tok * up->cur->blks->len;
+
+	off = up->stat.curpos;
+	assert(sz == up->cur->blks->len || sz == up->stat.mapsz - off);
 
 	if (!fmap_trap(up->stat.map)) {
 		sess->total_errors++;
