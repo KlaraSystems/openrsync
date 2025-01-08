@@ -51,7 +51,7 @@ rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
 	struct timeval tv;
 	double delta, now, remaining_time, rate;
 
-	if (!sess->opts->progress)
+	if (!sess->opts->progress || sess->opts->server)
 		return;
 
 	gettimeofday(&tv, NULL);
@@ -69,8 +69,8 @@ rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
 	}
 	if ((now - sess->xferstat.last_time) < 0.5 && !finished)
 		return;
-	fprintf(stderr, " %14llu", (long long unsigned)so_far);
-	fprintf(stderr, " %3.0f%%", (double)so_far /
+	printf(" %14llu", (long long unsigned)so_far);
+	printf(" %3.0f%%", (double)so_far /
 	    (double)total_bytes * 100.0);
 
 	/*
@@ -87,11 +87,11 @@ rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
 	}
 
 	if (rate > 1024.0 * 1024.0 * 1024.0) {
-		fprintf(stderr, " %7.2fGB/s", rate / 1024.0 / 1024.0 / 1024.0);
+		printf(" %7.2fGB/s", rate / 1024.0 / 1024.0 / 1024.0);
 	} else if (rate > 1024.0 * 1024.0) {
-		fprintf(stderr, " %7.2fMB/s", rate / 1024.0 / 1024.0);
+		printf(" %7.2fMB/s", rate / 1024.0 / 1024.0);
 	} else if (rate > 1024.0) {
-		fprintf(stderr, " %7.2fKB/s", rate / 1024.0);
+		printf(" %7.2fKB/s", rate / 1024.0);
 	}
 
 	if (finished)
@@ -101,12 +101,12 @@ rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
 	print_time(stderr, remaining_time);
 
 	if (finished) {
-		fprintf(stderr, " (xfer#%zu, to-check=%d/%d)\n",
+		printf(" (xfer#%zu, to-check=%d/%d)\n",
 		    sess->xferstat.count, idx, totalidx);
 		sess->xferstat.start_time = sess->xferstat.last_time = 0;
 		sess->xferstat.last_bytes = 0;
 	} else {
-		fprintf(stderr, "\r");
+		printf("\r");
 		sess->xferstat.last_time = now;
 		sess->xferstat.last_bytes = so_far;
 	}
