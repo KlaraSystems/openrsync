@@ -130,9 +130,16 @@ itemize_changes(const struct sess *sess, const struct stat *st, const struct fli
 	    (superuser || st->st_uid == geteuid()))
 		iflags |= IFLAG_PERMS;
 
-	if (sess->opts->preserve_times && st->st_mtime != f->st.mtime) {
-		if (!S_ISDIR(f->st.mode) || !sess->opts->omit_dir_times)
-			iflags |= IFLAG_TIME;
+	if (st->st_mtime != f->st.mtime && !S_ISLNK(f->st.mode)) {
+		if (sess->opts->preserve_times) {
+			if (!S_ISDIR(f->st.mode) || !sess->opts->omit_dir_times)
+				iflags |= IFLAG_TIME;
+		} else {
+			if (S_ISREG(f->st.mode) ||
+			    S_ISBLK(f->st.mode) || S_ISCHR(f->st.mode)) {
+				iflags |= IFLAG_TIME;
+			}
+		}
 	}
 
 	if (sess->opts->preserve_uids && st->st_uid != f->st.uid &&
