@@ -65,11 +65,16 @@ iszerobuf(const void *b, size_t len)
 /*
  * Calculate the depth of a path (in directories).
  * Account for ../, and return -1 if the depth drops below zero.
+ *
+ * Note that in strict mode, non-leading ../ components are assumed to be unsafe
+ * and will return -1 as well because we do not know if the previous components
+ * would be replaced with a symlink that makes it unsafe.
  */
 static int
 count_dir_depth(const char *path, int dirdepth, int strict)
 {
 	const char *dp;
+	bool leading = true;
 
 	/* Blank or absolute symlinks are always unsafe */
 	if (path == NULL || *path == '\0')
@@ -85,12 +90,30 @@ count_dir_depth(const char *path, int dirdepth, int strict)
 		}
 		if (strncmp(dp, "../", 3) == 0) {
 			/* Traversing up directory depth */
+			if (strict && !leading)
+				return -1;
 			dirdepth--;
 		} else if (strncmp(dp, "./", 2) == 0) {
 			/* No Change in directory depth */
+
+			/*
+			 * This is more strict than we need to be, but it
+			 * matches what rsync 3.x did.  Presumably openrsync
+			 * won't be running on a machine where ./ could be
+			 * replaced.
+			 */
+			leading = false;
 		} else if (strchr(dp, '/') != NULL) {
 			/* Traversing down directory depth */
 			dirdepth++;
+
+			/*
+			 * If we didn't hit one of the above cases, then we're
+			 * no longer a leading component.  We're defining
+			 * leading here as everything up to the first non-..
+			 * and non-. component.  Subsequent ../ should fail.
+			 */
+			leading = false;
 		}
 		/* If we ever go above the starting point, fail */
 		if (strict && dirdepth < 0) {
@@ -103,6 +126,8 @@ count_dir_depth(const char *path, int dirdepth, int strict)
 	}
 	if (dp != NULL && strcmp(dp, "..") == 0) {
 		dirdepth--;
+		if (strict && !leading)
+			return -1;
 	}
 
 	return dirdepth;
