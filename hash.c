@@ -15,8 +15,8 @@
  */
 #include "config.h"
 
+#include <sys/param.h>
 #include <sys/mman.h>
-#include <sys/types.h>
 
 #include <assert.h>
 #include COMPAT_ENDIAN_H
