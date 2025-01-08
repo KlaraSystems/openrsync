@@ -1887,6 +1887,21 @@ basedir:
 	return &opts;
 }
 
+static void
+child_exited(pid_t pid, int st)
+{
+
+	if (WIFEXITED(st)) {
+		int status = WEXITSTATUS(st);
+
+		if (status != 0)
+			WARNX1("child %d exited with status %d", pid, status);
+	} else if (WIFSIGNALED(st)) {
+		WARNX1("child %d terminated due to signal %d", pid,
+		    WTERMSIG(st));
+	}
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -2145,6 +2160,8 @@ main(int argc, char *argv[])
 	 * will use WNOHANG and just move on if the child's already been reaped.
 	 */
 	cleanup_set_child(cleanup_ctx, 0);
+
+	child_exited(child, st);
 
 	/*
 	 * If the child exited abnormally then use its exit status as our exit

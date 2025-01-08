@@ -303,13 +303,16 @@ rsync_cleanup_reap_child(struct cleanup_ctx *ctx)
 		if (pid != child)
 			continue;
 
-		/*
-		 * rsync will inexplicably inherit a higher-level exit status
-		 * from the child; let's be compatible.
-		 */
-		st = WEXITSTATUS(st);
-		if (st > ctx->exitstatus)
-			ctx->exitstatus = st;
+		if (WIFEXITED(st)) {
+			st = WEXITSTATUS(st);
+
+			/*
+			 * rsync will inexplicably inherit a higher-level exit
+			 * status from the child; let's be compatible.
+			 */
+			if (st > ctx->exitstatus)
+				ctx->exitstatus = st;
+		}
 	}
 }
 
