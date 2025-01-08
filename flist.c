@@ -1868,6 +1868,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	struct stat	 st, st2;
 	int              ret;
 	char             buf[PATH_MAX], buf2[PATH_MAX];
+	bool		 rootfilter = true;
 
 	/*
 	 * If we're a file, then revert to the same actions we use for
@@ -1953,6 +1954,14 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 
 	cargv[0] = root;
 	cargv[1] = NULL;
+
+	/*
+	 * We don't want to filter the root directory if the trailing slash was
+	 * specified to sync its contents over and not the directory itself.
+	 */
+	assert(root[0] != '\0');
+	if (root[strlen(root) - 1] == '/')
+		rootfilter = false;
 
 	/*
 	 * If we're recursive, then we need to take down all of the
@@ -2084,7 +2093,8 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		}
 
 		/* filter files */
-		if (rules_match(fts_path + stripdir,
+		if ((ent->fts_level != 0 || rootfilter) &&
+		    rules_match(fts_path + stripdir,
 		    (ent->fts_info == FTS_D), FARGS_SENDER, 0) == -1) {
 			LOG2("hiding file %s because of pattern",
 			    fts_path + stripdir);
