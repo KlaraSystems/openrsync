@@ -81,8 +81,12 @@ fmap_sigbus_handler(int sig, siginfo_t *siginfo,
 	siglongjmp(fmap_signal_env, sig);
 }
 
+/*
+ * Open a mapping of the given fd.  Note that path is only taken for diagnostic
+ * output.
+ */
 struct fmap *
-fmap_open(int fd, size_t sz, int prot)
+fmap_open(const char *path, int fd, size_t sz, int prot)
 {
 	struct fmap *fm;
 
@@ -95,6 +99,7 @@ fmap_open(int fd, size_t sz, int prot)
 	if (fm->map == MAP_FAILED) {
 		int serrno = errno;
 
+		ERR("%s: mmap", path);
 		free(fm);
 		errno = serrno;
 		return NULL;
@@ -114,7 +119,15 @@ fmap_open(int fd, size_t sz, int prot)
 
 		sigemptyset(&act.sa_mask);
 		act.sa_sigaction = fmap_sigbus_handler;
-		sigaction(SIGBUS, &act, &sigbus_init);
+		if (sigaction(SIGBUS, &act, &sigbus_init) != 0) {
+			int serrno = errno;
+
+			ERR("sigaction");
+			free(fm);
+
+			errno = serrno;
+			return NULL;
+		}
 	}
 
 	return fm;
@@ -157,5 +170,5 @@ fmap_close(struct fmap *fm)
 	free(fm);
 
 	if (--mapped_files == 0)
-		sigaction(SIGBUS, &sigbus_init, NULL);
+		(void)sigaction(SIGBUS, &sigbus_init, NULL);
 }

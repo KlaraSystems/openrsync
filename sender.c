@@ -1574,12 +1574,10 @@ rsync_sender(struct sess *sess, int fdin,
 			 */
 
 			if ((up.stat.mapsz = st.st_size) > 0) {
-				up.stat.map = fmap_open(up.stat.fd,
+				up.stat.map = fmap_open(f->path, up.stat.fd,
 				    st.st_size, PROT_READ);
-				if (up.stat.map == NULL) {
-					ERR("%s: mmap", f->path);
+				if (up.stat.map == NULL)
 					goto out;
-				}
 			}
 
 			pfd[2].fd = -1;

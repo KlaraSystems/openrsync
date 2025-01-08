@@ -1562,11 +1562,10 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 		}
 
 		if (p->ofd != -1 && st.st_size > 0) {
-			p->map = fmap_open(p->ofd, st.st_size, PROT_READ);
-			if (p->map == NULL) {
-				ERR("%s: mmap", f->path);
+			p->map = fmap_open(f->path, p->ofd, st.st_size,
+			    PROT_READ);
+			if (p->map == NULL)
 				goto out;
-			}
 		}
 
 		/* Success either way: we don't need this. */
