@@ -974,6 +974,7 @@ int	rsync_sender(struct sess *, int, int, size_t, char **);
 int	rsync_batch(struct cleanup_ctx *, struct opts *, const struct fargs *);
 int	rsync_client(struct cleanup_ctx *, const struct opts *, int,
 	    const struct fargs *);
+void	rsync_progress(struct sess *, uint64_t, uint64_t, bool);
 int	rsync_daemon(int, char *[], struct opts *);
 int	rsync_connect(const struct opts *, int *, const struct fargs *);
 int	rsync_listen(struct sess *, rsync_client_handler *);

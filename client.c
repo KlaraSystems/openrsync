@@ -30,6 +30,69 @@
 #include "extern.h"
 
 /*
+ * Print time as hh:mm:ss
+ */
+static void
+print_time(FILE *f, double time)
+{
+	int i = time;
+	fprintf(f, "   %02d:%02d:%02d",
+	    i / 3600, (i - i / 3600 * 3600) / 60,
+	    (i - i / 60 * 60));
+}
+
+/*
+ * Maybe print progress in current file.
+ */
+void
+rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
+    bool finished)
+{
+	struct timeval tv;
+	double now, remaining_time, rate;
+
+	if (!sess->opts->progress)
+		return;
+
+	gettimeofday(&tv, NULL);
+	now = tv.tv_sec + (double)tv.tv_usec / 1000000.0;
+
+	/*
+	 * Print progress.
+	 * This calculates from previous transfer.
+	 */
+	if (sess->last_time == 0) {
+		sess->last_time = now;
+		sess->last_bytes = 0;
+		return;
+	}
+	if ((now - sess->last_time) < 0.5 && !finished)
+		return;
+	fprintf(stderr, " %14llu", (long long unsigned)so_far);
+	fprintf(stderr, " %3.0f%%", (double)so_far /
+	    (double)total_bytes * 100.0);
+	rate = (double)(so_far - sess->last_bytes) / (now - sess->last_time);
+	if (rate > 1024.0 * 1024.0 * 1024.0) {
+		fprintf(stderr, " %7.2fGB/s", rate / 1024.0 / 1024.0 / 1024.0);
+	} else if (rate > 1024.0 * 1024.0) {
+		fprintf(stderr, " %7.2fMB/s", rate / 1024.0 / 1024.0);
+	} else if (rate > 1024.0) {
+		fprintf(stderr, " %7.2fKB/s", rate / 1024.0);
+	}
+	remaining_time = (total_bytes - so_far) / rate;
+	print_time(stderr, remaining_time);
+	fprintf(stderr, finished ? "\n" : "\r");
+	if (finished) {
+		sess->last_time = 0;
+		sess->last_bytes = 0;
+	} else {
+		sess->last_time = now;
+		sess->last_bytes = so_far;
+	}
+}
+
+
+/*
  * The rsync client runs on the operator's local machine.
  * It can either be in sender or receiver mode.
  * In the former, it synchronises local files from a remote sink.
