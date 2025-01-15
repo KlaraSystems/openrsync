@@ -316,11 +316,17 @@ parse_pattern(struct rule *r, char *pattern)
 	 * check for / at start and end of pattern both are special and
 	 * can bypass full path matching.
 	 */
+	plen = strlen(pattern);
 	if (*pattern == '/') {
-		pattern++;
+		/*
+		 * Note that it's anchored and omit the leading slash.  We have
+		 * to keep `pattern` intact as it's allocated memory.
+		 */
+		plen--;
+		memmove(pattern, pattern + 1, plen + 1 /* NUL */);
 		r->anchored = 1;
 	}
-	plen = strlen(pattern);
+
 	/*
 	 * check for patterns ending in '/' and '/'+'***' and handle them
 	 * specially. Because of this and the check above pattern will never
