@@ -214,3 +214,19 @@ if ! cmp ${SRCD}file ${DSTD}file 1>&2; then
         hexdump -C ${DSTD}file | head -5 1>&2
         exit 1
 fi
+
+1>&2 echo "-- Starting 0-byte file regression test --"
+echo "-- Starting 0-byte file regression test --"
+
+rm -rf ${SRCD} ${DSTD}
+mkdir -p ${SRCD} ${DSTD}
+dd if=/dev/random of=${SRCD}fileA bs=1m count=1
+touch ${SRCD}fileB
+dd if=/dev/random of=${SRCD}fileC bs=1m count=1
+
+rsync -avz --checksum --no-W -- ${SRCD}/ ${DSTD}
+compare_trees -t ${SRCD} ${DSTD}
+
+rm ${DSTD}/fileC
+rsync -avz --checksum --no-W -- ${SRCD}/ ${DSTD}
+compare_trees -t ${SRCD} ${DSTD}

@@ -239,7 +239,7 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 	}
 
 	if (!compress_reinit(sess)) {
-		ERRX1("decompress_reinit");
+		ERRX1("compress_reinit");
 		fmap_untrap(up->stat.map);
 		return 0;
 	}
@@ -324,7 +324,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 		}
 
 		if (!compress_reinit(sess)) {
-			ERRX1("decompress_reinit");
+			ERRX1("compress_reinit");
 			fmap_untrap(up->stat.map);
 			return 0;
 		}
@@ -394,7 +394,19 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			BLKSTAT_NEXT : BLKSTAT_FLUSH;
 
 		if (up->stat.curtok == 0) {
-			/* Empty files don't need handling */
+			/* Empty files just need an END token */
+			if (!compress_reinit(sess)) {
+				ERRX1("compress_reinit");
+				return 0;
+			}
+
+			if (!io_lowbuffer_alloc(sess, wb, wbsz, wbmax, 1)) {
+				ERRX1("io_lowbuffer_alloc");
+				return 0;
+			}
+			io_lowbuffer_byte(sess, *wb, &pos, *wbsz, TOKEN_END);
+			comp_state = COMPRESS_DONE;
+			up->stat.curst = BLKSTAT_HASH;
 			return 1;
 		}
 
@@ -502,7 +514,7 @@ send_up_fsm_compressed(struct sess *sess, size_t *phase,
 			ERRX("io_lowbuffer_alloc");
 			return 0;
 		}
-		io_lowbuffer_byte(sess, *wb, &pos, *wbsz, 0);
+		io_lowbuffer_byte(sess, *wb, &pos, *wbsz, TOKEN_END);
 		comp_state = COMPRESS_DONE;
 		up->stat.curst = BLKSTAT_HASH;
 		return 1;
