@@ -1193,7 +1193,7 @@ flist_append(struct sess *sess, const struct stat *st,
 		}
 	}
 
-	if (sess->opts->checksum && S_ISREG(f->st.mode) && f->st.size > 0) {
+	if (sess->opts->checksum && S_ISREG(f->st.mode)) {
 		int rc;
 
 		rc = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
@@ -2203,8 +2203,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			}
 		}
 
-		if (sess->opts->checksum &&
-		    S_ISREG(f->st.mode) && f->st.size > 0) {
+		if (sess->opts->checksum && S_ISREG(f->st.mode)) {
 			rc = hash_file_by_path(AT_FDCWD, f->path, f->st.size, f->md);
 			if (rc) {
 				ERR("%s: hash_file_by_path", f->path);

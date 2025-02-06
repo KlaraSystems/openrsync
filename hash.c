@@ -159,8 +159,10 @@ hash_file_by_path(int rootfd, const char *path, size_t len, unsigned char *md)
 	int fd, rc, save;
 	struct fmap *map;
 
-	if (len == 0)
-		return -1;
+	if (len == 0) {
+		hash_file(NULL, len, md, NULL);
+		return 0;
+	}
 
 	fd = openat(rootfd, path, O_RDONLY | O_NOFOLLOW);
 	if (fd == -1)

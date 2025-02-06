@@ -1344,7 +1344,7 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		 * This could be rolled into the if tree below, but
 		 * would make it uglier.
 		 */
-		if (f->st.size != 0 && sess->opts->checksum) {
+		if (sess->opts->checksum) {
 			rc = hash_file_by_path(rootfd, path, st->st_size, md);
 			if (!(rc == 0 && memcmp(md, f->md, sizeof(md)) == 0))
 				f->iflags |= IFLAG_CHECKSUM;
