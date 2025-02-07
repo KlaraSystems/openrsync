@@ -1804,7 +1804,8 @@ rsync_sender(struct sess *sess, int fdin,
 			 * to pick O_NOFOLLOW back up unconditionally.
 			 */
 			oflags = O_RDONLY | O_NONBLOCK;
-			if (!sess->opts->copy_links)
+			if (!sess->opts->copy_links &&
+			    !sess->opts->copy_unsafe_links)
 				oflags |= O_NOFOLLOW;
 
 			/*
