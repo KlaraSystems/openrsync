@@ -98,7 +98,7 @@ rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
 		remaining_time = delta;
 	else
 		remaining_time = (total_bytes - so_far) / rate;
-	print_time(stderr, remaining_time);
+	print_time(stdout, remaining_time);
 
 	if (finished) {
 		printf(" (xfer#%zu, to-check=%d/%d)\n",
@@ -110,6 +110,7 @@ rsync_progress(struct sess *sess, uint64_t total_bytes, uint64_t so_far,
 		sess->xferstat.last_time = now;
 		sess->xferstat.last_bytes = so_far;
 	}
+	fflush(stdout);
 }
 
 
