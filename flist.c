@@ -1853,6 +1853,39 @@ flist_dirent_strip(struct sess *sess, const char *root)
 }
 
 /*
+ * Shim for platforms that may not handle lstat(2) with a link name ending in
+ * '/' the way we expect.  We expect a directory, so we should chase it down
+ * all the way to the end and error out if it's not a directory, as opposed to
+ * the usual lstat(2) behavior.
+ */
+static int
+rsync_lstat(const char *path, struct stat *sb)
+{
+	size_t pathlen;
+	int error;
+
+	pathlen = strlen(path);
+
+	/* No expectation of a directory, just lstat(2) as usual. */
+	if (path[pathlen - 1] != '/')
+		return lstat(path, sb);
+
+	/*
+	 * We want a directory, so stat() it and coerce an error if the end
+	 * result is not a directory.
+	 */
+	error = stat(path, sb);
+	if (error != 0)
+		return error;
+	if (!S_ISDIR(sb->st_mode)) {
+		errno = ENOTDIR;
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
  * Generate a flist possibly-recursively given a file root, which may
  * also be a regular file or symlink.
  * On success, augments the generated list in "flp" of length "sz".
@@ -1883,7 +1916,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	if (sess->opts->copy_links)
 		ret = stat(root, &st);
 	else
-		ret = lstat(root, &st);
+		ret = rsync_lstat(root, &st);
 	if (ret == -1) {
 		if (!sess->opts->filesfrom) {
 			ERR("%s: (l)stat", root);
@@ -1975,7 +2008,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	 * We'll make sense of it in flist_send.
 	 */
 
-	fts_options = FTS_PHYSICAL | FTS_NOCHDIR;
+	fts_options = FTS_PHYSICAL | FTS_NOCHDIR | FTS_COMFOLLOW;
 	if (sess->opts->copy_links)
 		fts_options = FTS_LOGICAL;
 	if (sess->opts->one_file_system)
@@ -2279,7 +2312,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 		if (sess->opts->copy_links)
 			ret = stat(fname, &st);
 		else
-			ret = lstat(fname, &st);
+			ret = rsync_lstat(fname, &st);
 
 		if (ret == -1) {
 			sess->total_errors++;
