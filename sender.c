@@ -1088,8 +1088,15 @@ sender_finalize(struct sess *sess, const struct fl *fl, struct iobuf *rbuf,
 		while (state != DONE) {
 			while (iobuf_get_readsz(rbuf) < needed) {
 				if (!iobuf_fill(sess, rbuf, fdin)) {
-					ERRX1("iobuf_fill on final goodbye");
-					break;
+					/*
+					 * iobuf_fill() will only error out if
+					 * we didn't read anything, so we can
+					 * safely bail out here knowing that
+					 * our request won't be satisified.
+					 */
+					ERRX1("iobuf_fill on final goodbye in state %d",
+					    state);
+					return ERR_PROTOCOL;
 				}
 			}
 
