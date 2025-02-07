@@ -25,4 +25,7 @@ elif ! grep -q -- 'xfer#' rsync.out; then
 elif ! grep -q -- 'to-check' rsync.out; then
 	1>&2 echo "Missing to-check output in progress report"
 	exit 1
+elif ! grep -q -- 'file1' rsync.out; then
+	1>&2 echo "Missing filename output in progress report"
+	exit 1
 fi

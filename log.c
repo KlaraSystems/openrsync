@@ -1206,7 +1206,8 @@ log_item_impl(struct sess *sess, const struct flist *f)
 	if (outformat)
 		return log_format(sess, outformat, f);
 
-	if (verbose > 1 || (verbose > 0 && f->iflags != 0))
+	if (verbose > 1 || (verbose > 0 && f->iflags != 0) ||
+	    sess->opts->progress)
 		return log_format(sess, "%n%L", f);
 
 	return 1;

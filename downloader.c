@@ -1432,9 +1432,6 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 			p->ofd = openat(rootfd, path, O_RDONLY | O_NONBLOCK);
 		}
 
-		if (sess->opts->progress && !verbose)
-			fprintf(stderr, "%s\n", f->path);
-
 		if (p->ofd == -1 && errno != ENOENT && rootfd != -1) {
 			ERR("%s: rsync_downloader: openat", path);
 			goto out;
