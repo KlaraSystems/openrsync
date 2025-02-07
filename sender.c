@@ -1682,8 +1682,8 @@ rsync_sender(struct sess *sess, int fdin,
 		 * If our phase changes, stop processing.
 		 */
 
-		if ((up.stat.curst == BLKSTAT_PHASE && READ_AVAIL(pfd, &rbuf)) ||
-		    ((pfd[1].revents & POLLOUT)) && up.cur != NULL) {
+		if (((up.stat.curst == BLKSTAT_PHASE && READ_AVAIL(pfd, &rbuf)) ||
+		    (pfd[1].revents & POLLOUT)) && up.cur != NULL) {
 			struct flist *curfl;
 			size_t curidx;
 
