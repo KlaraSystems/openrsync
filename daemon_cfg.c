@@ -610,6 +610,16 @@ cfg_parse(const struct sess *sess, const char *cfg_file, int module)
 hasval:
 		if (!continued) {
 			/*
+			 * Trim any trailing whitespace now that we've sorted
+			 * out all of the continuations.
+			 */
+			while (isspace(value[valuelen - 1])) {
+				valuelen--;
+			}
+
+			value[valuelen] = '\0';
+
+			/*
 			 * cfg_module_add_param() will free our value or take
 			 * possession of it.
 			 */
