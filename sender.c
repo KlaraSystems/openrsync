@@ -1799,10 +1799,10 @@ rsync_sender(struct sess *sess, int fdin,
 			nextfl = &fl.flp[up.cur->idx];
 			if (nextfl->open != NULL) {
 				up.stat.fd = (*nextfl->open)(sess, nextfl,
-				    O_RDONLY|O_NONBLOCK);
+				    O_RDONLY|O_NONBLOCK|O_NOFOLLOW);
 			} else {
 				up.stat.fd = open(nextfl->path,
-				    O_RDONLY|O_NONBLOCK, 0);
+				    O_RDONLY|O_NONBLOCK|O_NOFOLLOW, 0);
 			}
 			if (up.stat.fd == -1) {
 				char buf[PATH_MAX];
