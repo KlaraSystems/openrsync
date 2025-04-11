@@ -389,13 +389,19 @@ struct	flist {
 	struct flstat	 st; /* file information */
 	char		*link; /* symlink target, hlink name, or NULL */
 	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
-	int		 flstate; /* flagged for redo, or complete? */
 	int32_t		 iflags; /* Itemize flags */
 	enum name_basis	 basis; /* name basis */
-	int		 sendidx; /* Sender index */
-	platform_open	*open; /* special open() for this entry */
-	platform_flist_sent	*sent; /* notify the platform an entry was sent */
-	struct fldstat	 dstat; /* original destination file information */
+	union {
+		struct {
+			platform_open	*open; /* special open() for this entry */
+			platform_flist_sent	*sent; /* notify the platform an entry was sent */
+		};	/* Sender state, not available in the receiver */
+		struct {
+			struct fldstat	 dstat; /* original destination file information */
+			int	 flstate; /* flagged for redo, or complete? */
+			int	 sendidx; /* Sender index */
+		};	/* Receiver state, not available in the sender */
+	};
 };
 
 #define	FLIST_COMPLETE		0x01	/* Finished */
