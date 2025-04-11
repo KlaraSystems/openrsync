@@ -313,6 +313,8 @@ rsync_cleanup_reap_child(struct cleanup_ctx *ctx)
 			if (st > ctx->exitstatus)
 				ctx->exitstatus = st;
 		}
+
+		ctx->child_pid = 0;
 	}
 }
 
@@ -339,6 +341,8 @@ rsync_cleanup_child(struct cleanup_ctx *ctx)
 	 */
 	if (ctx->exitstatus == 0)
 		return;
-
-	kill(0, SIGUSR1);
+	if (ctx->child_pid > 0) {
+		kill(ctx->child_pid, SIGUSR1);
+		ctx->child_pid = 0;
+	}
 }
