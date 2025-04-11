@@ -312,6 +312,8 @@ compare_trees ()
 
     # check for any xattrs
     tmpf=$(mktemp -u rsync_xattr.XXXXXXXX)
+    _IFS="$IFS"
+    IFS=$'\n'
     for f in $(find "$1" -type f); do
         xattr_dump "$f" > "$tmpf"
         if [ -s "$tmpf" ]; then
@@ -322,5 +324,6 @@ compare_trees ()
             rm "$tmpf-2"
         fi
     done
+    IFS="$_IFS"
     rm "$tmpf"
 }
