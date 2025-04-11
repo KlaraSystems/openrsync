@@ -37,6 +37,8 @@ _Static_assert(sizeof(id_t) <= INT_MAX, "{u,g}id_t larger than expected");
 
 static int daemon_rangelock(struct sess *, const char *, const char *, int);
 
+#define	RSYNCD_LOG_FILE_PREFIX	"%t [%p]"
+
 /* Compatible with smb rsync, just in case. */
 #define	CONNLOCK_START(conn)	((conn) * 4)
 #define	CONNLOCK_SIZE(conn)	(4)
@@ -176,17 +178,38 @@ daemon_apply_xferlog(struct sess *sess, const char *module, struct opts *opts)
 	role = (void *)sess->role;
 	if (cfg_param_bool(role->dcfg, module, "transfer logging",
 	    &logging) != 0) {
-		daemon_client_error(sess, "%s: 'transfer logging' invalid");
+		daemon_client_error(sess, "%s: 'transfer logging' invalid",
+		    module);
 		return 0;
 	}
 
 	if (!logging) {
 		opts->outformat = NULL;
 	} else if (opts->outformat == NULL) {
+		const char *cfgformat;
 		int rc;
 
-		rc = cfg_param_str(role->dcfg, module, "log format", &opts->outformat);
+		rc = cfg_param_str(role->dcfg, module, "log format", &cfgformat);
 		assert(rc == 0);
+
+		opts->outformat = strdup(cfgformat);
+		if (opts->outformat == NULL) {
+			daemon_client_error(sess, "%s: out of memory", module);
+			return 0;
+		}
+	}
+
+	if (role->using_logfile && opts->outformat != NULL) {
+		char *newformat;
+
+		if (asprintf(&newformat, "%s %s", RSYNCD_LOG_FILE_PREFIX,
+		    opts->outformat) == -1) {
+			daemon_client_error(sess, "%s: out of memory", module);
+			return 0;
+		}
+
+		free((void *)opts->outformat);
+		opts->outformat = newformat;
 	}
 
 	if (opts->outformat != NULL) {
@@ -317,13 +340,29 @@ daemon_client_error(struct sess *sess, const char *fmt, ...)
 
 	va_start(ap, fmt);
 	if ((msgsz = vasprintf(&msg, fmt, ap)) != -1) {
-		if (!sess->mplex_writes) {
+		switch (role->dstate) {
+		case DSTATE_INIT:
 			if (!io_write_buf(sess, role->client, "@ERROR ",
 			    sizeof("@ERROR ") - 1) ||
 			    !io_write_line(sess, role->client, msg)) {
 				ERR("io_write");
 			}
-		} else {
+
+			break;
+		case DSTATE_CLIENT_CONTROL:
+			/*
+			 * Need to terminate the handshake so that we can send
+			 * the error along.
+			 */
+			if (!daemon_finish_handshake(sess)) {
+				ERR("daemon_finish_handshake");
+			} else {
+				assert(sess->mplex_writes);
+				assert(role->dstate == DSTATE_RUNNING);
+			}
+
+			/* FALLTHROUGH */
+		case DSTATE_RUNNING:
 			if (!io_write_buf_tagged(sess, role->client, msg,
 			    msgsz, IT_ERROR_XFER)) {
 				ERR("io_write");
@@ -331,7 +370,12 @@ daemon_client_error(struct sess *sess, const char *fmt, ...)
 			    1, IT_ERROR_XFER)) {
 				ERR("io_write");
 			}
+
+			break;
+		default:
+			assert(0 && "Unreachable");
 		}
+
 		free(msg);
 	}
 	va_end(ap);
@@ -1671,6 +1715,7 @@ daemon_setup_logfile(struct sess *sess, const char *module)
 	if (logfile == NULL || *logfile == '\0')
 		return 1;
 
+	role->using_logfile = true;
 	if (!daemon_open_logfile(logfile, false)) {
 		/* Just fallback to syslog on error. */
 		if (!daemon_open_logfile(NULL, false))

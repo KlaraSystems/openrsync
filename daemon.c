@@ -150,6 +150,37 @@ daemon_list_module(struct daemon_cfg *dcfg, const char *module, void *cookie)
 	return 1;
 }
 
+int
+daemon_finish_handshake(struct sess *sess)
+{
+	struct daemon_role *role;
+
+	role = (void *)sess->role;
+	assert(role->dstate == DSTATE_CLIENT_CONTROL);
+
+	/* Generate a seed. */
+	if (sess->opts == NULL || sess->opts->checksum_seed == 0) {
+#if HAVE_ARC4RANDOM
+		sess->seed = arc4random();
+#else
+		sess->seed = random();
+#endif /* HAVE_ARC4RANDOM */
+	} else {
+		sess->seed = sess->opts->checksum_seed;
+	}
+
+	/* Seed send-off completes the handshake. */
+	if (!io_write_int(sess, role->client, sess->seed)) {
+		ERR("io_write_int");
+		return 0;
+	}
+
+	sess->mplex_writes = 1;
+	role->dstate = DSTATE_RUNNING;
+	/* XXX LOG2("write multiplexing enabled"); */
+	return 1;
+}
+
 static int
 daemon_list(struct sess *sess)
 {
@@ -315,7 +346,6 @@ daemon_add_glob(struct sess *sess, const char *module, size_t *oargc,
 
 	if ((error = glob(buf, 0, NULL, &glb)) != 0 &&
 	    error != GLOB_NOMATCH) {
-		fprintf(stderr, "returned %d\n", error);
 		daemon_client_error(sess, "glob '%s' failed", buf);
 		return false;
 	}
@@ -482,7 +512,8 @@ daemon_read_options(struct sess *sess, const char *module, int fd,
 		if (sbuf_finish(reqsb) == 0)
 			wreq = sbuf_data(reqsb);
 
-		daemon_finish_prexfer(sess, wreq, wargs, wargsz);
+		if (!daemon_finish_prexfer(sess, wreq, wargs, wargsz))
+			goto fail;
 
 		sbuf_delete(argsb);
 		sbuf_delete(reqsb);
@@ -497,7 +528,7 @@ fail:
 	if (reqsb != NULL)
 		sbuf_delete(reqsb);
 	if (role->prexfer_pipe != -1)
-		daemon_finish_prexfer(sess, NULL, NULL, 0);
+		(void)daemon_finish_prexfer(sess, NULL, NULL, 0);
 	for (size_t i = 0; i < argc; i++)
 		free(argv[i]);
 	free(argv);
@@ -565,17 +596,22 @@ daemon_write_motd(struct sess *sess, const char *motd_file, int outfd)
 	linesz = 0;
 	fp = fopen(motd_file, "r");
 	if (fp == NULL) {
-		/* XXX Log */
+		ERR("fopen");
 		return 1;
 	}
 
 	retval = 1;
 	while ((linelen = getline(&line, &linesz, fp)) > 0) {
 		if (!io_write_buf(sess, outfd, line, linelen)) {
-			/* XXX Log */
+			ERRX1("io_write_buf");
 			retval = 0;
 			break;
 		}
+	}
+
+	if (!io_write_line(sess, outfd, "")) {
+		ERRX1("io_write_line");
+		retval = 0;
 	}
 
 	fclose(fp);
@@ -728,7 +764,7 @@ daemon_auth_user(struct sess *sess, const char *module, const char *cfgusers,
     const char *response, int *read_only)
 {
 	const char *delims;
-	char *users, *user, *setting, *strip;
+	char *cusers, *users, *user, *setting, *strip;
 	int matched;
 	bool is_grp;
 
@@ -737,7 +773,7 @@ daemon_auth_user(struct sess *sess, const char *module, const char *cfgusers,
 		return 0;
 	}
 
-	users = strdup(cfgusers);
+	cusers = users = strdup(cfgusers);
 	if (users == NULL) {
 		daemon_client_error(sess, "%s: out of memory", module);
 		return 0;	/* Deny */
@@ -804,7 +840,7 @@ daemon_auth_user(struct sess *sess, const char *module, const char *cfgusers,
 		break;
 	}
 
-	free(users);
+	free(cusers);
 	return matched;
 }
 
@@ -953,8 +989,13 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 {
 	struct daemon_role *role;
 	struct opts *client_opts;
+	const struct opts *daemon_opts;
 	char **argv, **cargv, *module, *motd_file;
 	int argc, cargc, flags, rc, use_chroot, user_read_only;
+
+	client_opts = NULL;
+	daemon_opts = sess->opts;
+	sess->opts = NULL;
 
 	module = NULL;
 	argc = cargc = 0;
@@ -962,6 +1003,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	user_read_only = -1;
 
 	role = (void *)sess->role;
+	role->dstate = DSTATE_INIT;
 	role->prexfer_pid = 0;
 	role->prexfer_pipe = -1;
 	role->client = fd;
@@ -977,7 +1019,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	/* XXX These should perhaps log an error, but they are not fatal. */
 	(void)rsync_setsockopts(fd, "SO_KEEPALIVE");
-	(void)rsync_setsockopts(fd, sess->opts->sockopts);
+	(void)rsync_setsockopts(fd, daemon_opts->sockopts);
 
 	if (!daemon_extract_addr(sess, saddr, slen))
 		return ERR_IPC;
@@ -1119,8 +1161,6 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		use_chroot = 0;
 	}
 
-	role->client_control = true;
-
 	if (!daemon_chuser(sess, module))
 		goto fail;
 
@@ -1129,11 +1169,13 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 	}
 
+	role->dstate = DSTATE_CLIENT_CONTROL;
+
 	if (daemon_read_options(sess, module, fd, &cargc, &cargv) < 0)
 		goto fail;	/* Error already logged. */
 
 	/*
-	 * We'll mutate argc/argv, cargc/cargv maintained to avoid leaking these
+	 * We'll mutate argc/argv, cargc/cargv maintained to avoid leaking the
 	 * strings later.
 	 */
 	argc = cargc;
@@ -1159,6 +1201,13 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;	/* Should have been logged. */
 
 	client_opts->daemon = 1;
+	sess->opts = client_opts;
+
+	assert(role->dstate == DSTATE_CLIENT_CONTROL);
+	if (!daemon_finish_handshake(sess)) {
+		ERRX1("handshake finish failure");
+		goto fail;
+	}
 
 	argc -= optind;
 	argv += optind;
@@ -1174,26 +1223,6 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	if (!daemon_limit_verbosity(sess, module))
 		goto fail;
-
-	/* Generate a seed. */
-	if (client_opts->checksum_seed == 0) {
-#if HAVE_ARC4RANDOM
-		sess->seed = arc4random();
-#else
-		sess->seed = random();
-#endif
-	} else {
-		sess->seed = client_opts->checksum_seed;
-	}
-
-	/* Seed send-off completes the handshake. */
-	if (!io_write_int(sess, fd, sess->seed)) {
-		ERR("io_write_int");
-		goto fail;
-	}
-
-	sess->mplex_writes = 1;
-	/* XXX LOG2("write multiplexing enabled"); */
 
 	if (!daemon_operation_allowed(sess, client_opts, module,
 	    user_read_only))
@@ -1217,7 +1246,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	 * "log format", so we'll set outformat now so that
 	 * daemon_apply_xferlog() can actually detect that.
 	 */
-	client_opts->outformat = sess->opts->outformat;
+	client_opts->outformat = daemon_opts->outformat;
 	if (!daemon_apply_xferlog(sess, module, client_opts))
 		goto fail;
 
@@ -1234,13 +1263,18 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	cleanup_set_session(cleanup_ctx, sess);
 	cleanup_release(cleanup_ctx);
 
-	if (sess->opts->sender) {
+	if (client_opts->sender) {
 		if (!rsync_sender(sess, fd, fd, argc, argv)) {
 			ERR("rsync_sender");
 			goto fail;
 		}
 	} else {
-		if (!rsync_receiver(sess, cleanup_ctx, fd, fd, argv[0])) {
+		const char *mpath = argv[0];
+
+		if (mpath == NULL || mpath[0] == '\0')
+			mpath = ".";
+
+		if (!rsync_receiver(sess, cleanup_ctx, fd, fd, mpath)) {
 			ERR("rsync_receiver");
 			goto fail;
 		}
@@ -1386,7 +1420,9 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 			logfile = optarg;
 			break;
 		case OP_LOG_FILE_FORMAT:
-			daemon_opts->outformat = optarg;
+			daemon_opts->outformat = strdup(optarg);
+			if (daemon_opts->outformat == NULL)
+				err(ERR_IPC, "strdup");
 			break;
 		case OP_PORT:
 			daemon_opts->port = optarg;
@@ -1431,7 +1467,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	if (!socket_initiator && detach && daemon(0, 0) == -1)
+	if (!socket_initiator && detach && daemon(1, 0) == -1)
 		err(ERR_IPC, "daemon");
 #pragma clang diagnostic pop
 

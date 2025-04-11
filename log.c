@@ -1215,7 +1215,14 @@ log_item_impl(struct sess *sess, const struct flist *f)
 int
 log_item(struct sess *sess, const struct flist *f)
 {
-	if (sess->opts->server || sess->opts->daemon) {
+	/*
+	 * We don't generally log if we are the server, but there are
+	 * exceptions.  If a custom outformat is set, then we should
+	 * generate logs, except if the outformat is being overridden
+	 * by using itemize that sets the outformat to include %i or %o.
+	 */
+	if (sess->opts->server && (sess->itemize ||
+	    (!sess->opts->outformat || !*sess->opts->outformat))) {
 		bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
 
 		if (log_file == stdout || sess->opts->dry_run)

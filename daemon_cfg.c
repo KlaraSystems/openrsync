@@ -37,7 +37,6 @@
  */
 
 #define	RSYNCD_LOG_FORMAT	"%o %h [%a] %m (%u) %f %l"
-#define	RSYNCD_LOG_FILE_PREFIX	"%t [%p] "
 
 struct daemon_cfg_module;
 struct daemon_cfg_param;

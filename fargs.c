@@ -233,6 +233,8 @@ fargs_cmdline(struct sess *sess, const struct fargs *f, size_t *skip)
 		addargs(&args, "-c");
 	if (sess->seed != 0)
 		addargs(&args, "--checksum-seed=%d", sess->seed);
+	else if (sess->opts->checksum_seed != 0)
+		addargs(&args, "--checksum-seed=%d", sess->opts->checksum_seed);
 	if (sess->opts->del_excl)
 		addargs(&args, "--delete-excluded");
 	if (sess->opts->numeric_ids == NIDS_FULL)

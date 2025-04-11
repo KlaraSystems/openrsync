@@ -42,6 +42,12 @@ struct daemon_refused {
 	size_t			 refused_loptsz;
 };
 
+enum daemon_state : unsigned char {
+	DSTATE_INIT,
+	DSTATE_CLIENT_CONTROL,
+	DSTATE_RUNNING,
+};
+
 struct daemon_role {
 	struct role		 role;
 	char			 client_host[NI_MAXHOST]; /* hostname */
@@ -61,9 +67,10 @@ struct daemon_role {
 	id_t			 uid;		/* setuid if root */
 	id_t			 gid;		/* setgid if root */
 	int			 client;
-	bool			 client_control;
+	enum daemon_state	 dstate;
 	bool			 do_setid;	/* do setuid/setgid */
 	struct daemon_refused	 refused;
+	bool			 using_logfile;	/* "log file" specified */
 };
 
 int	daemon_apply_chmod(struct sess *, const char *, struct opts *);
@@ -78,6 +85,7 @@ int	daemon_configure_filters(struct sess *, const char *);
 int	daemon_connection_allowed(struct sess *, const char *);
 int	daemon_connection_limited(struct sess *, const char *);
 int	daemon_do_execcmds(struct sess *, const char *);
+int	daemon_finish_handshake(struct sess *);
 int	daemon_finish_prexfer(struct sess *, const char *, const char *,
 	    size_t);
 int	daemon_fill_hostinfo(struct sess *, const char *,

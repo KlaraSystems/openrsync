@@ -726,10 +726,8 @@ protocol_line(struct sess *sess, __attribute__((unused)) const char *host,
 	int	major, minor;
 
 	if (strncmp(cp, "@RSYNCD: ", 9)) {
-		if (listonly)
+		if (listonly || sess->opts->no_motd == 0)
 			LOG0("%s", cp);
-		else if (sess->opts->no_motd == 0)
-			LOG1("%s", cp);
 		return 0;
 	}
 
