@@ -542,7 +542,7 @@ inet_resolve(struct sess *sess, const char *host, size_t *sz, int passive)
 			src[i].family = PF_INET;
 			inet_ntop(AF_INET,
 			    &(((struct sockaddr_in *)sa)->sin_addr),
-			    src[i].ip, INET6_ADDRSTRLEN);
+			    src[i].ip, INET_ADDRSTRLEN);
 		} else {
 			src[i].family = PF_INET6;
 			inet_ntop(AF_INET6,
@@ -886,7 +886,7 @@ rsync_listen(struct sess *sess, rsync_client_handler *handler)
 	 * might need to do a reverse lookup.  Don't quote me on that.
 	 */
 	if (opts->address != NULL) {
-		if ((bsrc = inet_resolve(sess, opts->address, &bsrcsz, 1)) ==
+		if ((bsrc = inet_resolve(sess, opts->address, &bsrcsz, 0)) ==
 		    NULL) {
 			ERRX1("inet_resolve bind");
 			exit(1);
