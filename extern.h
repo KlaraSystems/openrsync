@@ -382,6 +382,15 @@ enum name_basis {
 typedef int platform_open(const struct sess *, const struct flist *, int);
 typedef int platform_flist_sent(struct sess *, int, const struct flist *);
 
+struct	froot {
+	char		*rootpath;
+	int		 refcount;
+	int		 rootfd;	/* root dirfd */
+};
+
+struct froot *froot_acquire(struct froot *);
+void froot_release(struct froot *);
+
 struct	flist {
 	char		*path; /* path relative to root */
 	int		 pdfd; /* dirfd for partial */
@@ -393,6 +402,7 @@ struct	flist {
 	enum name_basis	 basis; /* name basis */
 	union {
 		struct {
+			struct froot	*froot;
 			platform_open	*open; /* special open() for this entry */
 			platform_flist_sent	*sent; /* notify the platform an entry was sent */
 		};	/* Sender state, not available in the receiver */
@@ -823,7 +833,7 @@ int	flist_dir_cmp(const void *, const void *);
 int	flist_fts_check(struct sess *, FTSENT *, enum fmode);
 int	flist_del(struct sess *, int, const struct flist *, size_t);
 int	flist_gen(struct sess *, size_t, char **, struct fl *);
-void	flist_free(struct flist *, size_t);
+void	flist_free(struct flist *, size_t, bool);
 int	flist_recv(struct sess *, int, int, struct flist **, size_t *);
 int	flist_send(struct sess *, int, int, const struct flist *, size_t);
 int	flist_gen_dels(struct sess *, const char *, struct flist **, size_t *,

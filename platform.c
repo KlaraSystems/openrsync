@@ -144,6 +144,7 @@ platform_flist_modify(const struct sess *sess, struct fl *fl)
 		packed = fl_new(fl);
 		memcpy(packed, f, sizeof(*f));
 
+		packed->froot = NULL;
 		packed->path = ppath;
 		packed->wpath = ppath + stripdir;
 		packed->link = NULL;

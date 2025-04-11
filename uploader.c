@@ -908,7 +908,7 @@ out:
 		if (!flist_del(sess, p->rootfd, p->dfl, p->dflsz))
 			ret = 0;
 
-		flist_free(p->dfl, p->dflsz);
+		flist_free(p->dfl, p->dflsz, false);
 		p->dfl = NULL;
 		p->dflsz = p->dflmax = 0;
 	}

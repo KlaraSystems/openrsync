@@ -481,7 +481,7 @@ flist_copy_stat(struct flist *f, const struct stat *st)
 }
 
 void
-flist_free(struct flist *f, size_t sz)
+flist_free(struct flist *f, size_t sz, bool sender)
 {
 	size_t	 i;
 
@@ -489,6 +489,10 @@ flist_free(struct flist *f, size_t sz)
 		return;
 
 	for (i = 0; i < sz; i++) {
+		if (sender && f[i].froot != NULL) {
+			froot_release(f[i].froot);
+			f[i].froot = NULL;
+		}
 		if (f[i].pdfd >= 0)
 			close(f[i].pdfd);
 		free(f[i].path);
@@ -917,6 +921,65 @@ flist_realloc(struct flist **fl, size_t *sz, size_t *max)
 	return 1;
 }
 
+static struct froot *
+froot_open(const char *path)
+{
+	struct froot *froot;
+
+	froot = malloc(sizeof(*froot));
+	if (froot == NULL) {
+		ERR("malloc froot");
+		return NULL;
+	}
+
+	froot->rootpath = strdup(path);
+	if (froot->rootpath == NULL) {
+		ERR("strdup frootpath");
+		free(froot);
+		return NULL;
+	}
+
+	froot->refcount = 1;
+	froot->rootfd = open(path, O_DIRECTORY);
+	if (froot->rootfd == -1) {
+		ERR("open %s", path);
+		free(froot->rootpath);
+		free(froot);
+		return NULL;
+	}
+
+	return froot;
+}
+
+struct froot *
+froot_acquire(struct froot *froot)
+{
+
+	/*
+	 * We allow NULL here to simplify our caller's logic; they don't need
+	 * to care if they're part of a recursive scan or not.
+	 */
+	if (froot == NULL)
+		return NULL;
+
+	assert(froot->refcount > 0);
+	froot->refcount++;
+	return froot;
+}
+
+void
+froot_release(struct froot *froot)
+{
+
+	assert(froot->refcount > 0);
+	if (--froot->refcount != 0)
+		return;
+
+	close(froot->rootfd);
+	free(froot->rootpath);
+	free(froot);
+}
+
 /*
  * Reallocate a file list in chunks of FLIST_CHUNK_SIZE;
  * Returns -1 on failure, index of new element on success.
@@ -936,6 +999,7 @@ fl_new_index(struct fl *fl)
 struct flist *
 fl_new(struct fl *fl)
 {
+	struct flist *newfl;
 	long index;
 
 	index = fl_new_index(fl);
@@ -1091,7 +1155,8 @@ out:
 */
 static int
 flist_append(struct sess *sess, const struct stat *st,
-	const char *path, struct fl *fl, const char *prefix)
+	const char *path, struct fl *fl, const char *prefix,
+	struct froot *froot)
 {
 	struct flist *f;
 	long oldidx;
@@ -1112,6 +1177,7 @@ flist_append(struct sess *sess, const struct stat *st,
 		return 0;
 	}
 
+	f->froot = froot_acquire(froot);
 	if (!sess->opts->relative) {
 		/* Remove prefix from path, if it is not an exact match */
 		prefixlen = strlen(prefix);
@@ -1657,7 +1723,8 @@ out:
 
 static int
 flist_gen_dirent_file(struct sess *sess, const char *type, const char *root,
-    struct fl *fl, const struct stat *st, const char *prefix)
+    struct fl *fl, const struct stat *st, const char *prefix,
+    struct froot *froot)
 {
 	/* filter files */
 	if (rules_match(root, S_ISDIR(st->st_mode), FARGS_SENDER, 0) == -1) {
@@ -1672,7 +1739,7 @@ flist_gen_dirent_file(struct sess *sess, const char *type, const char *root,
 	}
 
 	/* add it to our world view */
-	if (!flist_append(sess, st, root, fl, prefix)) {
+	if (!flist_append(sess, st, root, fl, prefix, froot)) {
 		ERRX1("flist_append");
 		return 0;
 	}
@@ -1892,7 +1959,8 @@ rsync_lstat(const char *path, struct stat *sb)
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t stripdir, const char *prefix)
+flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl,
+    ssize_t stripdir, const char *prefix, struct froot *froot)
 {
 	const char	*cargv[2];
 	int		 fts_options;
@@ -1917,6 +1985,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		ret = stat(root, &st);
 	else
 		ret = rsync_lstat(root, &st);
+
 	if (ret == -1) {
 		if (!sess->opts->filesfrom) {
 			ERR("%s: (l)stat", root);
@@ -1925,7 +1994,8 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		}
 		return 1;
 	} else if (S_ISREG(st.st_mode)) {
-		return flist_gen_dirent_file(sess, "file", root, fl, &st, prefix);
+		return flist_gen_dirent_file(sess, "file", root, fl, &st,
+		    prefix, froot);
 	} else if (S_ISLNK(st.st_mode)) {
 		/*
 		 * How does this work?
@@ -1955,7 +2025,8 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				snprintf(buf2, sizeof(buf2), "%s/", root);
 				LOG4("symlinks: recursing '%s' -> '%s' '%s'",
 				    root, buf, buf2);
-				return flist_gen_dirent(sess, buf2, fl, stripdir, prefix);
+				return flist_gen_dirent(sess, buf2, fl, stripdir,
+				    prefix, froot);
 			}
 		}
 		if (sess->opts->copy_unsafe_links &&
@@ -1966,16 +2037,19 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 				snprintf(buf2, sizeof(buf2), "%s/", root);
 				LOG4("symlinks: recursing '%s' -> '%s' '%s'",
 				    root, buf, buf2);
-				return flist_gen_dirent(sess, buf2, fl, stripdir, prefix);
+				return flist_gen_dirent(sess, buf2, fl, stripdir,
+				    prefix, froot);
 			} else {
 				return flist_gen_dirent_file(sess, "file",
-				    root, fl, &st2, prefix);
+				    root, fl, &st2, prefix, froot);
 			}
 		}
 
-		return flist_gen_dirent_file(sess, "symlink", root, fl, &st, prefix);
+		return flist_gen_dirent_file(sess, "symlink", root, fl, &st,
+		    prefix, froot);
 	} else if (!S_ISDIR(st.st_mode)) {
-		return flist_gen_dirent_file(sess, "special", root, fl, &st, prefix);
+		return flist_gen_dirent_file(sess, "special", root, fl, &st,
+		    prefix, froot);
 	}
 
 	/*
@@ -1984,11 +2058,21 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 	 */
 	if (sess->opts->dirs && !sess->opts->recursive &&
 	    (stripdir != -1 || !flist_dir_recurse(root))) {
-		return flist_gen_dirent_file(sess, "dir", root, fl, &st, prefix);
+		return flist_gen_dirent_file(sess, "dir", root, fl, &st, prefix,
+		    froot);
 	}
 
 	if (stripdir == -1)
 		stripdir = flist_dirent_strip(sess, root);
+
+	if (froot == NULL) {
+		froot = froot_open(root);
+		if (froot == NULL) {
+			ERRX1("froot_open");
+			sess->total_errors++;
+			return 0;
+		}
+	}
 
 	cargv[0] = root;
 	cargv[1] = NULL;
@@ -2015,6 +2099,8 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 		fts_options |= FTS_XDEV;
 
 	if ((fts = fts_open((char * const *)cargv, fts_options, NULL)) == NULL) {
+		if (froot != NULL)
+			froot_release(froot);
 		sess->total_errors++;
 		ERR("fts_open");
 		return 0;
@@ -2073,7 +2159,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			    is_unsafe_link(buf, root, prefix))) {
 				if (S_ISDIR(st2.st_mode)) {
 					ret = flist_gen_dirent(sess, fts_path,
-					    fl, stripdir, prefix);
+					    fl, stripdir, prefix, froot);
 					if (!ret)
 						sess->total_errors++;
 
@@ -2177,6 +2263,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl, ssize_t str
 			}
 		}
 
+		f->froot = froot_acquire(froot);
 		f->wpath = f->path + stripdir;
 		assert(f->wpath[0] != '\0');
 
@@ -2237,7 +2324,8 @@ out:
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
+flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl,
+    struct froot *froot)
 {
 	char		 dname[PATH_MAX];
 	size_t		 dnamelen, i;
@@ -2263,7 +2351,7 @@ flist_gen_dirs(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 				return 0;
 			}
 		}
-		if (!flist_gen_dirent(sess, dname, fl, -1, dname))
+		if (!flist_gen_dirent(sess, dname, fl, -1, dname, froot))
 			errors++;
 	}
 
@@ -2342,7 +2430,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 		}
 
 		/* Add this file to our file-system worldview. */
-		if (!flist_append(sess, &st, fname, fl, fname)) {
+		if (!flist_append(sess, &st, fname, fl, fname, NULL)) {
 			ERRX1("flist_append");
 			goto out;
 		}
@@ -2351,7 +2439,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	LOG2("non-recursively generated %zu filenames", fl->sz);
 	return 1;
 out:
-	flist_free(fl->flp, argc);
+	flist_free(fl->flp, argc, true);
 	fl->flp = NULL;
 	return 0;
 }
@@ -2533,7 +2621,7 @@ flist_gen(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	if (sess->opts->syncfile == NULL) {
 #endif
 	rc = sess->opts->recursive || sess->opts->dirs ?
-		flist_gen_dirs(sess, argc, argv, fl) :
+		flist_gen_dirs(sess, argc, argv, fl, NULL) :
 		flist_gen_files(sess, argc, argv, fl);
 #if 0
 	} else

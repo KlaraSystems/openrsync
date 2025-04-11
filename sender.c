@@ -1735,7 +1735,8 @@ rsync_sender(struct sess *sess, int fdin,
 
 		if (up.cur == NULL) {
 			struct flist *f, *nextfl;
-			int oflags;
+			const char *opath;
+			int dirfd, oflags;
 
 			assert(pfd[2].fd == -1);
 			assert(up.stat.fd == -1);
@@ -1830,12 +1831,40 @@ rsync_sender(struct sess *sess, int fdin,
 			 * flist-specified open if provided.
 			 */
 			nextfl = &fl.flp[up.cur->idx];
+			oflags = O_RDONLY | O_NONBLOCK;
+			if (nextfl->froot != NULL) {
+				const char *rootp = nextfl->froot->rootpath;
+
+				dirfd = nextfl->froot->rootfd;
+				opath = nextfl->path;
+
+				if (strncmp(opath, rootp, strlen(rootp)) == 0)
+					opath += strlen(rootp);
+
+				while (opath[0] == '/' && opath[0] != '\0')
+					opath++;
+
+				assert(opath[0] != '\0');
+				if (!sess->opts->copy_links &&
+				    !sess->opts->copy_unsafe_links &&
+				    !sess->opts->copy_dirlinks)
+					oflags |= O_RESOLVE_BENEATH;
+			} else {
+				dirfd = AT_FDCWD;
+				opath = nextfl->path;
+			}
 			if (nextfl->open != NULL) {
 				up.stat.fd = (*nextfl->open)(sess, nextfl,
 				    oflags);
 			} else {
-				up.stat.fd = open(nextfl->path, oflags, 0);
+				up.stat.fd = openat(dirfd, opath, oflags, 0);
 			}
+
+			if (nextfl->froot != NULL) {
+				froot_release(nextfl->froot);
+				nextfl->froot = NULL;
+			}
+
 			if (up.stat.fd == -1) {
 				char buf[PATH_MAX];
 
@@ -1890,7 +1919,7 @@ out:
 		free(dl->blks);
 		free(dl);
 	}
-	flist_free(fl.flp, fl.sz);
+	flist_free(fl.flp, fl.sz, true);
 	free(wbuf);
 	blkhash_free(up.stat.blktab);
 	cleanup_filesfrom(sess);
