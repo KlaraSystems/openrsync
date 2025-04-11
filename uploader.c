@@ -1460,6 +1460,8 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 
 	if ((x == 1 || x == 2) && *matchdir == NULL) {
 		/* found a local file that is a close match */
+		LOG3("%s: found close match in %s", f->path,
+		    root);
 		f->iflags |= itemize_changes(sess, st, f);
 		*matchdir = root;
 		if (savedfd != NULL) {
