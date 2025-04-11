@@ -2065,6 +2065,14 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl,
 	if (stripdir == -1)
 		stripdir = flist_dirent_strip(sess, root);
 
+	/*
+	 * This is set relatively late because we only want to setup a froot at
+	 * top-level directories.  The above can be hit without having traversed
+	 * into a directory for non-directory entries specified on the command
+	 * line, and for those we need to be sure that we aren't trying to use
+	 * a dirfd.  Their non-NULL `froot` would come from recursive calls in
+	 * the loop below.
+	 */
 	if (froot == NULL) {
 		froot = froot_open(root);
 		if (froot == NULL) {
