@@ -37,14 +37,14 @@ xattr_set attr_link rsync_test.link bar
 
 cd ..
 #ifdef __APPLE__
-rsync -a --extended-attributes dir1/ dir3
+rsync -a --extended-attributes -- dir1/ dir3
 #else
-#rsync -a -X dir1/ dir3
+#rsync -a -X -- dir1/ dir3
 #endif
 compare_trees dir2 dir3
 
 #ifdef __APPLE__
 # We test here that --extended-attributes doesn't crash when presented wth an
 # empty flist in our platform bits.
-rsync --extended-attributes dir1/ dir3
+rsync --extended-attributes -- dir1/ dir3
 #endif
