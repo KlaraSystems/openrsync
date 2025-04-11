@@ -1066,6 +1066,8 @@ pre_dir(struct upload *p, struct sess *sess)
 	    errno != EEXIST) {
 		ERR("%s: mkpathat", f->path);
 		return -1;
+	} else {
+		LOG3("%s: created directory", f->path);
 	}
 
 	p->newdir[p->idx] = 1;
