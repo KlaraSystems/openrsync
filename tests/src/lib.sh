@@ -264,13 +264,13 @@ xattr_dump ()
 
     case "$xattr_tool" in
         lsextattr)
-            lsextattr -q user "$file"
+            lsextattr -hq user "$file"
             ;;
         getfattr)
-            getfattr -d "$file"
+            getfattr -hd "$file"
             ;;
         xattr)
-            xattr "$file"
+            xattr -s "$file"
             ;;
     esac
 }
@@ -310,16 +310,19 @@ compare_trees ()
     # file contents
     diff -ru "$1" "$2" 1>&2
 
-    # check for any xattrs
+    # check for any xattrs; note that this won't do the right thing if we have
+    # files that both have xattrs and newlines in the filename.  This is a known
+    # limitation that seems like an OK compromise.
     tmpf=$(mktemp -u rsync_xattr.XXXXXXXX)
     _IFS="$IFS"
     IFS=$'\n'
-    for f in $(find "$1" -type f); do
+    for f in $(find -H "$1" -xattr); do
         xattr_dump "$f" > "$tmpf"
         if [ -s "$tmpf" ]; then
             # See if the second version of the file has matching xattrs
             mirrored=$(echo "$f" | sed -e "s/^$1/$2/")
             xattr_dump "$mirrored" > "$tmpf-2"
+            1>&2 echo "xattr check: $1 and $2"
             diff -u "$tmpf" "$tmpf-2" 1>&2
             rm "$tmpf-2"
         fi
