@@ -209,6 +209,72 @@ findme ()
     )
 }
 
+xattr_capable ()
+{
+
+    if which lsextattr 1>/dev/null 2>&1; then
+        echo "lsextattr"
+        return 0
+    elif which getfattr 1>/dev/null 2>&1; then
+        echo "getfattr"
+        return 0
+    elif which xattr 1>/dev/null 2>&1; then
+        echo "xattr"
+        return 0
+    fi
+
+    return 1
+}
+
+xattr_set ()
+{
+    file=$1
+    name=$2
+    value=$3
+
+    xattr_tool=$(xattr_capable)
+    if [ $? -ne 0 ]; then
+        # The caller should have checked that xattrs are supported.
+        return 1
+    fi
+
+    case "$xattr_tool" in
+        lsextattr)
+            setextattr -h user "$name" "$value" "$file"
+            ;;
+        getfattr)
+            setfattr -hn "$name" -v "$value" "$file"
+            ;;
+        xattr)
+            xattr -ws "$name" "$value" "$file"
+            ;;
+    esac
+}
+
+xattr_dump ()
+{
+    file=$1
+
+    xattr_tool=$(xattr_capable)
+    if [ $? -ne 0 ]; then
+        # This one will be called unconditionally, so we want to just succeed if
+        # we don't have xattr support.
+        return 0
+    fi
+
+    case "$xattr_tool" in
+        lsextattr)
+            lsextattr -q user "$file"
+            ;;
+        getfattr)
+            getfattr -d "$file"
+            ;;
+        xattr)
+            xattr "$file"
+            ;;
+    esac
+}
+
 # compare two trees.  This will later be modular to pick between:
 # - diff
 # - find . -print0 | sort --zero-terminated | xargs -0 tar fc foo.tar
@@ -247,11 +313,11 @@ compare_trees ()
     # check for any xattrs
     tmpf=$(mktemp -u rsync_xattr.XXXXXXXX)
     for f in $(find "$1" -type f); do
-        lsextattr -q user "$f" > "$tmpf"
+        xattr_dump "$f" > "$tmpf"
         if [ -s "$tmpf" ]; then
             # See if the second version of the file has matching xattrs
             mirrored=$(echo "$f" | sed -e "s/^$1/$2/")
-            lsextattr -q user "$mirrored" > "$tmpf-2"
+            xattr_dump "$mirrored" > "$tmpf-2"
             diff -u "$tmpf" "$tmpf-2" 1>&2
             rm "$tmpf-2"
         fi
