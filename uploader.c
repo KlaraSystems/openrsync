@@ -1008,6 +1008,8 @@ pre_dir(struct upload *p, struct sess *sess)
 			}
 		}
 	} else if (rc != -1) {
+		int want_mode;
+
 		if ((f->iflags & IFLAG_NEW) == 0) {
 			LOG3("%s: updating directory", f->path);
 
@@ -1018,14 +1020,27 @@ pre_dir(struct upload *p, struct sess *sess)
 			return 0;
 
 		/*
-		 * We need to fchmod the permissions here as well,
-		 * as we may locally have shut down writing into the
-		 * directory and that doesn't work.
+		 * We fchmod() here to ensure that we can actually update or
+		 * populate the directory as needed -- it may not be writable,
+		 * so we would elevate the permissions just as long as we need
+		 * to in order to create new files (or write a temporary file),
+		 * then we'll fix it up in post-order to reflect what the flist
+		 * called for.
+		 *
+		 * This uses the target permissions when it can to avoid
+		 * creating way too wide of a permission window if, e.g., it
+		 * shouldn't have any 'other' bits.
 		 */
-		if (sess->opts->preserve_perms && st.st_mode != f->st.mode && f->st.mode != 0) {
-			rc = fchmodat(p->rootfd, f->path, f->st.mode, 0);
+		if (f->st.mode == 0 || !sess->opts->preserve_perms)
+			want_mode = st.st_mode;
+		else
+			want_mode = f->st.mode;
+		if ((want_mode & S_IWUSR) == 0 && geteuid() != 0)
+			want_mode |= S_IWUSR;
+		if (st.st_mode != want_mode) {
+			rc = fchmodat(p->rootfd, f->path, want_mode, 0);
 			if (rc != 0)
-				ERRX("%s: unable to preserve dir mode", f->path);
+				ERRX("%s: unable to escalate dir mode", f->path);
 		}
 
 		if (sess->opts->del == DMODE_DURING || sess->opts->del == DMODE_DELAY) {
