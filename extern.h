@@ -400,6 +400,7 @@ struct	flist {
 	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
 	int32_t		 iflags; /* Itemize flags */
 	enum name_basis	 basis; /* name basis */
+	enum fmode	 fmode; /* Sender/receiver */
 	union {
 		struct {
 			struct froot	*froot;
@@ -431,8 +432,9 @@ struct fl {
 	struct flist *flp;
 	size_t sz;   /* Actual entries */
 	size_t max;  /* Allocated size */
+	struct sess *sess;	/* Associated session */
 };
-void fl_init(struct fl *);
+void fl_init(struct sess *, struct fl *);
 long fl_new_index(struct fl *); /* Returns index of new element */
 struct flist *fl_new(struct fl *); /* Returns pointer to new element */
 struct flist *fl_atindex(struct fl *, size_t idx);
@@ -829,11 +831,12 @@ int	 cfg_param_str(struct daemon_cfg *, const char *, const char *,
 	    const char **);
 int	 cfg_has_param(struct daemon_cfg *, const char *, const char *);
 
+void	fl_init(struct sess *, struct fl *);
 int	flist_dir_cmp(const void *, const void *);
 int	flist_fts_check(struct sess *, FTSENT *, enum fmode);
 int	flist_del(struct sess *, int, const struct flist *, size_t);
 int	flist_gen(struct sess *, size_t, char **, struct fl *);
-void	flist_free(struct flist *, size_t, bool);
+void	flist_free(struct flist *, size_t);
 int	flist_recv(struct sess *, int, int, struct flist **, size_t *);
 int	flist_send(struct sess *, int, int, const struct flist *, size_t);
 int	flist_gen_dels(struct sess *, const char *, struct flist **, size_t *,

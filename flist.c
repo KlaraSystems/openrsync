@@ -481,13 +481,15 @@ flist_copy_stat(struct flist *f, const struct stat *st)
 }
 
 void
-flist_free(struct flist *f, size_t sz, bool sender)
+flist_free(struct flist *f, size_t sz)
 {
 	size_t	 i;
+	bool	 sender;
 
 	if (f == NULL)
 		return;
 
+	sender = f->fmode == FARGS_SENDER;
 	for (i = 0; i < sz; i++) {
 		if (sender && f[i].froot != NULL) {
 			froot_release(f[i].froot);
@@ -893,11 +895,12 @@ flist_recv_name(struct sess *sess, int fd, struct flist *f, uint8_t flags,
 }
 
 /*
- * Reallocate a file list in chunks of FLIST_CHUNK_SIZE;
+ * Reallocate a file list in chunks of FLIST_CHUNK_SIZE; the new entries are
+ * designated for sender/receiver as noted in mode.
  * Returns zero on failure, non-zero on success.
  */
 static int
-flist_realloc(struct flist **fl, size_t *sz, size_t *max)
+flist_realloc(struct flist **fl, size_t *sz, size_t *max, enum fmode mode)
 {
 	void	*pp;
 
@@ -914,8 +917,12 @@ flist_realloc(struct flist **fl, size_t *sz, size_t *max)
 	}
 	*fl = pp;
 	*max += FLIST_CHUNK_SIZE;
-	for (size_t i = *sz; i < *max; i++)
-		(*fl)[i].pdfd = (*fl)[i].sendidx = -1;
+	for (size_t i = *sz; i < *max; i++) {
+		struct flist *flent = &(*fl)[i];
+
+		flent->pdfd = flent->sendidx = -1;
+		flent->fmode = mode;
+	}
 
 	(*sz)++;
 	return 1;
@@ -987,7 +994,7 @@ froot_release(struct froot *froot)
 long
 fl_new_index(struct fl *fl)
 {
-	if (flist_realloc(&fl->flp, &fl->sz, &fl->max) == 0)
+	if (flist_realloc(&fl->flp, &fl->sz, &fl->max, fl->sess->mode) == 0)
 		return -1;
 
 	return fl->sz - 1;
@@ -1016,9 +1023,10 @@ fl_pop(struct fl *fl)
 }
 
 void
-fl_init(struct fl *fl)
+fl_init(struct sess *sess, struct fl *fl)
 {
 	memset(fl, 0, sizeof(*fl));
+	fl->sess = sess;
 }
 
 long
@@ -1350,7 +1358,7 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 			goto out;
 		}
 
-		if (!flist_realloc(&fl, &flsz, &flmax)) {
+		if (!flist_realloc(&fl, &flsz, &flmax, FARGS_RECEIVER)) {
 			ERRX1("flist_realloc");
 			goto out;
 		}
@@ -2447,7 +2455,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 	LOG2("non-recursively generated %zu filenames", fl->sz);
 	return 1;
 out:
-	flist_free(fl->flp, argc, true);
+	flist_free(fl->flp, argc);
 	fl->flp = NULL;
 	return 0;
 }
@@ -2898,7 +2906,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 
 		/* Not found: we'll delete it. */
 
-		if (!flist_realloc(fl, sz, &max)) {
+		if (!flist_realloc(fl, sz, &max, FARGS_RECEIVER)) {
 			ERRX1("flist_realloc");
 			goto out;
 		}
@@ -2946,7 +2954,7 @@ flist_add_del(struct sess *sess, const char *path, size_t stripdir,
 {
 	struct flist *f;
 
-	if (!flist_realloc(fl, sz, flmax)) {
+	if (!flist_realloc(fl, sz, flmax, FARGS_RECEIVER)) {
 		ERRX1("flist_realloc");
 		return (0);
 	}

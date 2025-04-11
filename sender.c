@@ -1223,7 +1223,7 @@ rsync_sender(struct sess *sess, int fdin,
 	if (protocol_itemize)
 		flinfosz += sizeof(int16_t);
 
-	fl_init(&fl);
+	fl_init(sess, &fl);
 	flg = &fl;
 	if (pledge("stdio getpw rpath", NULL) == -1) {
 		ERR("pledge");
@@ -1929,7 +1929,7 @@ out:
 		free(dl->blks);
 		free(dl);
 	}
-	flist_free(fl.flp, fl.sz, true);
+	flist_free(fl.flp, fl.sz);
 	free(wbuf);
 	blkhash_free(up.stat.blktab);
 	cleanup_filesfrom(sess);

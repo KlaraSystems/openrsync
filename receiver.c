@@ -1159,8 +1159,8 @@ out:
 	if (tfd != -1)
 		close(tfd);
 
-	flist_free(fl, flsz, false);
-	flist_free(dfl, dflsz, false);
+	flist_free(fl, flsz);
+	flist_free(dfl, dflsz);
 
 	return rc;
 }
