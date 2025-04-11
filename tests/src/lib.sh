@@ -243,4 +243,18 @@ compare_trees ()
 
     # file contents
     diff -ru "$1" "$2" 1>&2
+
+    # check for any xattrs
+    tmpf=$(mktemp -u rsync_xattr.XXXXXXXX)
+    for f in $(find "$1" -type f); do
+        lsextattr -q user "$f" > "$tmpf"
+        if [ -s "$tmpf" ]; then
+            # See if the second version of the file has matching xattrs
+            mirrored=$(echo "$f" | sed -e "s/^$1/$2/")
+            lsextattr -q user "$mirrored" > "$tmpf-2"
+            diff -u "$tmpf" "$tmpf-2" 1>&2
+            rm "$tmpf-2"
+        fi
+    done
+    rm "$tmpf"
 }
