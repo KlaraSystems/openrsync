@@ -40,11 +40,24 @@ EOT
 
 awk '{print $5}' expected.out > trimmed.out
 
-rsync -a --list-only -- dir1 > rsync.out 2>&1
+# Move into another directory so that all of the files aren't 'up to date'.
+# This is the difference between noticing a hang when listing contents vs. a
+# successful run, and we'd prefer to trigger bad behavior if we can.
+mkdir dir3
+cd dir3
+
+rsync -a --list-only -- ../dir1 > rsync.out 2>&1
 awk '{print $5}' rsync.out > generated.out
-diff -ub trimmed.out generated.out
+diff -ub ../trimmed.out generated.out
+if [ -d dir1 ]; then
+	1>&2 echo "ERROR: Actually transferred files with --list-only"
+	exit 1
+fi
 
-rsync -a -- dir1 > rsync2.out 2>&1
+rsync -a -- ../dir1 > rsync2.out 2>&1
 awk '{print $5}' rsync2.out > generated2.out
-diff -ub trimmed.out generated2.out
-
+diff -ub ../trimmed.out generated2.out
+if [ -d dir1 ]; then
+	1>&2 echo "ERROR: Actually transferred files with implicit --list-only"
+	exit 1
+fi

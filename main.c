@@ -1956,8 +1956,6 @@ main(int argc, char *argv[])
 			opts.whole_file = 0;
 		}
 
-		if (opts.list_only && !opts.dry_run)
-			opts.dry_run = DRY_FULL;
 		exit(rsync_server(cleanup_ctx, &opts, (size_t)argc, argv));
 	}
 
@@ -2128,8 +2126,6 @@ main(int argc, char *argv[])
 			if (fargs->sink == NULL)
 				errx(ERR_NOMEM, NULL);
 		}
-		if (opts.list_only && !opts.dry_run)
-			opts.dry_run = DRY_FULL;
 
 		close(fds[1]);
 		if (!fargs->remote)

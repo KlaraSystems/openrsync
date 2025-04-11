@@ -2203,7 +2203,7 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 		assert(*fileinfd == -1);
 		assert(*fileoutfd != -1);
 
-		for ( ; u->idx < u->flsz; u->idx++) {
+		for ( ; u->idx < u->flsz && !sess->opts->list_only; u->idx++) {
 			assert(u->fl[u->idx].sendidx != -1);
 			if (u->phase == PHASE_REDO &&
 			    (u->fl[u->idx].flstate & FLIST_REDO) == 0)
@@ -2326,7 +2326,7 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 		 */
 
 		*fileoutfd = -1;
-		if (u->idx == u->flsz) {
+		if (u->idx == u->flsz || sess->opts->list_only) {
 			assert(*fileinfd == -1);
 
 			if (sess->opts->read_batch == NULL) {
