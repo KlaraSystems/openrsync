@@ -349,7 +349,7 @@ parse_pattern(struct rule *r, char *pattern)
 	r->numseg = nseg;
 
 	/* check if this pattern only matches against the basename */
-	if (nseg == 1 && !r->anchored)
+	if (nseg == 1 && !r->anchored && !r->leadingdir)
 		r->fileonly = 1;
 
 	if (strpbrk(pattern, "*?[") == NULL) {
@@ -1210,23 +1210,27 @@ rule_match_action_xfer(struct rule *r, const char *path,
 		if (r->fileonly) {
 			if (rule_pattern_matched(r, ctx->basename))
 				return rule_matched(r);
+		} else if (r->leadingdir) {
+			size_t plen = strlen(r->pattern);
+
+			p = strstr(path, r->pattern);
+
+			/*
+			 * Match from start or dir boundary and also
+			 * match to end or to dir boundary.  If we were
+			 * anchored, then the start must be at the start.
+			 */
+			if (r->anchored && p != path)
+				return 0;
+			if (p != NULL && (p == path || p[-1] == '/') &&
+			    (p[plen] == '\0' || p[plen] == '/'))
+				return rule_matched(r);
 		} else if (r->anchored) {
 			/*
 			 * assumes that neither path nor pattern
 			 * start with a '/'.
 			 */
 			if (rule_pattern_matched(r, path))
-				return rule_matched(r);
-		} else if (r->leadingdir) {
-			size_t plen = strlen(r->pattern);
-
-			p = strstr(path, r->pattern);
-			/*
-			 * match from start or dir boundary also
-			 * match to end or to dir boundary
-			 */
-			if (p != NULL && (p == path || p[-1] == '/') &&
-			    (p[plen] == '\0' || p[plen] == '/'))
 				return rule_matched(r);
 		} else {
 			size_t len = strlen(path);
@@ -1240,6 +1244,40 @@ rule_match_action_xfer(struct rule *r, const char *path,
 					return rule_matched(r);
 			}
 		}
+	} else if (r->leadingdir && !r->anchored) {
+		/*
+		 * For ***, we'll start at numsegs + 1 elements from the end
+		 * and continue until we've failed to match the whole string.
+		 *
+		 * Anchored *** is handled below instead, since we'll just do
+		 * a standard full path match.
+		 */
+		short nseg = r->numseg - 1;
+
+		p = &path[strlen(path)];
+		do {
+			p--;
+			if (*p == '/' || p == path) {
+				const char *search = p;
+
+				if (nseg > 0) {
+					nseg--;
+					continue;
+				}
+
+				/*
+				 * Once we've hit the number of segments we
+				 * need, we can start matching against all other
+				 * delimiters we hit.
+				 */
+				if (*search == '/')
+					search++;
+				if (rmatch(r->pattern, search, 1) != 0)
+					continue;
+
+				return rule_matched(r);
+			}
+		} while (p != path);
 	} else {
 		if (r->fileonly) {
 			p = ctx->basename;
