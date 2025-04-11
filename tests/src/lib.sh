@@ -325,5 +325,5 @@ compare_trees ()
         fi
     done
     IFS="$_IFS"
-    rm "$tmpf"
+    rm -f "$tmpf"
 }
