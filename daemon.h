@@ -71,6 +71,7 @@ struct daemon_role {
 	bool			 do_setid;	/* do setuid/setgid */
 	struct daemon_refused	 refused;
 	bool			 using_logfile;	/* "log file" specified */
+	bool			 socket_initiator;	/* socket-initiated */
 };
 
 int	daemon_apply_chmod(struct sess *, const char *, struct opts *);
@@ -94,7 +95,7 @@ int	daemon_install_symlink_filter(struct sess *, const char *, int);
 int	daemon_limit_verbosity(struct sess *, const char *);
 void	daemon_normalize_path(const char *, size_t, char *);
 void	daemon_normalize_paths(const char *, int, char *[]);
-int	daemon_open_logfile(const char *, bool);
+int	daemon_open_logfile(struct sess *, const char *, bool);
 int	daemon_operation_allowed(struct sess *, const struct opts *,
 	    const char *, int);
 int	daemon_parse_refuse(struct sess *, const char *);

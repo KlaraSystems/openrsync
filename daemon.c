@@ -1371,7 +1371,6 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	long long tmpint;
 	const char *cfg_motd, *logfile;
 	int c, opt_daemon = 0, detach = 1, rc;
-	bool socket_initiator;
 
 	/* Start with a fresh session / opts */
 	memset(&role, 0, sizeof(role));
@@ -1450,7 +1449,12 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	argc -= optind;
 	argv += optind;
 
-	if (!daemon_open_logfile(logfile, true))
+	/*
+	 * We'll act on this after we pick up the initial config.
+	 */
+	role.socket_initiator = rsync_is_socket(STDIN_FILENO);
+
+	if (!daemon_open_logfile(&sess, logfile, true))
 		return ERR_IPC;
 
 	/*
@@ -1460,14 +1464,9 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 
 	poll_timeout = -1;
 
-	/*
-	 * We'll act on this after we pick up the initial config.
-	 */
-	socket_initiator = rsync_is_socket(STDIN_FILENO);
-
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-	if (!socket_initiator && detach && daemon(1, 0) == -1)
+	if (!role.socket_initiator && detach && daemon(1, 0) == -1)
 		err(ERR_IPC, "daemon");
 #pragma clang diagnostic pop
 
@@ -1475,7 +1474,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	if (role.dcfg == NULL)
 		return ERR_IPC;
 
-	if (!socket_initiator && daemon_do_pidfile(&sess, role.dcfg) != 0)
+	if (!role.socket_initiator && daemon_do_pidfile(&sess, role.dcfg) != 0)
 		return ERR_IPC;
 
 	if (daemon_opts->address == NULL) {
@@ -1506,7 +1505,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 		get_global_cfgstr(role.dcfg, "socket options",
 		    &daemon_opts->sockopts);
 
-	if (socket_initiator) {
+	if (role.socket_initiator) {
 		struct sockaddr_storage saddr;
 		socklen_t slen;
 

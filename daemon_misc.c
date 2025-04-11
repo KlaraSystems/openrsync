@@ -1302,9 +1302,11 @@ daemon_normalize_paths(const char *module, int argc, char *argv[])
 }
 
 int
-daemon_open_logfile(const char *logfile, bool printerr)
+daemon_open_logfile(struct sess *sess, const char *logfile, bool printerr)
 {
+	struct daemon_role *role;
 
+	role = (void *)sess->role;
 	if (logfile != NULL && *logfile == '\0')
 		logfile = NULL;
 	if (logfile != NULL) {
@@ -1323,6 +1325,15 @@ daemon_open_logfile(const char *logfile, bool printerr)
 		 */
 		rsync_set_logfile(fp, NULL);
 	} else {
+#ifdef __APPLE__
+		if (!role->socket_initiator) {
+			fprintf(stderr,
+			    "The syslog(3) facility is not currently available in the standalone rsyncd.\n"
+			    "Falling back to logging to stderr.\n");
+			rsync_set_logfile(stdout, NULL);
+			return 1;
+		}
+#endif
 		rsync_set_logfile(NULL, NULL);
 	}
 
@@ -1716,9 +1727,9 @@ daemon_setup_logfile(struct sess *sess, const char *module)
 		return 1;
 
 	role->using_logfile = true;
-	if (!daemon_open_logfile(logfile, false)) {
+	if (!daemon_open_logfile(sess, logfile, false)) {
 		/* Just fallback to syslog on error. */
-		if (!daemon_open_logfile(NULL, false))
+		if (!daemon_open_logfile(sess, NULL, false))
 			return 0;
 
 		syslog = true;
