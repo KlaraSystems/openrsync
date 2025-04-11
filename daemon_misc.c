@@ -1329,7 +1329,7 @@ daemon_open_logfile(struct sess *sess, const char *logfile, bool printerr)
 		if (!role->socket_initiator) {
 			fprintf(stderr,
 			    "The syslog(3) facility is not currently available in the standalone rsyncd.\n"
-			    "Falling back to logging to stderr.\n");
+			    "Falling back to logging to stdout.\n");
 			rsync_set_logfile(stdout, NULL);
 			return 1;
 		}
