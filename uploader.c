@@ -2547,8 +2547,8 @@ rsync_uploader_tail(struct upload *u, struct sess *sess)
 	size_t	 i;
 
 
-	if (!sess->opts->preserve_times &&
-	    !sess->opts->preserve_perms)
+	if ((!sess->opts->preserve_times &&
+	    !sess->opts->preserve_perms) || sess->opts->list_only)
 		return 1;
 
 	LOG3("fixing up directory times and permissions");
