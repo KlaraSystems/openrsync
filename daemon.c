@@ -953,12 +953,12 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 {
 	struct daemon_role *role;
 	struct opts *client_opts;
-	char **argv, *module, *motd_file;
-	int argc, flags, rc, use_chroot, user_read_only;
+	char **argv, **cargv, *module, *motd_file;
+	int argc, cargc, flags, rc, use_chroot, user_read_only;
 
 	module = NULL;
-	argc = 0;
-	argv = NULL;
+	argc = cargc = 0;
+	argv = cargv = NULL;
 	user_read_only = -1;
 
 	role = (void *)sess->role;
@@ -1129,8 +1129,15 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		goto fail;
 	}
 
-	if (daemon_read_options(sess, module, fd, &argc, &argv) < 0)
+	if (daemon_read_options(sess, module, fd, &cargc, &cargv) < 0)
 		goto fail;	/* Error already logged. */
+
+	/*
+	 * We'll mutate argc/argv, cargc/cargv maintained to avoid leaking these
+	 * strings later.
+	 */
+	argc = cargc;
+	argv = cargv;
 
 	/*
 	 * Reset some state; our default poll_timeout is no longer valid, and
@@ -1247,9 +1254,9 @@ done:
 
 	close(role->prexfer_pipe);
 	free(role->auth_user);
-	for (int i = 0; i < argc; i++)
-		free(argv[i]);
-	free(argv);
+	for (int i = 0; i < cargc; i++)
+		free(cargv[i]);
+	free(cargv);
 
 	return 0;
 
@@ -1264,9 +1271,9 @@ fail:
 
 	close(role->prexfer_pipe);
 	free(role->auth_user);
-	for (int i = 0; i < argc; i++)
-		free(argv[i]);
-	free(argv);
+	for (int i = 0; i < cargc; i++)
+		free(cargv[i]);
+	free(cargv);
 
 	return ERR_IPC;
 }
