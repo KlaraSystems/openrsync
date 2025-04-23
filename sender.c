@@ -1308,6 +1308,8 @@ rsync_sender(struct sess *sess, int fdin,
 		ERRX1("flist_gen");
 		goto out;
 	}
+	assert(fl.flp != NULL || fl.sz == 0);
+
 	gettimeofday(&fb_after, NULL);
 	timersub(&fb_after, &fb_before, &tv);
 	sess->flist_build = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);

@@ -1388,7 +1388,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 				    errstr, optarg);
 			break;
 		case OP_PFLISTSZ:
-			printf("%llu\n", FLIST_CHUNK_SIZE);
+			printf("%zu\n", FLIST_CHUNK_SIZE);
 			exit(0);
 			break;
 		case OP_PORT:
@@ -1929,7 +1929,6 @@ main(int argc, char *argv[])
 	struct sess	 sess;
 	struct fargs	*fargs;
 	char		**args;
-	pid_t		 rpid;
 
 	/* We cannot safely log to stdout until we are certain that we're
 	 * the client (i.e., the server must enable multiplexing before

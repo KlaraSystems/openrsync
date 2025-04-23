@@ -298,7 +298,7 @@ flist_prune_empty(struct sess *sess, struct flist *fl, size_t *flsz)
 	size_t cursz = *flsz;
 
 	assert(cursz <= SSIZE_MAX);
-	for (ssize_t i = 0; i < cursz; i++) {
+	for (ssize_t i = 0; i < (ssize_t)cursz; i++) {
 		struct flist *nf;
 		size_t next, prefixlen;
 
@@ -837,6 +837,7 @@ flist_recv_name(struct sess *sess, int fd, struct flist *f, uint8_t flags,
 		ERRX("security violation: zero-length pathname");
 		return 0;
 	}
+	assert(len < PATH_MAX);
 
 	if ((f->path = malloc(len + 1)) == NULL) {
 		ERR("malloc");
@@ -876,6 +877,7 @@ flist_recv_name(struct sess *sess, int fd, struct flist *f, uint8_t flags,
 			f->wpath++;
 			len--;
 		}
+		assert(f->wpath[0] != '\0');
 
 		/*
 		 * f->path is allocated on the heap, so we just preserve that as
@@ -1134,6 +1136,7 @@ flist_append_dirs(struct sess *sess, const char *path, struct fl *fl)
 		memset(f, 0, sizeof(struct flist));
 		f->path = begin;
 		f->wpath = wbegin;
+		assert(f->wpath[0] != '\0');
 		flist_copy_stat(f, &st);
 
 		if (strchr(wbegin, '/') != NULL) {
@@ -1194,10 +1197,12 @@ flist_append(struct sess *sess, const struct stat *st,
 		} else {
 			f->wpath = f->path;
 		}
+		assert(f->wpath[0] != '\0');
 	} else {
 		f->wpath = f->path;
 		while (f->wpath[0] == '/')
 			f->wpath++;
+		assert(f->wpath[0] != '\0');
 		if (!sess->opts->noimpdirs &&
 		    !flist_append_dirs(sess, f->path, fl)) {
 			return 0;
@@ -1290,7 +1295,7 @@ flist_output_one(const struct sess *sess, struct flist *fl)
 	strftime(timebuf, sizeof(timebuf) - 1, "%Y/%m/%d %H:%M:%S",
 	    localtime(&fl->st.mtime));
 
-	LOG0("%s %11.0lld %s %s%s%s", modebuf, fl->st.size,
+	LOG0("%s %11.0jd %s %s%s%s", modebuf, (intmax_t)fl->st.size,
 	    timebuf, fl->path,
 	    linkdest != NULL ? " -> " : "",
 	    linkdest != NULL ? linkdest : "");
@@ -1314,8 +1319,9 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 {
 	struct flist	*fl = NULL;
 	struct flist	*ff;
-	const struct flist *fflast = NULL, *hlprev = NULL;
+	const struct flist *fflast = NULL;
 	size_t		 flsz = 0, flmax = 0, lsz, gidsz = 0, uidsz = 0;
+	size_t		 hlprev = SIZE_T_MAX;
 	uint16_t	 flag;
 	char		 last[PATH_MAX];
 	int64_t		 lval; /* temporary values... */
@@ -1600,19 +1606,19 @@ flist_recv(struct sess *sess, int fdin, int fdout, struct flist **flp, size_t *s
 					goto out;
 				}
 				ff->st.device = lval;
-			} else if (hlprev == NULL) {
+			} else if (hlprev != SIZE_T_MAX) {
+				ff->st.device = fl[hlprev].st.device;
+			} else {
 				WARNX1("same device without last entry");
 				ff->st.device = 0;
-				hlprev = ff;
-			} else {
-				ff->st.device = hlprev->st.device;
 			}
 
 			if (!io_read_long(sess, fdin, &ff->st.inode)) {
 				ERRX1("io_read_long");
 				goto out;
 			}
-			hlprev = ff;
+
+			hlprev = flsz - 1;
 		}
 
 		/*
@@ -2414,7 +2420,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 		if (ret == -1) {
 			sess->total_errors++;
 			ERR("'%s': (l)stat", fname);
-			goto out;
+			continue;
 		}
 
 		/*
@@ -2451,6 +2457,7 @@ flist_gen_files(struct sess *sess, size_t argc, char **argv, struct fl *fl)
 out:
 	flist_free(fl->flp, argc);
 	fl->flp = NULL;
+	fl->sz = 0;
 	return 0;
 }
 
@@ -2602,6 +2609,7 @@ flist_gen_syncfile(struct sess *sess, size_t argc, char **argv,
 		fl->path = path;
 		fl->link = link;
 		fl->wpath = fl->path + stripdir;
+		assert(fl->wpath[0] != '\0');
 		flist_copy_stat(fl, &st);
 		path = link = NULL;
 	}
@@ -2911,6 +2919,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 			goto out;
 		}
 		f->wpath = f->path + stripdir;
+		assert(f->wpath[0] != '\0');
 		flist_copy_stat(f, ent->fts_statp);
 		errno = 0;
 
@@ -2960,6 +2969,7 @@ flist_add_del(struct sess *sess, const char *path, size_t stripdir,
 	}
 
 	f->wpath = f->path + stripdir;
+	assert(f->wpath[0] != '\0');
 	flist_copy_stat(f, st);
 
 	return (1);
