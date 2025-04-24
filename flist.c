@@ -70,6 +70,13 @@
 #define	FLIST_ATIME_SAME	0x4000 /* command-line option, any protocol */
 #define	FLIST_UNUSED_15		0x8000 /* unused */
 
+static inline void
+flist_assert_wpath_len(const char *wpath)
+{
+	assert(wpath != NULL);
+	assert(wpath[0] != '\0');
+}
+
 /*
  * Required way to sort a filename list before protocol 29.
  */
@@ -831,13 +838,16 @@ flist_recv_name(struct sess *sess, int fd, struct flist *f, uint8_t flags,
 	}
 
 	/* Allocate our full filename length. */
-	/* FIXME: maximum pathname length. */
 
 	if ((len = pathlen + partial) == 0) {
 		ERRX("security violation: zero-length pathname");
 		return 0;
 	}
-	assert(len < PATH_MAX);
+
+	if (len >= PATH_MAX) {
+		ERRX("pathname too long");
+		return 0;
+	}
 
 	if ((f->path = malloc(len + 1)) == NULL) {
 		ERR("malloc");
@@ -877,7 +887,7 @@ flist_recv_name(struct sess *sess, int fd, struct flist *f, uint8_t flags,
 			f->wpath++;
 			len--;
 		}
-		assert(f->wpath[0] != '\0');
+		flist_assert_wpath_len(f->wpath);
 
 		/*
 		 * f->path is allocated on the heap, so we just preserve that as
@@ -1136,7 +1146,7 @@ flist_append_dirs(struct sess *sess, const char *path, struct fl *fl)
 		memset(f, 0, sizeof(struct flist));
 		f->path = begin;
 		f->wpath = wbegin;
-		assert(f->wpath[0] != '\0');
+		flist_assert_wpath_len(f->wpath);
 		flist_copy_stat(f, &st);
 
 		if (strchr(wbegin, '/') != NULL) {
@@ -1197,12 +1207,12 @@ flist_append(struct sess *sess, const struct stat *st,
 		} else {
 			f->wpath = f->path;
 		}
-		assert(f->wpath[0] != '\0');
+		flist_assert_wpath_len(f->wpath);
 	} else {
 		f->wpath = f->path;
 		while (f->wpath[0] == '/')
 			f->wpath++;
-		assert(f->wpath[0] != '\0');
+		flist_assert_wpath_len(f->wpath);
 		if (!sess->opts->noimpdirs &&
 		    !flist_append_dirs(sess, f->path, fl)) {
 			return 0;
@@ -2281,7 +2291,7 @@ flist_gen_dirent(struct sess *sess, const char *root, struct fl *fl,
 
 		f->froot = froot_acquire(froot);
 		f->wpath = f->path + stripdir;
-		assert(f->wpath[0] != '\0');
+		flist_assert_wpath_len(f->wpath);
 
 		flist_copy_stat(f, ent->fts_statp);
 
@@ -2609,7 +2619,7 @@ flist_gen_syncfile(struct sess *sess, size_t argc, char **argv,
 		fl->path = path;
 		fl->link = link;
 		fl->wpath = fl->path + stripdir;
-		assert(fl->wpath[0] != '\0');
+		flist_assert_wpath_len(f->wpath);
 		flist_copy_stat(fl, &st);
 		path = link = NULL;
 	}
@@ -2919,7 +2929,7 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 			goto out;
 		}
 		f->wpath = f->path + stripdir;
-		assert(f->wpath[0] != '\0');
+		flist_assert_wpath_len(f->wpath);
 		flist_copy_stat(f, ent->fts_statp);
 		errno = 0;
 
@@ -2969,7 +2979,7 @@ flist_add_del(struct sess *sess, const char *path, size_t stripdir,
 	}
 
 	f->wpath = f->path + stripdir;
-	assert(f->wpath[0] != '\0');
+	flist_assert_wpath_len(f->wpath);
 	flist_copy_stat(f, st);
 
 	return (1);
