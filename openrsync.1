@@ -57,6 +57,7 @@
 .Op Fl -keep-dirlinks
 .Op Fl -link-dest Ns = Ns Ar directory
 .Op Fl -list-only
+.Op Fl -log-file Ns = Ns Ar file
 .Op Fl -max-delete Ns = Ns MAX
 .Op Fl -max-size Ns = Ns size
 .Op Fl -min-size Ns = Ns size
@@ -553,6 +554,16 @@ is a relative path, it is relative to the destination directory.
 .It Fl -list-only
 Instead of transferring files, only list them.
 This option is implied if there is only a single source argument and no destination argument.
+.It Fl -log-file Ns = Ns Ar file
+Specify a
+.Ar file
+to log to instead of
+.Va stdout .
+This implies a
+.Fl -log-file-format
+of
+.Dq "%i %n%L"
+if none was previously specified.
 .It Fl -max-delete Ar MAX
 Once MAX files have been deleted, do not delete any more files.
 .It Fl -max-size Ar size

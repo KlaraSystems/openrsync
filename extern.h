@@ -523,6 +523,8 @@ struct	opts {
 	long		 block_size;		/* --block-size */
 	char            *filesfrom_host;        /* --files-from */
 	char            *filesfrom_path;        /* --files-from */
+	char		*logfile;		/* --log-file */
+	char		*logformat;		/* --log-file-format */
 	int		 whole_file;		/* --whole-file */
 	const char	*read_batch;		/* --read-batch */
 	const char	*write_batch;		/* --write-batch */
