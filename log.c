@@ -224,11 +224,27 @@ log_vwritef(enum log_type type, const char *fmt, va_list ap)
 		return;
 	}
 
-	if (log_file == stdout && pri != LOG_INFO) {
+	/*
+	 * If logging is configured, we'll send all non-client messages to it.
+	 */
+	if (log_file != stdout && type != LT_CLIENT)
+		vfprintf(log_file, fmt, ap);
+
+	/*
+	 * Log messages stop here, every other type will trickle through and get
+	 * routed to stderr/stdout as appropriate.
+	 */
+	if (type == LT_LOG)
+		return;
+
+	switch (pri) {
+	case LOG_INFO:
+		vfprintf(stdout, fmt, ap);
+		break;
+	default:
 		fflush(stdout);
 		vfprintf(stderr, fmt, ap);
-	} else {
-		vfprintf(log_file, fmt, ap);
+		break;
 	}
 }
 
