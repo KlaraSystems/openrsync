@@ -24,3 +24,10 @@ if [ ! -S dst/test.sock ]; then
 	exit 1
 fi
 
+rm dst/test.sock
+rsync --specials --inplace -- src/test.sock dst/
+if [ ! -S dst/test.sock ]; then
+	1>&2 echo "newly created directory entry is not a socket (--inplace)"
+	1>&2 ls -l dst
+	exit 1
+fi

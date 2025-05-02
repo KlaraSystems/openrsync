@@ -673,7 +673,7 @@ pre_sock(struct upload *p, struct sess *sess)
 	if (rc == -1) {
 		if (!sess->opts->dry_run) {
 			if (sess->opts->inplace) {
-				if (mksock(temp, p->root) == -1) {
+				if (mksock(p->root, f->path) == -1) {
 					ERR("mksock");
 					return -1;
 				}
