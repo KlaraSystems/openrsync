@@ -184,6 +184,7 @@ daemon_apply_xferlog(struct sess *sess, const char *module, struct opts *opts)
 	}
 
 	if (!logging) {
+		free(opts->logformat);
 		opts->logformat = NULL;
 	} else if (opts->logformat == NULL) {
 		const char *cfgformat;

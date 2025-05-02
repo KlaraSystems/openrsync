@@ -742,9 +742,6 @@ send_up_fsm(struct sess *sess, size_t *phase,
 		sess->total_files_xfer++;
 		sess->total_xfer_size += fl[up->cur->idx].st.size;
 
-		os_log_error(OS_LOG_DEFAULT, "Finished up %s, log level %s",
-		    fl[up->cur->idx].path,
-		    xfer_log_level(sess) == LT_LOG ? "LOG" : "CLIENT");
 		log_item_impl(xfer_log_level(sess), sess, &fl[up->cur->idx]);
 
 		send_up_reset(up);

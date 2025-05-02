@@ -1244,7 +1244,8 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	/*
 	 * A --log-file-format specified to the daemon overrides the module's
 	 * "log format", so we'll set logformat now so that
-	 * daemon_apply_xferlog() can actually detect that.
+	 * daemon_apply_xferlog() can actually detect that.  The logformat in
+	 * daemon_opts will not be used after this.
 	 */
 	client_opts->logformat = daemon_opts->logformat;
 	if (!daemon_apply_xferlog(sess, module, client_opts))
