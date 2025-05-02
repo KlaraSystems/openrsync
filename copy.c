@@ -438,9 +438,7 @@ backup_file(int fromdfd, const char *fname, int todfd, const char *tname,
 	 * Set metadata on the backup file to match the metadata
 	 * from the original destination file.
 	 */
-	if (st.st_atim.tv_sec != dstat->atime.tv_sec ||
-	    st.st_atim.tv_nsec != dstat->atime.tv_nsec ||
-	    st.st_mtim.tv_sec != dstat->mtime.tv_sec ||
+	if (st.st_mtim.tv_sec != dstat->mtime.tv_sec ||
 	    st.st_mtim.tv_nsec != dstat->mtime.tv_nsec) {
 		const struct timespec ts[] = {
 			dstat->atime, dstat->mtime,
@@ -589,8 +587,7 @@ move_file(int fromdfd, const char *fname, int todfd, const char *tname,
 				    fromst.st_gid);
 		}
 
-		if (fromst.st_atime != tost.st_atime ||
-		    fromst.st_mtime != tost.st_mtime) {
+		if (fromst.st_mtime != tost.st_mtime) {
 			struct timespec ts[] = {
 				fromst.st_atim, fromst.st_mtim
 			};
