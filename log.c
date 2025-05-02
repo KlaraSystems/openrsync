@@ -132,11 +132,16 @@ rsync_set_logfile(FILE *new_logfile, struct sess *sess)
 {
 	FILE *prev_logfile;
 
-	/* Only the server should supply a non-null sess argument,
+	/*
+	 * Only the server should supply a non-null sess argument,
 	 * which causes log_vwritef() to send log messages to
 	 * the client via the multiplexed return channel.
+	 *
+	 * If sess->opts is NULL, then we're in the daemon client handler before
+	 * we've figured out the client options and we can assume that things
+	 * will work out.
 	 */
-	if (sess != NULL) {
+	if (sess != NULL && sess->opts != NULL && !sess->opts->daemon) {
 		assert(new_logfile == stdout);
 		assert(sess->opts->server);
 		assert(sess->mplex_writes);

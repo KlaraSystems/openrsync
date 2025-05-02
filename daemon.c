@@ -1243,10 +1243,10 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 
 	/*
 	 * A --log-file-format specified to the daemon overrides the module's
-	 * "log format", so we'll set outformat now so that
+	 * "log format", so we'll set logformat now so that
 	 * daemon_apply_xferlog() can actually detect that.
 	 */
-	client_opts->outformat = daemon_opts->outformat;
+	client_opts->logformat = daemon_opts->logformat;
 	if (!daemon_apply_xferlog(sess, module, client_opts))
 		goto fail;
 
@@ -1377,6 +1377,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	memset(daemon_opts, 0, sizeof(*daemon_opts));
 	memset(&sess, 0, sizeof(sess));
 	sess.opts = daemon_opts;
+	daemon_opts->daemon = 1;
 	sess.role = (void *)&role;
 	sess.wbatch_fd = -1;
 
@@ -1419,8 +1420,8 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 			logfile = optarg;
 			break;
 		case OP_LOG_FILE_FORMAT:
-			daemon_opts->outformat = strdup(optarg);
-			if (daemon_opts->outformat == NULL)
+			daemon_opts->logformat = strdup(optarg);
+			if (daemon_opts->logformat == NULL)
 				err(ERR_IPC, "strdup");
 			break;
 		case OP_PORT:
