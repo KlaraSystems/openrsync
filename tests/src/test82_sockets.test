@@ -1,0 +1,26 @@
+#!/bin/sh
+
+# Test that --specials works on UNIX sockets
+
+set -e
+
+. ${tstdir-.}/lib.sh
+. ${tstdir-.}/conf.sh
+
+rm -rf src dst
+mkdir -p src dst
+
+mksock src/test.sock
+if [ ! -S src/test.sock ]; then
+	1>&2 echo "mksock did not create a UNIX socket"
+	1>&2 ls -l src/
+	exit 1
+fi
+
+rsync --specials -- src/test.sock dst/
+if [ ! -S dst/test.sock ]; then
+	1>&2 echo "newly created directory entry is not a socket"
+	1>&2 ls -l dst
+	exit 1
+fi
+

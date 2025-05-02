@@ -330,3 +330,9 @@ compare_trees ()
     IFS="$_IFS"
     rm -f "$tmpf"
 }
+
+mksock()
+{
+
+	command $tstdir/mksock "$@"
+}
