@@ -2244,6 +2244,19 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 
 			u->fl[u->idx].flstate |= FLIST_SUCCESS;
 
+			/*
+			 * The plataform may need to do its own things to this
+			 * entry, so we give it a chance here.  Failure to do so
+			 * isn't really fatal, but we'll still prevent deletions
+			 * to be safe.
+			 */
+			if (!platform_finish_transfer(sess, &u->fl[u->idx],
+			    u->rootfd, u->fl[u->idx].wpath)) {
+				ERRX1("%s: platform transfer finalization failed",
+				    u->fl[u->idx].path);
+				sess->total_errors++;
+			}
+
 			if (!protocol_itemize) {
 				/*
 				 * Non-transferred items are subject to

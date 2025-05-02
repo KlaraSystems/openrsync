@@ -151,13 +151,13 @@ platform_flist_modify(const struct sess *sess, struct fl *fl)
 		memcpy(packed, f, sizeof(*f));
 
 		packed->froot = NULL;
+		packed->st.mode = (packed->st.mode & ~S_IFMT) | S_IFREG;
 		packed->path = ppath;
 		packed->wpath = ppath + stripdir;
 		packed->link = NULL;
 		packed->open = apple_open_xattrs;
 		packed->sent = apple_flist_sent;
 		f->st.flags |= FLSTAT_PLATFORM_XATTR;
-
 hooksent:
 		f->sent = apple_flist_sent;
 	}
@@ -264,7 +264,7 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 {
 	char newname[PATH_MAX];
 	const char *base;
-	int error, ffd, tfd, serrno;
+	int error, ffd, tfd, tflags, serrno;
 
 	/*
 	 * We'll redo our base name calculation just to preserve the parts of
@@ -290,8 +290,23 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 		return 0;
 	}
 
-	tfd = openat(tofd, newname,
-	    O_WRONLY | (sess->opts->preserve_links ? O_NOFOLLOW : 0));
+	/*
+	 * We allow one retry here in the case that it turns out we're applying
+	 * extattrs to a directory.  It doesn't make any sense for the platform
+	 * independent bits of openrsync to plumb through some arbitrary flist
+	 * entry here, so we just adapt to what seems to be on disk.
+	 *
+	 * If we got an EISDIR and fail again, we're intentionally allowing the
+	 * second error to propagate through as it likely hasn't changed; we had
+	 * no real idea of what to expect type-wise..
+	 */
+	tflags = O_WRONLY | O_SYMLINK;
+	tfd = openat(tofd, newname, tflags);
+	if (tfd == -1 && errno == EISDIR) {
+		tflags = (tflags & ~O_WRONLY) | O_DIRECTORY;
+		tfd = openat(tofd, newname, tflags);
+	}
+
 	if (tfd == -1) {
 		ERR("%s: openat", newname);
 		close(ffd);
