@@ -171,7 +171,7 @@ platform_flist_received(struct sess *sess, struct flist *fl, size_t flsz)
 {
 	struct flist temp;
 
-	if (!sess->opts->extended_attributes)
+	if (!sess->opts->extended_attributes || flsz == 0)
 		return;
 
 	/*
