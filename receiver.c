@@ -83,7 +83,7 @@ rsync_set_metadata(struct sess *sess, int newfile,
 	struct stat      st;
 	bool		 pres_exec;
 
-	if (sess->opts->dry_run)
+	if (sess->opts->dry_run || (f->flstate & FLIST_SKIP_METADATA) != 0)
 		return 1;
 
 	pres_exec = !newfile && S_ISREG(f->st.mode) &&
@@ -174,7 +174,7 @@ rsync_set_metadata_at(struct sess *sess, int newfile, int rootfd,
 	struct stat      st;
 	bool		 pres_exec;
 
-	if (sess->opts->dry_run)
+	if (sess->opts->dry_run || (f->flstate & FLIST_SKIP_METADATA) != 0)
 		return 1;
 
 	pres_exec = !newfile && S_ISREG(f->st.mode) &&

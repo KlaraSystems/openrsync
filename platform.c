@@ -328,6 +328,12 @@ platform_move_file(const struct sess *sess, struct flist *fl,
 
 		base = basename((void *)toname);
 		if (strncmp(base, "._", 2) == 0) {
+			/*
+			 * The caller shouldn't do anything with the metadata
+			 * on this entry, if it hasn't touched it already.
+			 */
+			fl->flstate |= FLIST_SKIP_METADATA;
+
 			/* We won't move this, we'll just unpack it. */
 			return apple_merge_appledouble(sess, fl, fromfd, fname,
 			    tofd, toname);

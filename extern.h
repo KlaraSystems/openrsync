@@ -428,7 +428,7 @@ struct	flist {
 #define	FLIST_SUCCESS_ACKED	0x10	/* Sent success message */
 #define	FLIST_NEED_HLINK	0x20	/* Needs to be hardlinked */
 #define	FLIST_SKIPPED		0x40	/* File should be skipped */
-
+#define	FLIST_SKIP_METADATA	0x80	/* File metadata should be skipped */
 #define	FLIST_DONE_MASK		(FLIST_SUCCESS | FLIST_REDO | FLIST_FAILED)
 
 /*
