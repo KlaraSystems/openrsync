@@ -1298,16 +1298,20 @@ log_item(struct sess *sess, const struct flist *f)
 	 * generate logs, except if the outformat is being overridden
 	 * by using itemize that sets the outformat to include %i or %o.
 	 */
-	if (sess->opts->server && (sess->itemize ||
-	    (!sess->opts->outformat || !*sess->opts->outformat))) {
-		if (log_file == stdout || sess->opts->dry_run)
-			return 1;
+	if (sess->opts->server) {
+		if (sess->itemize ||
+		    (!sess->opts->outformat || !*sess->opts->outformat)) {
+			if (log_file == stdout || sess->opts->dry_run)
+				return 1;
 
-		if (!(sess->itemize && (sig || verbose > 1)))
-			return 1;
+			if (!(sess->itemize && (sig || verbose > 1)))
+				return 1;
 
-		type = LT_LOG;
-	} else if (!sess->opts->server) {
+			type = LT_LOG;
+		} else {
+			return 1;
+		}
+	} else {
 		bool filtered = true;
 
 		if (visible || local)
