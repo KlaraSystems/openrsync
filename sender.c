@@ -1242,6 +1242,10 @@ rsync_sender(struct sess *sess, int fdin,
 		    sess->role->role_fetch_outfmt_cookie;
 	}
 
+	if (sess->opts->server)
+		sender.client = fdout;
+	else
+		sender.client = -1;
 	sess->role = &sender;
 
 	memset(&up, 0, sizeof(struct send_up));

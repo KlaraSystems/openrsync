@@ -342,9 +342,9 @@ daemon_client_error(struct sess *sess, const char *fmt, ...)
 	if ((msgsz = vasprintf(&msg, fmt, ap)) != -1) {
 		switch (role->dstate) {
 		case DSTATE_INIT:
-			if (!io_write_buf(sess, role->client, "@ERROR ",
+			if (!io_write_buf(sess, role->role.client, "@ERROR ",
 			    sizeof("@ERROR ") - 1) ||
-			    !io_write_line(sess, role->client, msg)) {
+			    !io_write_line(sess, role->role.client, msg)) {
 				ERR("io_write");
 			}
 
@@ -363,11 +363,11 @@ daemon_client_error(struct sess *sess, const char *fmt, ...)
 
 			/* FALLTHROUGH */
 		case DSTATE_RUNNING:
-			if (!io_write_buf_tagged(sess, role->client, msg,
+			if (!io_write_buf_tagged(sess, role->role.client, msg,
 			    msgsz, IT_ERROR_XFER)) {
 				ERR("io_write");
-			} else if(!io_write_buf_tagged(sess, role->client, "\n",
-			    1, IT_ERROR_XFER)) {
+			} else if(!io_write_buf_tagged(sess, role->role.client,
+			    "\n", 1, IT_ERROR_XFER)) {
 				ERR("io_write");
 			}
 

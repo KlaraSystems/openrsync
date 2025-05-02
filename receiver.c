@@ -587,6 +587,10 @@ rsync_receiver(struct sess *sess, struct cleanup_ctx *cleanup_ctx,
 		    sess->role->role_fetch_outfmt_cookie;
 	}
 
+	if (sess->opts->server)
+		receiver.client = fdout;
+	else
+		receiver.client = -1;
 	sess->role = &receiver;
 
 	/*

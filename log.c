@@ -199,7 +199,12 @@ log_vwritef(enum log_type type, const char *fmt, va_list ap)
 		tag = (pri == LOG_ERR) ? IT_ERROR_XFER : IT_INFO;
 
 		if (log_sess->wbufp == NULL) {
-			io_write_buf_tagged(log_sess, fileno(log_file), msgbuf, n, tag);
+			int client = STDOUT_FILENO;
+
+			if (log_sess->role != NULL)
+				client = log_sess->role->client;
+
+			io_write_buf_tagged(log_sess, client, msgbuf, n, tag);
 		} else {
 			size_t *wbufszp = log_sess->wbufszp;
 			size_t pos = *log_sess->wbufszp;

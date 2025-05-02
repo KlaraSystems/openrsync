@@ -644,6 +644,7 @@ typedef const char *(role_fetch_outfmt_fn)(const struct sess *, void *, char);
  */
 struct	role {
 	int		 append;		/* Append mode active */
+	int		 client;		/* Socket for the client */
 
 	/* Propagated between successive roles */
 	role_fetch_outfmt_fn	*role_fetch_outfmt;	/* --out-format field */

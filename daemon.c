@@ -112,7 +112,7 @@ daemon_list_module(struct daemon_cfg *dcfg, const char *module, void *cookie)
 
 	sess = cookie;
 	role = (void *)sess->role;
-	fd = role->client;
+	fd = role->role.client;
 
 	if (cfg_param_bool(dcfg, module, "list", &list) != 0) {
 		ERRX("%s: 'list' is not valid", module);
@@ -170,7 +170,7 @@ daemon_finish_handshake(struct sess *sess)
 	}
 
 	/* Seed send-off completes the handshake. */
-	if (!io_write_int(sess, role->client, sess->seed)) {
+	if (!io_write_int(sess, role->role.client, sess->seed)) {
 		ERR("io_write_int");
 		return 0;
 	}
@@ -896,14 +896,14 @@ daemon_auth(struct sess *sess, const char *module, int *read_only)
 	daemon_auth_generate_challenge(sess, challenge, sizeof(challenge));
 	challenge[AUTH_CHALLENGE_LENGTH] = '\n';
 
-	if (!io_write_buf(sess, role->client, "@RSYNCD: AUTHREQD ",
+	if (!io_write_buf(sess, role->role.client, "@RSYNCD: AUTHREQD ",
 	    sizeof("@RSYNCD: AUTHREQD ") - 1)) {
 		fclose(secfp);
 		ERR("io_write_buf");
 		return 0;
 	}
 
-	if (!io_write_buf(sess, role->client, challenge, sizeof(challenge))) {
+	if (!io_write_buf(sess, role->role.client, challenge, sizeof(challenge))) {
 		fclose(secfp);
 		ERR("io_write_line");
 		return 0;
@@ -912,7 +912,7 @@ daemon_auth(struct sess *sess, const char *module, int *read_only)
 	challenge[AUTH_CHALLENGE_LENGTH] = '\0';
 
 	linesz = sizeof(response);
-	if (!io_read_line(sess, role->client, response, &linesz)) {
+	if (!io_read_line(sess, role->role.client, response, &linesz)) {
 		fclose(secfp);
 		daemon_client_error(sess, "%s: expected auth response",
 		    module);
@@ -1006,7 +1006,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 	role->dstate = DSTATE_INIT;
 	role->prexfer_pid = 0;
 	role->prexfer_pipe = -1;
-	role->client = fd;
+	role->role.client = fd;
 	assert(role->lockfd == -1);
 
 	motd_file = role->motd_file;
@@ -1382,7 +1382,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	sess.wbatch_fd = -1;
 
 	role.cfg_file = "/etc/rsyncd.conf";
-	role.client = -1;
+	role.role.client = -1;
 	role.lockfd = -1;
 	/* Log to syslog by default. */
 	logfile = NULL;
