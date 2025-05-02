@@ -174,20 +174,18 @@ log_vwritef(enum log_type type, const char *fmt, va_list ap)
 		break;
 	}
 
-	if (log_file == NULL) {
-		vsyslog(pri, fmt, ap);
-		return;
-	}
-
 	pri = LOG_PRI(pri);
 
-	if (log_sess != NULL) {
+	/*
+	 * We shouldn't route log messages to the client.  If write multiplexing
+	 * isn't turned on, we may not have a client yet (in the daemon).
+	 */
+	if (log_sess != NULL && type != LT_LOG && log_sess->mplex_writes) {
 		char msgbuf[BIGPATH_MAX];
 		int32_t tag;
 		int n;
 
 		assert(log_sess->opts->server);
-		assert(log_sess->mplex_writes);
 
 		n = vsnprintf(msgbuf, sizeof(msgbuf), fmt, ap);
 		if (n < 1)
@@ -218,20 +216,26 @@ log_vwritef(enum log_type type, const char *fmt, va_list ap)
 			io_buffer_buf(*wbufp, &pos, *wbufszp, msgbuf, n);
 		}
 
-		return;
+		if (type == LT_CLIENT)
+			return;
 	}
 
 	/*
 	 * If logging is configured, we'll send all non-client messages to it.
 	 */
-	if (log_file != stdout && type != LT_CLIENT)
-		vfprintf(log_file, fmt, ap);
+	if (type != LT_CLIENT) {
+		if (log_file == NULL) {
+			vsyslog(pri, fmt, ap);
+		} else if (log_file != stdout) {
+			vfprintf(log_file, fmt, ap);
+		}
+	}
 
 	/*
 	 * Log messages stop here, every other type will trickle through and get
 	 * routed to stderr/stdout as appropriate.
 	 */
-	if (type == LT_LOG)
+	if (type == LT_LOG || log_sess != NULL)
 		return;
 
 	switch (pri) {
@@ -1178,6 +1182,9 @@ log_format_init(struct sess *sess)
 		sess->logfile_itemize_i = (logflags & LOG_FORMAT_ITEMIZE) != 0;
 		sess->logfile_itemize_o = (logflags & LOG_FORMAT_OPERATION) != 0;
 	}
+
+	if (sess->opts->server || sess->opts->daemon)
+		sess->lateprint = 1;
 }
 
 
