@@ -1269,7 +1269,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 	unsigned char	 ourmd[MD4_DIGEST_LENGTH],
 			 md[MD4_DIGEST_LENGTH];
 	char             buf2[PATH_MAX];
-	char            *usethis;
+	char            *usethis = NULL;
 	enum protocol_token_result	tokres;
 	int		 dirlen;
 	struct dlrename  *renamer = NULL;
@@ -1793,12 +1793,6 @@ again:
 		}
 	}
 
-	/* Adjust our file metadata (uid, mode, etc.). */
-
-	if (!rsync_set_metadata(sess, p->ofd == -1, p->fd, f, p->fname)) {
-		ERRX1("rsync_set_metadata");
-		goto out;
-	}
 	/* 
 	 * Finally, rename the temporary to the real file, unless
 	 * --delay-updates is in effect, in which case it is going to
@@ -1930,6 +1924,28 @@ done:
 	 * or move it into a --partial-dir.
 	 */
 	download_cleanup(sess, p, (f->flstate & FLIST_REDO) != 0);
+
+	if ((f->flstate & FLIST_REDO) == 0) {
+		bool newfile;
+
+		if (usethis == NULL)
+			usethis = f->path;
+
+		/*
+		 * Adjust our file metadata (uid, mode, etc.) now that we've
+		 * closed the file.  The timing here is to avoid suboptimal
+		 * behavior in samba, at least, which will update the mtime on
+		 * last close even if we issued a futimens(2) after our last
+		 * write(2).
+		 */
+		newfile = (f->iflags & IFLAG_NEW) != 0;
+		if (!rsync_set_metadata_at(sess, newfile, p->rootfd, f,
+		    usethis)) {
+			ERRX1("rsync_set_metadata");
+			goto out;
+		}
+	}
+
 	return 1;
 out:
 	if (f != NULL)
