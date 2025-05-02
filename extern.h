@@ -363,6 +363,14 @@ struct	fldstat {
 	gid_t		 gid;	 /* group */
 };
 
+enum log_type {
+	LT_CLIENT,
+	LT_INFO,
+	LT_LOG,
+	LT_WARNING,
+	LT_ERROR,
+};
+
 enum name_basis {
 	BASIS_DIR_LOW = 0,
 	BASIS_DIR_HIGH = 0x7F,
@@ -702,6 +710,8 @@ struct	sess {
 	uint8_t		   itemize; /* %i + %I in --out-format */
 	uint8_t		   itemize_i; /* %i in --out-format */
 	uint8_t		   itemize_o; /* %o in --out-format */
+	uint8_t		   logfile_itemize_i; /* %i in --log-file-format */
+	uint8_t		   logfile_itemize_o; /* %o in --log-file-format */
 	uint8_t		   lateprint; /* Does output format contain a flag requiring late print? */
 	char             **filesfrom; /* Contents of files-from */
 	size_t             filesfrom_n; /* Number of lines for filesfrom */
@@ -1165,7 +1175,7 @@ void log_format_init(struct sess *sess);
 void our_strmode(mode_t mode, char *p);
 int print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
     struct sbuf *);
-int log_item_impl(struct sess *sess, const struct flist *f);
+int log_item_impl(enum log_type, struct sess *sess, const struct flist *f);
 int log_item(struct sess *sess, const struct flist *f);
 const char *iflags_decode(uint32_t iflags);
 

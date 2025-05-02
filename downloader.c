@@ -1369,19 +1369,7 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 		sess->total_write_lf = sess->total_write;
 
 		if ((f->iflags & IFLAG_TRANSFER) == 0) {
-			bool hlink = (f->iflags & IFLAG_HLINK_FOLLOWS) != 0;
-			bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
-
-			if (sig || hlink || sess->itemize || verbose > 1) {
-				bool local = (f->iflags & IFLAG_LOCAL_CHANGE) != 0;
-				bool dir = S_ISDIR(f->st.mode);
-
-				if (local || dir || hlink || sess->itemize)
-					log_item(sess, f);
-				else if (verbose > 1)
-					log_item_impl(sess, f);
-			}
-
+			log_item(sess, f);
 			return 1;
 		}
 

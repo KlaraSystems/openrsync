@@ -54,14 +54,6 @@
 
 extern int verbose;
 
-enum log_type {
-	LT_CLIENT,
-	LT_INFO,
-	LT_LOG,
-	LT_WARNING,
-	LT_ERROR,
-};
-
 #define	FACILITY(f)	{ #f, LOG_ ##f }
 const struct syslog_facility {
 	const char	*name;
@@ -1071,7 +1063,8 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 }
 
 static int
-log_format(struct sess *sess, const char *format, const struct flist *fl)
+log_format_type(enum log_type type, struct sess *sess, const char *format,
+    const struct flist *fl)
 {
 	const bool do_print = (fl != NULL);
 	size_t len;
@@ -1138,7 +1131,7 @@ out:
 			return 0;
 		}
 
-		log_writef(LT_INFO, "%s", sbuf_data(sbuf));
+		log_writef(type, "%s", sbuf_data(sbuf));
 		sbuf_delete(sbuf);
 	} else {
 		assert(sbuf == NULL);
@@ -1147,25 +1140,38 @@ out:
 	return rval | LOG_FORMAT_SUCCESS;
 }
 
+static int
+log_format(struct sess *sess, const char *format, const struct flist *fl)
+{
+	return log_format_type(LT_INFO, sess, format, fl);
+}
+
 void
 log_format_init(struct sess *sess)
 {
 	int flags = log_format(sess, sess->opts->outformat, NULL);
-	bool itemize_I;
+	int logflags = log_format(sess, sess->opts->logformat, NULL);
 
-	if ((flags & LOG_FORMAT_SUCCESS) == 0)
-		return;
+	if ((flags & LOG_FORMAT_SUCCESS) != 0) {
+		bool itemize_I;
 
-	sess->itemize_i = (flags & LOG_FORMAT_ITEMIZE) != 0;
-	sess->itemize_o = (flags & LOG_FORMAT_OPERATION) != 0;
-	sess->lateprint = (flags & LOG_FORMAT_LATEPRINT) != 0;
+		sess->itemize_i = (flags & LOG_FORMAT_ITEMIZE) != 0;
 
-	itemize_I = (flags & LOG_FORMAT_ITEMIZE_I) != 0;
+		sess->itemize_o = (flags & LOG_FORMAT_OPERATION) != 0;
+		sess->lateprint = (flags & LOG_FORMAT_LATEPRINT) != 0;
 
-	sess->itemize = sess->itemize_i + itemize_I;
-	if (sess->itemize == 1) {
-		if (sess->opts->itemize > 1 || verbose > 1)
-			sess->itemize++;
+		itemize_I = (flags & LOG_FORMAT_ITEMIZE_I) != 0;
+
+		sess->itemize = sess->itemize_i + itemize_I;
+		if (sess->itemize == 1) {
+			if (sess->opts->itemize > 1 || verbose > 1)
+				sess->itemize++;
+		}
+	}
+
+	if ((logflags & LOG_FORMAT_SUCCESS) != 0) {
+		sess->logfile_itemize_i = (logflags & LOG_FORMAT_ITEMIZE) != 0;
+		sess->logfile_itemize_o = (logflags & LOG_FORMAT_OPERATION) != 0;
 	}
 }
 
@@ -1205,20 +1211,36 @@ rsync_humanize(struct sess *sess, char *buf, size_t len, int64_t val)
 	return 0;
 }
 
-int
-log_item_impl(struct sess *sess, const struct flist *f)
+static int
+log_item_formatted(enum log_type type, struct sess *sess, const struct flist *f)
 {
 	const char *outformat = sess->opts->outformat;
+	const char *logformat = sess->opts->logformat;
+	int ok = 1;
+
+	if (outformat == NULL)
+		outformat = "%n";
+	if (type != LT_LOG && !log_format_type(LT_CLIENT, sess, outformat, f))
+		ok = 0;
+	if (type != LT_CLIENT && logformat != NULL &&
+	    !log_format_type(LT_LOG, sess, logformat, f))
+		ok = 0;
+	return ok;
+}
+
+int
+log_item_impl(enum log_type type, struct sess *sess, const struct flist *f)
+{
 
 	if (sess->itemize) {
 		if (sess->protocol >= 29)
-			return log_format(sess, outformat, f);
+			return log_item_formatted(type, sess, f);
 
 		if (sess->lreceiver && (f->iflags != 0 || verbose > 1)) {
 			if (sess->opts->server)
-				outformat = "%i %n%L";
+				return log_format_type(type, sess, "%i %n%L", f);
 
-			return log_format(sess, outformat, f);
+			return log_item_formatted(type, sess, f);
 		}
 	}
 
@@ -1232,22 +1254,22 @@ log_item_impl(struct sess *sess, const struct flist *f)
 	if (sess->itemize) {
 		if (f->iflags != 0) {
 			if (S_ISREG(f->st.mode))
-				return log_format(sess, "%i %n", f);
+				return log_format_type(type, sess, "%i %n", f);
 
 			if (verbose > 1 ||
 			    (verbose > 0 && !S_ISLNK(f->st.mode)))
-				return log_format(sess, "%n", f);
+				return log_format_type(type, sess, "%n", f);
 		}
 
 		return 1;
 	}
 
-	if (outformat)
-		return log_format(sess, outformat, f);
+	if (sess->opts->outformat != NULL || sess->opts->logformat != NULL)
+		return log_item_formatted(type, sess, f);
 
 	if (verbose > 1 || (verbose > 0 && f->iflags != 0) ||
 	    sess->opts->progress)
-		return log_format(sess, "%n%L", f);
+		return log_format_type(type, sess, "%n%L", f);
 
 	return 1;
 }
@@ -1255,6 +1277,21 @@ log_item_impl(struct sess *sess, const struct flist *f)
 int
 log_item(struct sess *sess, const struct flist *f)
 {
+	bool visible = false;
+	bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
+	bool local = (f->iflags & IFLAG_LOCAL_CHANGE) != 0 && sig;
+	bool link = (f->iflags & IFLAG_HLINK_FOLLOWS) != 0;
+	enum log_type type = (sess->opts->server ? LT_LOG : LT_INFO);
+
+	if (sess->itemize) {
+		/*
+		 * We capture more with %I present, but we'll also expand our
+		 * horizons if we have a highly-verbose %i.
+		 */
+		visible = sig || sess->itemize > 1 || link ||
+		    (verbose > 1 && sess->itemize_i);
+	}
+
 	/*
 	 * We don't generally log if we are the server, but there are
 	 * exceptions.  If a custom outformat is set, then we should
@@ -1263,16 +1300,38 @@ log_item(struct sess *sess, const struct flist *f)
 	 */
 	if (sess->opts->server && (sess->itemize ||
 	    (!sess->opts->outformat || !*sess->opts->outformat))) {
-		bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
-
 		if (log_file == stdout || sess->opts->dry_run)
 			return 1;
 
 		if (!(sess->itemize && (sig || verbose > 1)))
 			return 1;
+
+		type = LT_LOG;
+	} else if (!sess->opts->server) {
+		bool filtered = true;
+
+		if (visible || local)
+			filtered = false;
+		if (S_ISDIR(f->st.mode) && sig)
+			filtered = false;
+		if (link)
+			filtered = false;
+
+		/*
+		 * This is technically wrong and should be fixed.  Some filtered
+		 * subset will go to both the client and the log, while the more
+		 * complete set may go to just the client.  For now, we send the
+		 * filtered subset to both and only restrict insignificant stuff
+		 * to client-only when -i hasn't been request in the log file.
+		 */
+		if (filtered) {
+			type = LT_INFO;
+		} else if (!sess->logfile_itemize_i && !sig) {
+			type = LT_CLIENT;
+		}
 	}
 
-	return log_item_impl(sess, f);
+	return log_item_impl(type, sess, f);
 }
 
 const char *

@@ -2245,7 +2245,7 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 			u->fl[u->idx].flstate |= FLIST_SUCCESS;
 
 			if (!protocol_itemize) {
-				log_item_impl(sess, &u->fl[u->idx]);
+				log_item(sess, &u->fl[u->idx]);
 				continue;
 			}
 

@@ -1788,21 +1788,12 @@ rsync_sender(struct sess *sess, int fdin,
 			f = &fl.flp[up.cur->idx];
 
 			if ((f->iflags & IFLAG_TRANSFER) == 0) {
-				bool hlink = (f->iflags & IFLAG_HLINK_FOLLOWS) != 0;
-				bool sig = (f->iflags & SIGNIFICANT_IFLAGS) != 0;
 				size_t pos = wbufsz;
 
 				send_iflags(sess, &wbuf, &wbufsz,
 					&wbufmax, &pos, fl.flp, up.cur->idx);
 
-				if (sig || hlink || sess->itemize) {
-					bool local = (f->iflags & IFLAG_LOCAL_CHANGE) != 0;
-					bool dir = S_ISDIR(f->st.mode);
-
-					if (local || dir || hlink || sess->itemize)
-						log_item(sess, f);
-				}
-
+				log_item(sess, f);
 				send_up_reset(&up);
 				pfd[1].fd = fdout;
 				continue;

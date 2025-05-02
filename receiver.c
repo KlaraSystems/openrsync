@@ -535,7 +535,7 @@ make_hardlinks(struct sess *sess, const struct flist *fl, size_t flsz,
 		}
 
 		if (!protocol_itemize)
-			log_item_impl(sess, f);
+			log_item(sess, f);
 	}
 
 	return 0;
