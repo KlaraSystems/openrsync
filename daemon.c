@@ -57,6 +57,7 @@
 #endif
 
 #define	_PATH_RSYNCD_CONF	_PATH_ETC "/rsyncd.conf"
+#define	RSYNCD_DEFAULT_CFG	_PATH_RSYNCD_CONF
 
 extern struct cleanup_ctx	*cleanup_ctx;
 
@@ -982,6 +983,16 @@ daemon_extract_addr(struct sess *sess, struct sockaddr_storage *saddr,
 	return 1;
 }
 
+static struct daemon_cfg *
+daemon_cfg_parse(struct sess *sess, int module)
+{
+	struct daemon_role *role;
+
+	role = (void *)sess->role;
+	if (role->cfg_file == NULL)
+		return (cfg_parse(sess, RSYNCD_DEFAULT_CFG, module));
+	return (cfg_parse(sess, role->cfg_file, module));
+}
 
 static int
 rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
@@ -1034,7 +1045,7 @@ rsync_daemon_handler(struct sess *sess, int fd, struct sockaddr_storage *saddr,
 		return ERR_IPC;
 	}
 
-	role->dcfg = cfg_parse(sess, role->cfg_file, 1);
+	role->dcfg = daemon_cfg_parse(sess, 1);
 	if (role->dcfg == NULL)
 		return ERR_IPC;
 
@@ -1382,7 +1393,6 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 	sess.role = (void *)&role;
 	sess.wbatch_fd = -1;
 
-	role.cfg_file = "/etc/rsyncd.conf";
 	role.role.client = -1;
 	role.lockfd = -1;
 	/* Log to syslog by default. */
@@ -1472,7 +1482,7 @@ rsync_daemon(int argc, char *argv[], struct opts *daemon_opts)
 		err(ERR_IPC, "daemon");
 #pragma clang diagnostic pop
 
-	role.dcfg = cfg_parse(&sess, role.cfg_file, 0);
+	role.dcfg = daemon_cfg_parse(&sess, 0);
 	if (role.dcfg == NULL)
 		return ERR_IPC;
 
