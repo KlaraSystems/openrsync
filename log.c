@@ -54,6 +54,14 @@
 
 extern int verbose;
 
+enum log_type {
+	LT_CLIENT,
+	LT_INFO,
+	LT_LOG,
+	LT_WARNING,
+	LT_ERROR,
+};
+
 #define	FACILITY(f)	{ #f, LOG_ ##f }
 const struct syslog_facility {
 	const char	*name;
@@ -150,16 +158,31 @@ rsync_set_logfile(FILE *new_logfile, struct sess *sess)
 }
 
 static void __printflike(2, 0)
-log_vwritef(int priority, const char *fmt, va_list ap)
+log_vwritef(enum log_type type, const char *fmt, va_list ap)
 {
 	int pri;
 
+	switch (type) {
+	case LT_WARNING:
+		pri = LOG_WARNING;
+		break;
+	case LT_ERROR:
+		pri = LOG_ERR;
+		break;
+	case LT_CLIENT:
+	case LT_INFO:
+	case LT_LOG:
+	default:
+		pri = LOG_INFO;
+		break;
+	}
+
 	if (log_file == NULL) {
-		vsyslog(priority, fmt, ap);
+		vsyslog(pri, fmt, ap);
 		return;
 	}
 
-	pri = LOG_PRI(priority);
+	pri = LOG_PRI(pri);
 
 	if (log_sess != NULL) {
 		char msgbuf[BIGPATH_MAX];
@@ -210,25 +233,25 @@ log_vwritef(int priority, const char *fmt, va_list ap)
 }
 
 static void __printflike(2, 3)
-log_writef(int priority, const char *fmt, ...)
+log_writef(enum log_type type, const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	log_vwritef(priority, fmt, ap);
+	log_vwritef(type, fmt, ap);
 	va_end(ap);
 }
 
 void
 rsync_log_tag(enum iotag tag, const char *fmt, ...)
 {
-	int priority;
+	enum log_type type;
 	va_list ap;
 
-	priority = (tag == IT_ERROR_XFER) ? LOG_WARNING : LOG_INFO;
+	type = (tag == IT_ERROR_XFER) ? LT_WARNING : LT_INFO;
 
 	va_start(ap, fmt);
-	log_vwritef(priority, fmt, ap);
+	log_vwritef(type, fmt, ap);
 	va_end(ap);
 }
 
@@ -256,9 +279,9 @@ rsync_log(int level, const char *fmt, ...)
 	}
 
 	if (level <= 0 && buf != NULL)
-		log_writef(LOG_INFO, "%s\n", buf);
+		log_writef(LT_INFO, "%s\n", buf);
 	else if (level > 0)
-		log_writef(LOG_INFO, "%s(%d): %s%s\n", getprogname(),
+		log_writef(LT_INFO, "%s(%d): %s%s\n", getprogname(),
 		    getpid(), (buf != NULL) ? ": " : "",
 		    (buf != NULL) ? buf : "");
 	free(buf);
@@ -283,7 +306,7 @@ rsync_errx(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_ERR, "%s(%d): error%s%s\n", getprogname(),
+	log_writef(LT_ERROR, "%s(%d): error%s%s\n", getprogname(),
 	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
@@ -309,7 +332,7 @@ rsync_err(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_ERR, "%s(%d): error%s%s: %s\n", getprogname(),
+	log_writef(LT_ERROR, "%s(%d): error%s%s: %s\n", getprogname(),
 	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "", strerror(er));
 	free(buf);
@@ -337,7 +360,7 @@ rsync_errx1(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_ERR, "%s(%d): error%s%s\n", getprogname(),
+	log_writef(LT_ERROR, "%s(%d): error%s%s\n", getprogname(),
 	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
@@ -364,7 +387,7 @@ rsync_warnx1(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_WARNING, "%s(%d): warning%s%s\n", getprogname(),
+	log_writef(LT_WARNING, "%s(%d): warning%s%s\n", getprogname(),
 	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
@@ -388,7 +411,7 @@ rsync_warnx(const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_WARNING, "%s(%d): warning%s%s\n", getprogname(),
+	log_writef(LT_WARNING, "%s(%d): warning%s%s\n", getprogname(),
 	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "");
 	free(buf);
@@ -417,7 +440,7 @@ rsync_warn(int level, const char *fmt, ...)
 		va_end(ap);
 	}
 
-	log_writef(LOG_WARNING, "%s(%d): warning%s%s: %s\n", getprogname(),
+	log_writef(LT_WARNING, "%s(%d): warning%s%s: %s\n", getprogname(),
 	   getpid(), (buf != NULL) ? ": " : "",
 	   (buf != NULL) ? buf : "", strerror(er));
 	free(buf);
@@ -529,7 +552,7 @@ print_7_or_8_bit(const struct sess *sess, const char *fmt, const char *s,
 	if (sbuf != NULL)
 		sbuf_printf(sbuf, fmt, sbuf_data(innerbuf));
 	else
-		log_writef(LOG_INFO, fmt, sbuf_data(innerbuf));
+		log_writef(LT_INFO, fmt, sbuf_data(innerbuf));
 	sbuf_delete(innerbuf);
 
 	return 1;
@@ -1099,7 +1122,7 @@ out:
 			return 0;
 		}
 
-		log_writef(LOG_INFO, "%s", sbuf_data(sbuf));
+		log_writef(LT_INFO, "%s", sbuf_data(sbuf));
 		sbuf_delete(sbuf);
 	} else {
 		assert(sbuf == NULL);
