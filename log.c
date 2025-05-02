@@ -1242,16 +1242,7 @@ log_item_impl(enum log_type type, struct sess *sess, const struct flist *f)
 
 			return log_item_formatted(type, sess, f);
 		}
-	}
 
-	if (verbose > 1 && f->iflags == 0) {
-		if (S_ISDIR(f->st.mode))
-			return 1;
-
-		return print_7_or_8_bit(sess, "%s is uptodate\n", f->wpath, NULL);
-	}
-
-	if (sess->itemize) {
 		if (f->iflags != 0) {
 			if (S_ISREG(f->st.mode))
 				return log_format_type(type, sess, "%i %n", f);
@@ -1282,6 +1273,14 @@ log_item(struct sess *sess, const struct flist *f)
 	bool local = (f->iflags & IFLAG_LOCAL_CHANGE) != 0 && sig;
 	bool link = (f->iflags & IFLAG_HLINK_FOLLOWS) != 0;
 	enum log_type type = (sess->opts->server ? LT_LOG : LT_INFO);
+
+	if (!sess->itemize && verbose > 1 && f->iflags == 0 &&
+	    sess->mode == FARGS_RECEIVER) {
+		if (S_ISDIR(f->st.mode))
+			return 1;
+
+		return print_7_or_8_bit(sess, "%s is uptodate\n", f->wpath, NULL);
+	}
 
 	if (sess->itemize) {
 		/*
