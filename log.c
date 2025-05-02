@@ -154,27 +154,29 @@ rsync_set_logfile(FILE *new_logfile, struct sess *sess)
 	rsync_logfile_changed(prev_logfile, new_logfile);
 }
 
+static int
+log_priority(enum log_type type)
+{
+
+	switch (type) {
+	case LT_WARNING:
+		return LOG_WARNING;
+	case LT_ERROR:
+		return LOG_ERR;
+	case LT_CLIENT:
+	case LT_INFO:
+	case LT_LOG:
+	default:
+		return LOG_INFO;
+	}
+}
+
 static void __printflike(2, 0)
 log_vwritef(enum log_type type, const char *fmt, va_list ap)
 {
 	int pri;
 
-	switch (type) {
-	case LT_WARNING:
-		pri = LOG_WARNING;
-		break;
-	case LT_ERROR:
-		pri = LOG_ERR;
-		break;
-	case LT_CLIENT:
-	case LT_INFO:
-	case LT_LOG:
-	default:
-		pri = LOG_INFO;
-		break;
-	}
-
-	pri = LOG_PRI(pri);
+	pri = log_priority(type);
 
 	/*
 	 * We shouldn't route log messages to the client.  If write multiplexing
@@ -1301,7 +1303,7 @@ log_item(struct sess *sess, const struct flist *f)
 		 * subset will go to both the client and the log, while the more
 		 * complete set may go to just the client.  For now, we send the
 		 * filtered subset to both and only restrict insignificant stuff
-		 * to client-only when -i hasn't been request in the log file.
+		 * to client-only when -i hasn't been requested in the log file.
 		 */
 		if (filtered) {
 			return 1;
