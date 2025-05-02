@@ -31,3 +31,32 @@ if [ ! -S dst/test.sock ]; then
 	1>&2 ls -l dst
 	exit 1
 fi
+
+rm -rf dst
+
+touch src/sorts_early
+touch src/ultra_late
+
+# Now, we'll create a long name so that bind(2) should fail, and make sure it
+# does not interrupt the transfer completely.
+longname="dst_$(jot -b 'A' -ns '' 128)"
+rm -rf "$longname"
+mkdir -p "$longname"
+
+# We're expecting a partial transfer here, so temporarily allow it to fail.
+set +e
+rsync --specials -r -- src/ "$longname"
+rc=$?
+set -e
+
+if [ "$rc" -eq 0 ]; then
+	1>&2 echo "This rsync invocation should have failed to create a socket."
+	1>&2 ls -l "$longname"
+	exit 1
+fi
+
+if [ ! -f src/sorts_early ] || [ ! -f src/ultra_late ]; then
+	1>&2 echo "Missing other files that should have transferred."
+	1>&2 ls -l "$longname"
+	exit 1
+fi

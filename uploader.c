@@ -301,8 +301,7 @@ pre_symlink(struct upload *p, struct sess *sess)
 			    unlinkat(p->rootfd, f->path,
 				     S_ISDIR(st.st_mode) ? AT_REMOVEDIR : 0) == -1) {
 				ERR("%s: unlinkat", f->path);
-				f->flstate |= FLIST_FAILED;
-				return 0;
+				return -1;
 			}
 		}
 		rc = -1;
@@ -377,9 +376,8 @@ pre_symlink(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
-			f->flstate |= FLIST_FAILED;
 			free(temp);
-			return 0;
+			return -1;
 		}
 		free(temp);
 	}
@@ -437,8 +435,7 @@ pre_dev(struct upload *p, struct sess *sess)
 			if (S_ISDIR(st.st_mode) &&
 			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
 				ERR("%s: unlinkat", f->path);
-				f->flstate |= FLIST_FAILED;
-				return 0;
+				return -1;
 			}
 		}
 		rc = -1;
@@ -498,9 +495,8 @@ pre_dev(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
-			f->flstate |= FLIST_FAILED;
 			free(temp);
-			return 0;
+			return -1;
 		}
 		free(temp);
 	}
@@ -557,8 +553,7 @@ pre_fifo(struct upload *p, struct sess *sess)
 			if (S_ISDIR(st.st_mode) &&
 			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
 				ERR("%s: unlinkat", f->path);
-				f->flstate |= FLIST_FAILED;
-				return 0;
+				return -1;
 			}
 		}
 		rc = -1;
@@ -607,9 +602,8 @@ pre_fifo(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
-			f->flstate |= FLIST_FAILED;
 			free(temp);
-			return 0;
+			return -1;
 		}
 		free(temp);
 	}
@@ -663,8 +657,7 @@ pre_sock(struct upload *p, struct sess *sess)
 			if (S_ISDIR(st.st_mode) &&
 			    unlinkat(p->rootfd, f->path, AT_REMOVEDIR) == -1) {
 				ERR("%s: unlinkat", f->path);
-				f->flstate |= FLIST_FAILED;
-				return 0;
+				return -1;
 			}
 		}
 		rc = -1;
@@ -711,9 +704,8 @@ pre_sock(struct upload *p, struct sess *sess)
 		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
-			f->flstate |= FLIST_FAILED;
 			free(temp);
-			return 0;
+			return -1;
 		}
 		free(temp);
 	}
@@ -1703,8 +1695,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		if (do_unlink && !dry_run &&
 		    unlinkat(p->rootfd, f->path, uflags) == -1) {
 			ERR("%s: unlinkat", f->path);
-			f->flstate |= FLIST_FAILED;
-			return 0;
+			return -1;
 		}
 
 		/*
@@ -1748,8 +1739,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 		    !rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {
 			if (errno != EACCES && errno != EPERM) {
 				ERRX1("rsync_set_metadata");
-				f->flstate |= FLIST_FAILED;
-				return 0;
+				return -1;
 			}
 
 			/* Before unlinking the file check to see if it can
@@ -1762,8 +1752,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 				sess->total_errors++;
 			if (unlinkat(p->rootfd, f->path, 0) == -1) {
 				ERR("%s: unlinkat", f->path);
-				f->flstate |= FLIST_FAILED;
-				return 0;
+				return -1;
 			}
 
 			f->iflags |= IFLAG_NEW | IFLAG_TRANSFER;
@@ -1832,8 +1821,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 				close(pdfd);
 			if (!dry_run && unlinkat(p->rootfd, download_partial_filepath(f), 0) == -1) {
 				ERR("%s: unlinkat", download_partial_filepath(f));
-				f->flstate |= FLIST_FAILED;
-				return 0;
+				return -1;
 			}
 
 			return dry_full ? 0 : 1;
@@ -1857,8 +1845,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 			sess->total_errors++;
 			if (!dry_run && unlinkat(p->rootfd, f->path, 0) == -1) {
 				ERR("%s: unlinkat", f->path);
-				f->flstate |= FLIST_FAILED;
-				return 0;
+				return -1;
 			}
 
 			return 1;
@@ -2247,14 +2234,12 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 			else
 				c = 0;
 
-			if (c < 0)
-				return -1;
-			else if (c > 0)
-				break;
-
-			if ((u->fl[u->idx].flstate & FLIST_FAILED) != 0) {
+			if (c < 0) {
+				u->fl[u->idx].flstate |= FLIST_FAILED;
 				sess->total_errors++;
 				continue;
+			} else if (c > 0) {
+				break;
 			}
 
 			u->fl[u->idx].flstate |= FLIST_SUCCESS;
