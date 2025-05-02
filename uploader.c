@@ -943,6 +943,58 @@ keep_dirlinks_applies(const struct stat *st, const struct flist *f,
 }
 
 /*
+ * Fix the mode of the file/directory in place for the flist entry.  This deals
+ * with upgrading permissions just enough to allow us to progress.
+ */
+static int
+uploader_fix_mode(struct upload *p, struct sess *sess, struct flist *f,
+    struct stat *st)
+{
+	int want_mode;
+	int rc;
+	bool fixing_dir = S_ISDIR(f->st.mode);
+
+	/*
+	 * For the uploader, our primary focus is upgrading the mode only as
+	 * much as we need to.  For directories with --perms, we'll just upgrade
+	 * them all the way and include our upgrade so that we can write into
+	 * it; they'll be downgraded to the final mode after we're done inside.
+	 *
+	 * For files with or without --perms, we're likely looking at the
+	 * original file or a backup file rather than the final file and should
+	 * only go as far as to make them readable to be minimally invasive to
+	 * the file that's about to get replaced.  This also gives us a better
+	 * chance of not breaking if the ownership of the file isn't quite
+	 * ideal.
+	 */
+	if (f->st.mode == 0 || !fixing_dir || !sess->opts->preserve_perms)
+		want_mode = st->st_mode;
+	else
+		want_mode = f->st.mode;
+	if (geteuid() != 0) {
+		/*
+		 * For directories, we want to make sure we're writable at
+		 * least.  For files, we're expecting to open these r/o and
+		 * thus need at least u+r.
+		 */
+		if (fixing_dir)
+			want_mode |= S_IWUSR;
+		else
+			want_mode |= S_IRUSR;
+	}
+
+	rc = 0;
+	if (st->st_mode != want_mode) {
+		rc = fchmodat(p->rootfd, f->path, want_mode,
+		    AT_SYMLINK_NOFOLLOW);
+		if (rc != 0)
+			ERRX("%s: unable to escalate mode", f->path);
+	}
+
+	return rc;
+}
+
+/*
  * If not found, create the destination directory in prefix order.
  * Create directories using the existing umask.
  * Return <0 on failure 0 on success.
@@ -1000,8 +1052,6 @@ pre_dir(struct upload *p, struct sess *sess)
 			}
 		}
 	} else if (rc != -1) {
-		int want_mode;
-
 		if ((f->iflags & IFLAG_NEW) == 0) {
 			LOG3("%s: updating directory", f->path);
 
@@ -1023,23 +1073,13 @@ pre_dir(struct upload *p, struct sess *sess)
 		 * creating way too wide of a permission window if, e.g., it
 		 * shouldn't have any 'other' bits.
 		 */
-		if (f->st.mode == 0 || !sess->opts->preserve_perms)
-			want_mode = st.st_mode;
-		else
-			want_mode = f->st.mode;
-		if ((want_mode & S_IWUSR) == 0 && geteuid() != 0)
-			want_mode |= S_IWUSR;
-		if (st.st_mode != want_mode) {
-			rc = fchmodat(p->rootfd, f->path, want_mode, 0);
-			if (rc != 0)
-				ERRX("%s: unable to escalate dir mode", f->path);
-		}
+		rc = uploader_fix_mode(p, sess, f, &st);
 
 		if (sess->opts->del == DMODE_DURING || sess->opts->del == DMODE_DELAY) {
 			pre_dir_delete(p, sess, sess->opts->del);
 		}
 
-		return 0;
+		return rc;
 	}
 
 	f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
@@ -1716,6 +1756,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 	if (rc >= 0 && rc < 3) {
 		bool fix_metadata = (rc != 0 || !sess->opts->ign_non_exist) &&
 		    !dry_run;
+		bool failed;
 
 		/*
 		 * If the file is a hardlink to another file (or will become
@@ -1732,11 +1773,18 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 				fix_metadata = false;
 		}
 
-		if (fix_metadata)
-			dstat_save(&st, &f->dstat);
+		if (!fix_metadata)
+			goto fixed;
 
-		if (fix_metadata &&
-		    !rsync_set_metadata_at(sess, 0, p->rootfd, f, f->path)) {
+		dstat_save(&st, &f->dstat);
+		if (rc == 0) {
+			failed = !rsync_set_metadata_at(sess, 0, p->rootfd, f,
+			    f->path);
+		} else {
+			failed = uploader_fix_mode(p, sess, f, &st) != 0;
+		}
+
+		if (failed) {
 			if (errno != EACCES && errno != EPERM) {
 				ERRX1("rsync_set_metadata");
 				return -1;
@@ -1759,6 +1807,7 @@ pre_file(struct upload *p, int *filefd, off_t *size,
 			rc = 3;
 		}
 
+fixed:
 		if (rc == 0) {
 			LOG3("%s: skipping: up to date", f->path);
 			return 0;
