@@ -142,6 +142,12 @@ platform_flist_modify(const struct sess *sess, struct fl *fl)
 		}
 
 		packed = fl_new(fl);
+
+		/*
+		 * f must be reloaded as fl_new() may have had to realloc the
+		 * flist in order to make room.
+		 */
+		f = &fl->flp[i];
 		memcpy(packed, f, sizeof(*f));
 
 		packed->froot = NULL;
