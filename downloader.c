@@ -1428,21 +1428,49 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 			ERR("%s: rsync_downloader: openat", path);
 			goto out;
 		} else if (p->ofd != -1) {
-			*ofd = p->ofd;
-			if (sess->opts->no_cache) {
-#if defined(F_NOCACHE)
-				fcntl(p->ofd, F_NOCACHE);
-#elif defined(O_DIRECT)
-				int getfl;
+			struct stat sb;
 
-				if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
-					warn("fcntl failed");
-				} else {
-					fcntl(p->ofd, F_SETFL, getfl | O_DIRECT);
-				}
-#endif
+			/*
+			 * We need to double-check that the existing entry is
+			 * actually a file, because it could be a symlink to a
+			 * directory or some other non-file if we're racing
+			 * something else.  We're not too concerned about the
+			 * file having been replaced completely after the
+			 * uploader sent block information, as we'll just
+			 * assemble a likely incorrect file and fail the
+			 * checksum at the end to trigger a redo.
+			 */
+			if (fstat(p->ofd, &sb) == -1 ) {
+				ERR("%s: fstat", f->path);
+				close(p->ofd);
+				p->ofd = -1;
+				goto out;
 			}
-			return 1;
+
+			if (!S_ISREG(sb.st_mode)) {
+				close(p->ofd);
+				p->ofd = -1;
+			} else {
+				*ofd = p->ofd;
+				if (sess->opts->no_cache) {
+#if defined(F_NOCACHE)
+					if (fcntl(p->ofd, F_NOCACHE) == -1) {
+						warn("Failed to set --no-cache");
+					}
+#elif defined(O_DIRECT)
+					int getfl;
+
+					if ((getfl = fcntl(p->ofd, F_GETFL)) < 0) {
+						warn("fcntl(F_GETFL) failed");
+					} else if (fcntl(p->ofd, F_SETFL,
+					    getfl | O_DIRECT) < 0) {
+						warn("Failed to set --no-cache");
+					}
+#endif
+				}
+
+				return 1;
+			}
 		}
 
 		/* Fall-through: there's no file. */
