@@ -597,7 +597,7 @@ printf_doformat(const char *fmt, int *rval, struct sess *sess,
 	fmt++;
 
 	switch (convch) {
-	case 'a':	/* Server address (daemon) */
+	case 'a':	/* Remote address (daemon) */
 	case 'h': {	/* Remote host (daemon) */
 		if (!sess->opts->daemon)
 			break;	/* Nop in non-daemon mode. */
