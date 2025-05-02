@@ -549,7 +549,6 @@ struct	opts {
 	int		 preserve_executability;	/* --executability */
 	int		 modwin;		/* --modify-windows=sec */
 	int		 fuzzy_basis;		/* -y */
-	int		 quiet;			/* -q, --quiet */
 	long		 max_delete;		/* --max-delete */
 #ifdef __APPLE__
 	int		 extended_attributes;	/* --extended-attributes */
@@ -776,6 +775,7 @@ struct hardlinks;
 
 extern const char rsync_shopts[];
 extern const struct option rsync_lopts[];
+extern int quiet;
 extern int verbose;
 
 #define	TMPDIR_FD	(sess->opts->temp_dir && p->tempfd != -1 ? p->tempfd : p->rootfd)

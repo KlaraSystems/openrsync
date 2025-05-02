@@ -47,6 +47,7 @@
 
 extern struct cleanup_ctx *cleanup_ctx;
 
+int quiet;
 int verbose;
 int poll_contimeout;
 int poll_timeout;
@@ -1329,7 +1330,7 @@ rsync_getopt(int argc, char *argv[], rsync_option_filter *filter,
 			opts.preserve_perms = 1;
 			break;
 		case 'q':
-			opts.quiet++;
+			quiet++;
 			break;
 		case 'r':
 			implied_recursive = 0;
@@ -1742,7 +1743,7 @@ basedir:
 		lidx = -1;
 	}
 
-	if (opts.quiet > 0)
+	if (quiet > 0)
 		verbose = 0;
 
 	/* Shouldn't be possible. */

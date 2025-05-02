@@ -179,6 +179,20 @@ log_vwritef(enum log_type type, const char *fmt, va_list ap)
 	pri = log_priority(type);
 
 	/*
+	 * If logging is configured, we'll send all non-client messages to it.
+	 */
+	if (type != LT_CLIENT) {
+		if (log_file == NULL) {
+			vsyslog(pri, fmt, ap);
+		} else if (log_file != stdout) {
+			vfprintf(log_file, fmt, ap);
+		}
+	}
+
+	if (quiet && pri != LOG_ERR)
+		return;
+
+	/*
 	 * We shouldn't route log messages to the client.  If write multiplexing
 	 * isn't turned on, we may not have a client yet (in the daemon).
 	 */
@@ -225,17 +239,6 @@ log_vwritef(enum log_type type, const char *fmt, va_list ap)
 
 		if (type == LT_CLIENT)
 			return;
-	}
-
-	/*
-	 * If logging is configured, we'll send all non-client messages to it.
-	 */
-	if (type != LT_CLIENT) {
-		if (log_file == NULL) {
-			vsyslog(pri, fmt, ap);
-		} else if (log_file != stdout) {
-			vfprintf(log_file, fmt, ap);
-		}
 	}
 
 	/*
