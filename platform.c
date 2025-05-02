@@ -320,7 +320,8 @@ apple_merge_appledouble(const struct sess *sess, struct flist *f,
 #define	HAVE_PLATFORM_MOVE_FILE	1
 int
 platform_move_file(const struct sess *sess, struct flist *fl,
-    int fromfd, const char *fname, int tofd, const char *toname, int final)
+    int fromfd, const char *fname, int tofd, const char *toname, int final,
+    int skip_metadata)
 {
 
 	if (final && sess->opts->extended_attributes) {
@@ -340,7 +341,7 @@ platform_move_file(const struct sess *sess, struct flist *fl,
 		}
 	}
 
-	if (move_file(fromfd, fname, tofd, toname, final) != 0) {
+	if (move_file(fromfd, fname, tofd, toname, final, skip_metadata) != 0) {
 		ERR("%s: move_file: %s", fname, toname);
 		return 0;
 	}
@@ -418,10 +419,11 @@ platform_flist_entry_received(struct sess *sess, int fdin, struct flist *f)
 #if !HAVE_PLATFORM_MOVE_FILE
 int
 platform_move_file(const struct sess *sess, struct flist *fl,
-    int fromfd, const char *fname, int tofd, const char *toname, int final)
+    int fromfd, const char *fname, int tofd, const char *toname, int final,
+    int skip_metadata)
 {
 
-	if (move_file(fromfd, fname, tofd, toname, final) != 0) {
+	if (move_file(fromfd, fname, tofd, toname, final, skip_metadata) != 0) {
 		ERR("%s: move_file: %s", fname, toname);
 		return 0;
 	}

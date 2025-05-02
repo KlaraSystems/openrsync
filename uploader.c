@@ -373,7 +373,7 @@ pre_symlink(struct upload *p, struct sess *sess)
 	    newlink && temp != NULL ? temp : f->path);
 
 	if (newlink && temp != NULL) {
-		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
+		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1, 0) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
 			free(temp);
@@ -492,7 +492,7 @@ pre_dev(struct upload *p, struct sess *sess)
 	    newdev && temp != NULL ? temp : f->path);
 
 	if (newdev && temp != NULL) {
-		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
+		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1, 0) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
 			free(temp);
@@ -599,7 +599,7 @@ pre_fifo(struct upload *p, struct sess *sess)
 	    newfifo && temp != NULL ? temp : f->path);
 
 	if (newfifo && temp != NULL) {
-		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
+		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1, 0) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
 			free(temp);
@@ -701,7 +701,7 @@ pre_sock(struct upload *p, struct sess *sess)
 		newsock && temp != NULL ? temp : f->path);
 
 	if (newsock && temp != NULL) {
-		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1) == -1) {
+		if (move_file(TMPDIR_FD, temp, p->rootfd, f->path, 1, 0) == -1) {
 			ERR("%s: move_file %s", temp, f->path);
 			(void)unlinkat(TMPDIR_FD, temp, 0);
 			free(temp);

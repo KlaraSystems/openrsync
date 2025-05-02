@@ -355,7 +355,7 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 		 * file and make a decision on it.
 		 */
 		if (platform_move_file(sess, f, p->rootfd, p->fname,
-		    pdfd, fname, 0) == -1) {
+		    pdfd, fname, 0, 0) == -1) {
 			/*
 			 * Don't leave the partial file laying around if
 			 * --partial-dir was requested and we can't manage it.
@@ -610,7 +610,7 @@ delayed_renames(struct sess *sess)
 		if (sess->opts->hard_links)
 			hl_p = find_hl(curr->file, dlr->hl);
 		if (!platform_move_file(sess, curr->file,
-		    dlr->fromfd, curr->from, dlr->tofd, curr->to, 1)) {
+		    dlr->fromfd, curr->from, dlr->tofd, curr->to, 1, 0)) {
 			status = FLIST_FAILED;
 		}
 		if (hl_p != NULL) {
@@ -1871,7 +1871,7 @@ again:
 		if (f->pdfd >= 0)
 			fromfd = f->pdfd;
 		if (!platform_move_file(sess, f, fromfd, p->fname,
-		    p->rootfd, usethis, usethis == f->path))
+		    p->rootfd, usethis, usethis == f->path, 1))
 			goto out;
 	}
 

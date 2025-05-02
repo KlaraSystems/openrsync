@@ -1088,7 +1088,7 @@ int		 hash_file_by_path(int, const char *, size_t, unsigned char *);
  * generic move_file() that should handle things well enough for the majority of
  * platforms.
  */
-int		 move_file(int, const char *, int, const char *, int);
+int		 move_file(int, const char *, int, const char *, int, int);
 void		 copy_file(int, const char *, const struct flist *);
 int		 backup_file(int, const char *, int, const char *, int, const struct fldstat *);
 int		 backup_to_dir(struct sess *, int, const struct flist *,
@@ -1113,7 +1113,7 @@ int		 platform_flist_entry_received(struct sess *, int,
 		    struct flist *);
 void		 platform_flist_received(struct sess *, struct flist *, size_t);
 int		 platform_move_file(const struct sess *, struct flist *,
-		    int, const char *, int, const char *, int);
+		    int, const char *, int, const char *, int, int);
 int		 platform_finish_transfer(const struct sess *, struct flist *,
 		    int, const char *);
 
