@@ -2245,6 +2245,10 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 			u->fl[u->idx].flstate |= FLIST_SUCCESS;
 
 			if (!protocol_itemize) {
+				/*
+				 * Non-transferred items are subject to
+				 * conditional logging.
+				 */
 				log_item(sess, &u->fl[u->idx]);
 				continue;
 			}

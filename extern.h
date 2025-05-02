@@ -1179,4 +1179,13 @@ int log_item_impl(enum log_type, struct sess *sess, const struct flist *f);
 int log_item(struct sess *sess, const struct flist *f);
 const char *iflags_decode(uint32_t iflags);
 
+static inline enum log_type
+xfer_log_level(struct sess *sess)
+{
+
+	if (sess->lateprint && !sess->opts->server && !sess->opts->daemon)
+		return (LT_INFO);
+	return (LT_LOG);
+}
+
 #endif /*!EXTERN_H*/

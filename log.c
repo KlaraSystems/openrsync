@@ -1223,8 +1223,8 @@ rsync_humanize(struct sess *sess, char *buf, size_t len, int64_t val)
 	return 0;
 }
 
-static int
-log_item_formatted(enum log_type type, struct sess *sess, const struct flist *f)
+int
+log_item_impl(enum log_type type, struct sess *sess, const struct flist *f)
 {
 	const char *outformat = sess->opts->outformat;
 	const char *logformat = sess->opts->logformat;
@@ -1232,49 +1232,13 @@ log_item_formatted(enum log_type type, struct sess *sess, const struct flist *f)
 
 	if (outformat == NULL)
 		outformat = "%n";
-	if (type != LT_LOG && !log_format_type(LT_CLIENT, sess, outformat, f))
+	if (type != LT_LOG && !sess->opts->server &&
+	    !log_format_type(LT_CLIENT, sess, outformat, f))
 		ok = 0;
 	if (type != LT_CLIENT && logformat != NULL &&
 	    !log_format_type(LT_LOG, sess, logformat, f))
 		ok = 0;
 	return ok;
-}
-
-int
-log_item_impl(enum log_type type, struct sess *sess, const struct flist *f)
-{
-
-	if (sess->itemize) {
-		if (sess->protocol >= 29)
-			return log_item_formatted(type, sess, f);
-
-		if (sess->lreceiver && (f->iflags != 0 || verbose > 1)) {
-			if (sess->opts->server)
-				return log_format_type(type, sess, "%i %n%L", f);
-
-			return log_item_formatted(type, sess, f);
-		}
-
-		if (f->iflags != 0) {
-			if (S_ISREG(f->st.mode))
-				return log_format_type(type, sess, "%i %n", f);
-
-			if (verbose > 1 ||
-			    (verbose > 0 && !S_ISLNK(f->st.mode)))
-				return log_format_type(type, sess, "%n", f);
-		}
-
-		return 1;
-	}
-
-	if (sess->opts->outformat != NULL || sess->opts->logformat != NULL)
-		return log_item_formatted(type, sess, f);
-
-	if (verbose > 1 || (verbose > 0 && f->iflags != 0) ||
-	    sess->opts->progress)
-		return log_format_type(type, sess, "%n%L", f);
-
-	return 1;
 }
 
 int
@@ -1340,7 +1304,7 @@ log_item(struct sess *sess, const struct flist *f)
 		 * to client-only when -i hasn't been request in the log file.
 		 */
 		if (filtered) {
-			type = LT_INFO;
+			return 1;
 		} else if (!sess->logfile_itemize_i && !sig) {
 			type = LT_CLIENT;
 		}

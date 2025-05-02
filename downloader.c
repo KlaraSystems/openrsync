@@ -1369,12 +1369,16 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 		sess->total_write_lf = sess->total_write;
 
 		if ((f->iflags & IFLAG_TRANSFER) == 0) {
+			/*
+			 * Untransferred items are subject to conditional
+			 * logging.
+			 */
 			log_item(sess, f);
 			return 1;
 		}
 
 		if (!sess->lateprint || sess->opts->dry_run)
-			log_item(sess, f);
+			log_item_impl(LT_CLIENT, sess, f);
 
 		/*
 		 * Short-circuit: dry_run mode does nothing, with one exception:
@@ -1903,8 +1907,7 @@ again:
 	rsync_progress(sess, p->fl[p->idx].st.size, p->fl[p->idx].st.size,
 	    true, p->idx, p->flsz);
 
-	if (sess->lateprint)
-		log_item(sess, f);
+	log_item_impl(xfer_log_level(sess), sess, f);
 
 done:
 	/*
