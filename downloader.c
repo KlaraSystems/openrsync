@@ -1901,6 +1901,13 @@ again:
 		if (!platform_move_file(sess, f, fromfd, p->fname,
 		    p->rootfd, usethis, usethis == f->path, 1))
 			goto out;
+	} else {
+		/*
+		 * For --inplace, we should adjust it down to the correct
+		 * size.
+		 */
+		if (ftruncate(p->fd, f->st.size) == -1)
+			ERR("%s: ftruncate", f->path);
 	}
 
 	/*
