@@ -1420,8 +1420,7 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 				if (f->st.mtime != st->st_mtime)
 					LOG3("%s: fits time modify window",
 						f->path);
-				if (st->st_nlink == 1 || sess->opts->hard_links)
-					return 0;
+				return 0;
 			}
 			return 1;
 		}
