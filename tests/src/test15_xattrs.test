@@ -55,7 +55,7 @@ target=$((chunksz - 1))
 for i in $(seq 1 "$target"); do
 	srcf=dir1/file"$i"
 
-	:> "$srcf"
+	echo $i > "$srcf"
 done
 
 # Just set one xattr; we only need one to cross the chunk size boundary, so it's
