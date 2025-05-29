@@ -1035,6 +1035,7 @@ static int
 file_success(void *cookie, const void *data, size_t datasz)
 {
 	struct success_ctx *sctx = cookie;
+	struct opts *opts;
 	size_t pos = 0;
 	int32_t idx;
 
@@ -1049,7 +1050,8 @@ file_success(void *cookie, const void *data, size_t datasz)
 		return 0;
 	}
 
-	if (sctx->sess->opts->remove_source) {
+	opts = sctx->sess->opts;
+	if (opts->remove_source) {
 		struct flist *fl;
 		struct stat sb;
 
@@ -1065,7 +1067,7 @@ file_success(void *cookie, const void *data, size_t datasz)
 			return 1;
 		}
 
-		if (unlink(fl->path) == -1)
+		if (!opts->dry_run && unlink(fl->path) == -1)
 			ERR("%s: unlink", fl->path);
 	}
 
