@@ -1240,9 +1240,9 @@ log_item_impl(enum log_type type, struct sess *sess, const struct flist *f)
 	const char *logformat = sess->opts->logformat;
 	int ok = 1;
 
-	if (outformat == NULL)
+	if (outformat == NULL && (verbose > 0 || sess->opts->progress))
 		outformat = "%n";
-	if (type != LT_LOG && !sess->opts->server &&
+	if (type != LT_LOG && outformat != NULL && !sess->opts->server &&
 	    !log_format_type(LT_CLIENT, sess, outformat, f))
 		ok = 0;
 	if (type != LT_CLIENT && logformat != NULL &&
