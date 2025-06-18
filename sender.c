@@ -1825,7 +1825,18 @@ rsync_sender(struct sess *sess, int fdin,
 				opath = nextfl->path;
 
 				rootplen = strlen(rootp);
-				if (strncmp(opath, rootp, rootplen) == 0)
+				assert(rootplen > 0);
+
+				/*
+				 * Normalize the root part to exclude the
+				 * final delimiter, then we'll consistently
+				 * ensure that the root matches along with a
+				 * delimiter just following that.
+				 */
+				if (rootp[rootplen - 1] == '/')
+					rootplen--;
+				if (strncmp(opath, rootp, rootplen) == 0 &&
+				    opath[rootplen] == '/')
 					opath += rootplen;
 
 				while (opath[0] == '/' && opath[0] != '\0')
@@ -1868,8 +1879,12 @@ rsync_sender(struct sess *sess, int fdin,
 			}
 
 			if (nextfl->froot != NULL) {
+				int serrno = errno;
+
 				froot_release(nextfl->froot);
 				nextfl->froot = NULL;
+
+				errno = serrno;
 			}
 
 			if (up.stat.fd == -1) {

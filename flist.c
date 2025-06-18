@@ -939,6 +939,7 @@ froot_open(const char *path)
 {
 	struct froot *froot;
 
+	assert(path[0] != '\0');
 	froot = malloc(sizeof(*froot));
 	if (froot == NULL) {
 		ERR("malloc froot");
