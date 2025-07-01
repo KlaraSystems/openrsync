@@ -947,6 +947,8 @@ int	io_read_ulong(struct sess *, int, uint64_t *);
 int	io_read_vstring(struct sess *, int, char **);
 int	io_write_buf_tagged(struct sess *, int, const void *, size_t,
 	    enum iotag);
+int	io_write_buf_tagged_safe(struct sess *, int, const void *, size_t,
+	    enum iotag);
 int	io_write_buf(struct sess *, int, const void *, size_t);
 int	io_write_byte(struct sess *, int, uint8_t);
 int	io_write_int_tagged(struct sess *, int, int32_t, enum iotag);
@@ -963,6 +965,8 @@ int	io_write_blocking(int fd, const void *buf, size_t sz);
 int	io_data_written(struct sess *, int, const void *, size_t);
 
 int	io_lowbuffer_alloc(struct sess *, void **, size_t *, size_t *, size_t);
+int	io_lowbuffer_alloc_safe(struct sess *, void **, size_t *, size_t *,
+	    size_t);
 void	io_lowbuffer_int(struct sess *, void *, size_t *, size_t, int32_t);
 void	io_lowbuffer_short(struct sess *, void *, size_t *, size_t, int32_t);
 void	io_lowbuffer_buf(struct sess *, void *, size_t *, size_t, const void *,
