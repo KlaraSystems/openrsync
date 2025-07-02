@@ -180,13 +180,21 @@ log_vwritef(enum log_type type, const char *fmt, va_list ap)
 
 	/*
 	 * If logging is configured, we'll send all non-client messages to it.
+	 * Note that in various places throughout here, we'll tap out a copy of
+	 * the va_list -- there's a good chance we'll be logging to multiple
+	 * places, so we want to avoid running off the end of the arg list.
 	 */
-	if (type != LT_CLIENT) {
+	if (type != LT_CLIENT && (log_file == NULL || log_file != stdout)) {
+		va_list cap;
+
+		va_copy(cap, ap);
 		if (log_file == NULL) {
-			vsyslog(pri, fmt, ap);
-		} else if (log_file != stdout) {
-			vfprintf(log_file, fmt, ap);
+			vsyslog(pri, fmt, cap);
+		} else {
+			assert(log_file != stdout);
+			vfprintf(log_file, fmt, cap);
 		}
+		va_end(cap);
 	}
 
 	if (quiet && pri != LOG_ERR)
@@ -197,13 +205,16 @@ log_vwritef(enum log_type type, const char *fmt, va_list ap)
 	 * isn't turned on, we may not have a client yet (in the daemon).
 	 */
 	if (log_sess != NULL && type != LT_LOG && log_sess->mplex_writes) {
+		va_list cap;
 		char msgbuf[BIGPATH_MAX];
 		int32_t tag;
 		int n;
 
 		assert(log_sess->opts->server);
 
-		n = vsnprintf(msgbuf, sizeof(msgbuf), fmt, ap);
+		va_copy(cap, ap);
+		n = vsnprintf(msgbuf, sizeof(msgbuf), fmt, cap);
+		va_end(cap);
 		if (n < 1)
 			return;
 
