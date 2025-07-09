@@ -525,7 +525,7 @@ static int
 buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 {
 	size_t	 rem, tocopy;
-	ssize_t	 ssz;
+	enum { COPY_FLUSH, COPY_WRITEBUF, COPY_DONE } curst = COPY_FLUSH;
 
 	assert(p->obufsz <= p->obufmax);
 
@@ -551,31 +551,71 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 	}
 
 	/* Drain the main buffer. */
-
-	if (p->obufsz) {
+	if (p->obufsz != 0) {
 		assert(p->obufmax);
 		assert(p->obufsz <= p->obufmax);
 		assert(p->obuf != NULL);
-		if (p->fd >= 0) {
-			if (sess->opts->sparse && iszerobuf(p->obuf, p->obufsz)) {
-				if (lseek(p->fd, p->obufsz, SEEK_CUR) == -1) {
-					ERR("%s: lseek", p->fname);
-					return 0;
-				}
-			} else if (!downloader_write(sess, p, p->obuf, p->obufsz)) {
-				return 0;
-			}
-		}
-		p->obufsz = 0;
 	}
 
 	/*
-	 * Now drain anything left.
-	 * If we have no pre-write buffer, this is it.
+	 * If the file is gone, we're just here to zap the obuf.
 	 */
+	if (p->fd < 0) {
+		p->obufsz = 0;
+		return 1;
+	}
 
-	if (sz > 0 && p->fd >= 0 && !downloader_write(sess, p, buf, sz))
-		return 0;
+	while (curst != COPY_DONE) {
+		const char *writebuf;
+		size_t *upsz = NULL, writesz;
+
+		/*
+		 * There's an obvious progression here: we want to drain
+		 * anything left in the output buffer, then we can write out
+		 * anything that's left in the buf passed in.  In order to get
+		 * sparsity right, we need identical treatment for both buffers
+		 * or we'll end up missing opportunities to create holes.
+		 *
+		 * Instead of checking the state we just processed later, we'll
+		 * set upsz if we need to update a buffer size at the end of the
+		 * call.  We can omit it from the COPY_WRITEBUF case because
+		 * we won't be using sz again.
+		 */
+		switch (curst) {
+		case COPY_FLUSH:
+			writebuf = p->obuf;
+			writesz = p->obufsz;
+			upsz = &p->obufsz;
+			break;
+		case COPY_WRITEBUF:
+			writebuf = buf;
+			writesz = sz;
+			break;
+		default:
+			assert(0 && "Unreachable");
+			break;
+		}
+
+		/*
+		 * Progress the state machine; we won't need curst again until
+		 * the beginning of the next iteration.
+		 */
+		curst++;
+		if (writesz == 0)
+			continue;
+
+		if (sess->opts->sparse && iszerobuf(writebuf, writesz)) {
+			if (lseek(p->fd, writesz, SEEK_CUR) == -1) {
+				ERR("%s: lseek", p->fname);
+				return 0;
+			}
+		} else if (!downloader_write(sess, p, writebuf, writesz)) {
+			return 0;
+		}
+
+		if (upsz != NULL)
+			*upsz = 0;
+	}
 
 	return 1;
 }
