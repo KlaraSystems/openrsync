@@ -41,5 +41,5 @@ done
 mv src/bar src/foo
 touch -A -10 dst/foo
 
-rsync -aixH --inplace -- src/ dst/
+rsync -aixSH --inplace -- src/ dst/
 cmp src/foo dst/foo
