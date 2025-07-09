@@ -491,6 +491,28 @@ download_interrupted(struct sess *sess, struct download *p)
 	download_cleanup_partial(sess, p);
 }
 
+static bool
+downloader_write(struct sess *sess, struct download *p,
+    const char *buf, size_t sz)
+{
+	ssize_t ssz;
+
+retry:
+	ssz = write(p->fd, buf, sz);
+	if (ssz == -1) {
+		if (errno == EINTR)
+			goto retry;
+
+		ERR("%s: write", p->fname);
+		return false;
+	} else if ((size_t)ssz != sz) {
+		ERRX("%s: short write", p->fname);
+		return false;
+	}
+
+	return true;
+}
+
 /*
  * Optimisation: instead of dumping directly into the output file, keep
  * a buffer and write as much as we can into the buffer.
@@ -540,14 +562,8 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 					ERR("%s: lseek", p->fname);
 					return 0;
 				}
-			} else {
-				if ((ssz = write(p->fd, p->obuf, p->obufsz)) < 0) {
-					ERR("%s: write", p->fname);
-					return 0;
-				} else if ((size_t)ssz != p->obufsz) {
-					ERRX("%s: short write", p->fname);
-					return 0;
-				}
+			} else if (!downloader_write(sess, p, p->obuf, p->obufsz)) {
+				return 0;
 			}
 		}
 		p->obufsz = 0;
@@ -558,15 +574,9 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 	 * If we have no pre-write buffer, this is it.
 	 */
 
-	if (sz > 0 && p->fd >= 0) {
-		if ((ssz = write(p->fd, buf, sz)) < 0) {
-			ERR("%s: write", p->fname);
-			return 0;
-		} else if ((size_t)ssz != sz) {
-			ERRX("%s: short write", p->fname);
-			return 0;
-		}
-	}
+	if (sz > 0 && p->fd >= 0 && !downloader_write(sess, p, buf, sz))
+		return 0;
+
 	return 1;
 }
 
