@@ -94,6 +94,9 @@ struct	download {
 	size_t		    obufmax; /* max size we'll wbuffer */
 	size_t		    needredo; /* needs redo phase */
 	size_t		    curtok; /* current token */
+	off_t		    fdpos; /* current pre-buffer position in file */
+	size_t		    holesz; /* hole size (--sparse) */
+	bool		    holechk; /* check current block for hole */
 };
 
 
@@ -126,6 +129,9 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
 	/* Don't touch p->obufmax. */
 	/* Don't touch p->needredo. */
 	p->curtok = 0;
+	p->fdpos = 0;
+	p->holesz = 0;
+	p->holechk = true;
 	MD4_Update(&p->ctx, &seed, sizeof(int32_t));
 	decompress_reinit();
 }
@@ -513,6 +519,77 @@ retry:
 	return true;
 }
 
+static bool
+buf_copy_chunk(struct sess *sess, struct download *p,
+    const char **pwritebuf, size_t *pwritesz)
+{
+	size_t clipsz = (size_t)-1;
+	bool is_hole = false;
+	const char *writebuf = *pwritebuf;
+	size_t writesz = *pwritesz;
+
+	/*
+	 * If we're checking for holes (--sparse), then we may clip the buffer
+	 * at a hole block boundary.  This may result in us returning and then
+	 * re-entering to possibly handle a hole segment.
+	 *
+	 * p->holechk is designed to deal with the scenario where our hole
+	 * size ends up being greater than our buffer size; we use it to track
+	 * whether we've seen data in this block as an optimization.
+	 */
+	if (p->holesz > 0) {
+		if (!p->holechk) {
+			/*
+			 * Once we've clipped the write down to just the
+			 * portion that we need to finish the block, we
+			 * can restart hole-checking if we will actually cross
+			 * the block boundary in this buffer.
+			 */
+			clipsz = p->holesz - (p->fdpos % p->holesz);
+			if (clipsz <= writesz)
+				p->holechk = true;
+			if (clipsz == 0)
+				clipsz = (size_t)-1;
+		}
+
+		/*
+		 * We'll arrive here both if the holechk has been going
+		 * well, and also if it didn't go well but we ended on a
+		 * block boundary and hit the above branch.
+		 */
+		if (clipsz == (size_t)-1 && p->holechk) {
+			clipsz = MINIMUM(p->holesz, writesz);
+			is_hole = iszerobuf(writebuf, clipsz);
+			if (!is_hole)
+				p->holechk = false;
+		}
+	}
+
+	clipsz = MINIMUM(clipsz, writesz);
+	assert(clipsz != 0);
+	if (is_hole) {
+		if (lseek(p->fd, clipsz, SEEK_CUR) == -1) {
+			ERR("%s: lseek", p->fname);
+			return false;
+		}
+	} else if (!downloader_write(sess, p, writebuf, clipsz)) {
+		return false;
+	}
+
+	/*
+	 * If we clipped it, then we should adjust our writesz/writebuf
+	 * and restart at the beginning of this state with re-evaluating
+	 * the new block.
+	 */
+	p->fdpos += clipsz;
+
+	*pwritebuf += clipsz;
+	*pwritesz -= clipsz;
+
+	return true;
+}
+
+
 /*
  * Optimisation: instead of dumping directly into the output file, keep
  * a buffer and write as much as we can into the buffer.
@@ -567,7 +644,8 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 
 	while (curst != COPY_DONE) {
 		const char *writebuf;
-		size_t *upsz = NULL, writesz;
+		size_t *pwritesz;
+		size_t origsz;
 
 		/*
 		 * There's an obvious progression here: we want to drain
@@ -583,38 +661,32 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 		 */
 		switch (curst) {
 		case COPY_FLUSH:
+			/*
+			 * Don't actually lose our p->obuf position, just adjust
+			 * the stack pointer to it.
+			 */
 			writebuf = p->obuf;
-			writesz = p->obufsz;
-			upsz = &p->obufsz;
+			pwritesz = &p->obufsz;
 			break;
 		case COPY_WRITEBUF:
 			writebuf = buf;
-			writesz = sz;
+			pwritesz = &sz;
 			break;
 		default:
 			assert(0 && "Unreachable");
 			break;
 		}
 
-		/*
-		 * Progress the state machine; we won't need curst again until
-		 * the beginning of the next iteration.
-		 */
-		curst++;
-		if (writesz == 0)
-			continue;
-
-		if (sess->opts->sparse && iszerobuf(writebuf, writesz)) {
-			if (lseek(p->fd, writesz, SEEK_CUR) == -1) {
-				ERR("%s: lseek", p->fname);
+		origsz = *pwritesz;
+		while (*pwritesz != 0) {
+			if (!buf_copy_chunk(sess, p, &writebuf, pwritesz))
 				return 0;
-			}
-		} else if (!downloader_write(sess, p, writebuf, writesz)) {
-			return 0;
+
+			/* Confirm that our math isn't off somewhere. */
+			assert(*pwritesz <= origsz);
 		}
 
-		if (upsz != NULL)
-			*upsz = 0;
+		curst++;
 	}
 
 	return 1;
@@ -1638,6 +1710,8 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 						ERRX1("lseek");
 						goto out;
 					}
+
+					p->fdpos = st.st_size;
 				}
 			}
 		} else {
@@ -1668,6 +1742,31 @@ rsync_downloader(struct download *p, struct sess *sess, int *ofd, size_t flsz,
 			LOG3("%s: temporary: %s", f->path, p->fname);
 		}
 
+		if (sess->opts->sparse) {
+			struct stat pst;
+
+			assert(p->fd >= 0);
+			if (fstat(p->fd, &pst) == -1) {
+				p->holesz = 0;
+				WARNX("%s: fstat failed, --sparse may not work",
+				    f->path);
+				goto cacheopt;
+			}
+
+#ifdef _PC_MIN_HOLE_SIZE
+			p->holesz = fpathconf(p->fd, _PC_MIN_HOLE_SIZE);
+			if (p->holesz == (size_t)-1 || p->holesz == 0) {
+				p->holesz = 0;
+				WARN("%s: fpathconf, --sparse may not work",
+				    f->path);
+				goto cacheopt;
+			}
+#endif
+			if ((size_t)pst.st_blksize > p->holesz)
+				p->holesz = pst.st_blksize;
+		}
+
+cacheopt:
 		if (sess->opts->no_cache) {
 #if defined(F_NOCACHE)
 			if (p->ofd >= 0)
