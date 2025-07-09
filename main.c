@@ -1750,6 +1750,9 @@ basedir:
 	assert(opts.ipf == 0 || opts.ipf == 4 || opts.ipf == 6);
 
 	if (opts.inplace) {
+		if (opts.sparse != 0)
+			errx(ERR_SYNTAX,
+			    "option --sparse conflicts with --inplace");
 		if (opts.partial_dir != NULL)
 			errx(ERR_SYNTAX,
 			    "option --partial-dir conflicts with --inplace");
