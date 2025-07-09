@@ -2047,6 +2047,15 @@ again:
 	} else {
 		usethis = f->path;
 	}
+
+	/*
+	 * For --inplace, we should adjust it down to the correct
+	 * size.  For fresh files, we may have had a hole at the end of the
+	 * file that we wouldn't have written after; thus, the size ends up
+	 * being incorrect.
+	 */
+	if (ftruncate(p->fd, p->fdpos) == -1)
+		ERR("%s: ftruncate", f->path);
 	if (!download_is_inplace(sess, p, false)) {
 		int fromfd;
 
@@ -2056,13 +2065,6 @@ again:
 		if (!platform_move_file(sess, f, fromfd, p->fname,
 		    p->rootfd, usethis, usethis == f->path, 1))
 			goto out;
-	} else {
-		/*
-		 * For --inplace, we should adjust it down to the correct
-		 * size.
-		 */
-		if (ftruncate(p->fd, f->st.size) == -1)
-			ERR("%s: ftruncate", f->path);
 	}
 
 	/*
