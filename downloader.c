@@ -653,11 +653,6 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 		 * anything that's left in the buf passed in.  In order to get
 		 * sparsity right, we need identical treatment for both buffers
 		 * or we'll end up missing opportunities to create holes.
-		 *
-		 * Instead of checking the state we just processed later, we'll
-		 * set upsz if we need to update a buffer size at the end of the
-		 * call.  We can omit it from the COPY_WRITEBUF case because
-		 * we won't be using sz again.
 		 */
 		switch (curst) {
 		case COPY_FLUSH:
