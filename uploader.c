@@ -84,6 +84,7 @@ struct	upload {
 	int8_t		   *newdir; /* non-zero if mkdir'd */
 	int		    phase; /* current uploader phase (transfer, redo) */
 	char               *lastimp; /* Last implied dir (dir cache) */
+	bool                pre_dir_delete_done;
 };
 
 static int pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode);
@@ -734,6 +735,17 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 	f = &p->fl[p->idx];
 	isroot = strcmp(f->path, ".") == 0;
 
+	/* Ignore subdirs of "." in --dirs mode with recursion disabled
+	 * so that we don't try to delete them multiple times.
+	 */
+	if (!sess->opts->recursive) {
+		if (p->pre_dir_delete_done)
+			return 1;
+
+		if (isroot)
+			p->pre_dir_delete_done = true;
+	}
+
 	if (asprintf(&dirpath, "%s/%s", p->root,
 	    isroot ? "" : f->path) == -1) {
 		ERRX1("%s: asprintf", f->path);
@@ -875,26 +887,20 @@ pre_dir_delete(struct upload *p, struct sess *sess, enum delmode delmode)
 				continue;
 			}
 
-			if (delmode == DMODE_DURING) {
-				LOG1("%s: deleting", ent->fts_path + stripdir);
-
-				if (sess->opts->dry_run)
-					continue;
-
-				flist_add_del(sess, ent->fts_path, stripdir, &p->dfl, &p->dflsz,
-				    &p->dflmax, ent->fts_statp);
-			} else {
-				assert(delmode == DMODE_DELAY);
-				flist_add_del(sess, ent->fts_path, stripdir, &p->dfl, &p->dflsz,
-				    &p->dflmax, ent->fts_statp);
-			}
+			assert(delmode == DMODE_DURING || delmode == DMODE_DELAY);
+			flist_add_del(sess, ent->fts_path, stripdir, &p->dfl, &p->dflsz,
+				&p->dflmax, ent->fts_statp);
 		}
 	}
 
 	ret = 1;
 out:
 	if (delmode == DMODE_DURING) {
-		qsort(p->dfl, p->dflsz, sizeof(struct flist), flist_dir_cmp);
+		if (protocol_newsort) {
+			qsort(p->dfl, p->dflsz, sizeof(struct flist), flist_cmp29);
+		} else {
+			qsort(p->dfl, p->dflsz, sizeof(struct flist), flist_dir_cmp);
+		}
 
 		/* flist_del will report the error, just propagate status. */
 		if (!flist_del(sess, p->rootfd, p->dfl, p->dflsz))
@@ -914,8 +920,14 @@ out:
 int
 upload_del(struct upload *p, struct sess *sess)
 {
+	assert(sess->opts->del == DMODE_DELAY);
 
-	qsort(p->dfl, p->dflsz, sizeof(struct flist), flist_dir_cmp);
+	if (protocol_newsort) {
+		qsort(p->dfl, p->dflsz, sizeof(struct flist), flist_cmp29);
+	} else {
+		qsort(p->dfl, p->dflsz, sizeof(struct flist), flist_dir_cmp);
+	}
+
 	return (flist_del(sess, p->rootfd, p->dfl, p->dflsz));
 }
 
@@ -1058,9 +1070,6 @@ pre_dir(struct upload *p, struct sess *sess)
 			f->iflags |= itemize_changes(sess, &st, f);
 		}
 
-		if (sess->opts->dry_run)
-			return 0;
-
 		/*
 		 * We fchmod() here to ensure that we can actually update or
 		 * populate the directory as needed -- it may not be writable,
@@ -1073,13 +1082,14 @@ pre_dir(struct upload *p, struct sess *sess)
 		 * creating way too wide of a permission window if, e.g., it
 		 * shouldn't have any 'other' bits.
 		 */
-		rc = uploader_fix_mode(p, sess, f, &st);
+		if (!sess->opts->dry_run)
+			rc = uploader_fix_mode(p, sess, f, &st);
 
 		if (sess->opts->del == DMODE_DURING || sess->opts->del == DMODE_DELAY) {
 			pre_dir_delete(p, sess, sess->opts->del);
 		}
 
-		return rc;
+		return sess->opts->dry_run ? 0 : rc;
 	}
 
 	f->iflags = IFLAG_NEW | IFLAG_LOCAL_CHANGE;
@@ -1974,6 +1984,7 @@ upload_alloc(const char *root, int rootfd, int tempfd, int fdout,
 	p->fl = fl;
 	p->flsz = flsz;
 	p->nextack = 0;
+	p->pre_dir_delete_done = false;
 
 	p->newdir = calloc(flsz, sizeof(p->newdir[0]));
 	if (p->newdir == NULL) {

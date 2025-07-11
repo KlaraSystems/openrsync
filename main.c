@@ -1743,6 +1743,13 @@ basedir:
 		lidx = -1;
 	}
 
+	if (opts.del >= DMODE_UNSPECIFIED) {
+		if (!(opts.recursive || opts.dirs != DIRMODE_OFF)) {
+			errx(ERR_SYNTAX,
+			     "--delete does not work without --recursive or --dirs");
+		}
+	}
+
 	if (quiet > 0)
 		verbose = 0;
 

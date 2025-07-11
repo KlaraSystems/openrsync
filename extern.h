@@ -851,6 +851,7 @@ int	 cfg_param_str(struct daemon_cfg *, const char *, const char *,
 int	 cfg_has_param(struct daemon_cfg *, const char *, const char *);
 
 void	fl_init(struct sess *, struct fl *);
+int	flist_cmp29(const void *, const void *);
 int	flist_dir_cmp(const void *, const void *);
 int	flist_fts_check(struct sess *, FTSENT *, enum fmode);
 int	flist_del(struct sess *, int, const struct flist *, size_t);

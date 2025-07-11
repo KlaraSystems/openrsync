@@ -1166,9 +1166,30 @@ static int
 file_deleted(void *cookie, const void *data, size_t datasz)
 {
 	struct success_ctx *sctx = cookie;
+	struct sess *sess = sctx->sess;
+	const char *fmt = "*deleting %s\n";
+	char pathbuf[datasz + 1];
+	char *path;
 
-	if (sctx->sess->itemize)
-		LOG0("*deleting %.*s\n", (int)datasz, (const char *)data);
+	assert(sess->itemize || verbose > 0);
+	assert(sess->mode == FARGS_SENDER);
+
+	memcpy(pathbuf, data, datasz);
+	path = pathbuf;
+
+	/* Directories are sent with trailing NUL.
+	 */
+	if (path[datasz - 1] == '\0')
+		fmt = "*deleting %s/\n";
+	path[datasz] = '\0';
+
+	if (!sess->itemize)
+		fmt++;
+
+	while (strncmp(path, "./", 2) == 0 && path[2] != '\0')
+		path += 2;
+
+	print_7_or_8_bit(sess, fmt, path, NULL);
 
 	return 1;
 }
@@ -1356,7 +1377,7 @@ rsync_sender(struct sess *sess, int fdin,
 		}
 	}
 
-	if (sess->itemize) {
+	if ((sess->itemize || verbose > 0) && !sess->opts->server) {
 		if (!io_register_handler(IT_DELETED, &file_deleted, &sctx)) {
 			ERRX("Failed to install delete handler; exiting");
 			rc = 1;
