@@ -926,9 +926,8 @@ send_iflags(struct sess *sess, void **wb, size_t *wbsz, size_t *wbmax,
  * change) so that the sender may start working on the metadata.
  */
 static int
-send_dl_enqueue(struct sess *sess, struct send_dlq *q,
-    void **wb, size_t *wbsz, size_t *wbmax,
-    int32_t idx, struct flist *fl, size_t flsz, int fd, struct iobuf *buf,
+send_dl_enqueue(struct sess *sess, struct send_dlq *q, int32_t idx,
+    struct flist *fl, size_t flsz, int fd, struct iobuf *buf,
     struct send_dl **mdl)
 {
 	struct send_dl	*s;
@@ -1551,9 +1550,8 @@ rsync_sender(struct sess *sess, int fdin,
 				metadata_phase++;
 			}
 			assert(mdl == NULL);
-			if (!send_dl_enqueue(sess,
-			    &sdlq, &wbuf, &wbufsz, &wbufmax,
-			    idx, fl.flp, fl.sz, fdin, &rbuf, &mdl)) {
+			if (!send_dl_enqueue(sess, &sdlq, idx, fl.flp, fl.sz,
+			    fdin, &rbuf, &mdl)) {
 				ERRX1("send_dl_enqueue");
 				goto out;
 			}
