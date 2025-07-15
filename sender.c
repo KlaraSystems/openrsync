@@ -1371,7 +1371,6 @@ rsync_sender(struct sess *sess, int fdin,
 	if (sess->opts->remove_source) {
 		if (!io_register_handler(IT_SUCCESS, &file_success, &sctx)) {
 			ERRX("Failed to install remove-source-files handler; exiting");
-			rc = 1;
 			goto out;
 		}
 	}
@@ -1379,7 +1378,6 @@ rsync_sender(struct sess *sess, int fdin,
 	if ((sess->itemize || verbose > 0) && !sess->opts->server) {
 		if (!io_register_handler(IT_DELETED, &file_deleted, &sctx)) {
 			ERRX("Failed to install delete handler; exiting");
-			rc = 1;
 			goto out;
 		}
 	}
