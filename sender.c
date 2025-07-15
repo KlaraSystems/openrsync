@@ -1968,11 +1968,32 @@ out:
 	 * an error message.
 	 */
 	if (sess->wbufp != NULL) {
-		if (wbufsz > 0) {
-			assert(wbufsz > wbufpos);
-			write(fdout, wbuf + wbufpos, wbufsz - wbufpos);
-		}
+		/*
+		 * Don't try to log errors over the socket anymore.
+		 */
 		sess->wbufp = NULL;
+
+		while (wbufsz > 0 && wbufpos != wbufsz) {
+			ssize_t writesz;
+
+			assert(wbufsz > wbufpos);
+			writesz = write(fdout, wbuf + wbufpos, wbufsz - wbufpos);
+			if (writesz == -1) {
+				if (errno == EINTR)
+					continue;
+
+				/*
+				 * Just stop at the first sign of problems, log
+				 * it in case we're the daemon.
+				 */
+				ERRX1("write");
+				break;
+			} else if (writesz == 0) {
+				break;
+			}
+
+			wbufpos += writesz;
+		}
 	}
 
 	free(wbuf);
