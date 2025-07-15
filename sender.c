@@ -1567,7 +1567,7 @@ rsync_sender(struct sess *sess, int fdin,
 				bret = sender_get_iflags(&rbuf, fl.flp, mdl);
 				if (bret < 0) {
 					ERRX1("sender_get_iflags");
-					return 0;
+					goto out;
 				} else if (bret == 0) {
 					goto check_other;
 				}
@@ -1588,7 +1588,7 @@ rsync_sender(struct sess *sess, int fdin,
 				if (mdl->dlstate != SDL_META &&
 				    mdl->blks == NULL) {
 					ERRX1("blk_recv");
-					return 0;
+					goto out;
 				}
 			}
 
