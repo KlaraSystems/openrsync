@@ -1963,7 +1963,6 @@ out:
 		free(dl);
 	}
 	flist_free(fl.flp, fl.sz);
-	free(wbuf);
 	blkhash_free(up.stat.blktab);
 	cleanup_filesfrom(sess);
 
@@ -1979,6 +1978,8 @@ out:
 		}
 		sess->wbufp = NULL;
 	}
+
+	free(wbuf);
 
 	return rc;
 }
