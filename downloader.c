@@ -1094,6 +1094,8 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 			ERRX1("lseek");
 			return TOKEN_ERROR;
 		}
+
+		p->fdpos += sz;
 	} else {
 		if (!buf_copy(buf, sz, p, sess)) {
 			fmap_untrap(p->map);
