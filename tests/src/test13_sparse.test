@@ -14,7 +14,7 @@ rm -rf dir1 dir2 dir3 sparsefile sparsefile.report
 mkdir dir1
 # Actually write(2) nulls so that the file shouldn't be sparse unless
 # compressed.
-$mksparse -n -c -d 4 -h 6 -d 2 -h 6 -d 1 dir1/sparsefile
+$mksparse -n -c -d 4 -h 8192 -d 2 -h 8192 -d 1 dir1/sparsefile
 
 # We'll also stash off a copy that we sparsify to compare hole reports against.
 cp dir1/sparsefile .
@@ -27,13 +27,19 @@ fi
 
 # make the tree we want to compare to
 mkdir dir2
-$mksparse -c -d 4 -h 6 -d 2 -h 6 -d 1 dir1/sparsefile
+$mksparse -c -d 4 -h 8192 -d 2 -h 8192 -d 1 dir1/sparsefile
 
 mkdir dir3
 
 # On modern filesystems, it's sometimes hard to avoid it implicitly compressing
 # zeroes in files as they're being written, so we don't even try to confirm that
-# rsync *without* --sparse isn't writing holes out.
+# rsync *without* --sparse isn't writing holes out.  We also won't try to do a
+# 1:1 comparison of holes in the two files; instead, we'll just count the number
+# of contiguous set of holes.
 rsync -a --sparse -- dir1/ dir3
 $mksparse -r dir3/sparsefile > dir3/sparsefile.report
-cmp sparsefile.report dir3/sparsefile.report
+
+# Avoiding filenames in our output
+cat sparsefile.report | wc -l > sparsefile.holeseries
+cat dir3/sparsefile.report | wc -l > dir3/sparsefile.holeseries
+cmp sparsefile.holeseries dir3/sparsefile.holeseries
