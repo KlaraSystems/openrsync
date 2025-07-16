@@ -95,6 +95,7 @@ struct	download {
 	size_t		    needredo; /* needs redo phase */
 	size_t		    curtok; /* current token */
 	off_t		    fdpos; /* current pre-buffer position in file */
+	off_t		    holestart; /* start of contiguous holes */
 	size_t		    holesz; /* hole size (--sparse) */
 	bool		    holechk; /* check current block for hole */
 };
@@ -130,6 +131,7 @@ download_reinit(struct sess *sess, struct download *p, size_t idx)
 	/* Don't touch p->needredo. */
 	p->curtok = 0;
 	p->fdpos = 0;
+	p->holestart = -1;
 	p->holesz = 0;
 	p->holechk = true;
 	MD4_Update(&p->ctx, &seed, sizeof(int32_t));
@@ -520,6 +522,21 @@ retry:
 }
 
 static bool
+buf_flush_holes(struct sess *sess, struct download *p)
+{
+	if (p->holestart == -1)
+		return true;
+
+	if (lseek(p->fd, p->fdpos, SEEK_SET) == -1) {
+		ERR("%s: lseek", p->fname);
+		return false;
+	}
+
+	p->holestart = -1;
+	return true;
+}
+
+static bool
 buf_copy_chunk(struct sess *sess, struct download *p,
     const char **pwritebuf, size_t *pwritesz)
 {
@@ -546,10 +563,10 @@ buf_copy_chunk(struct sess *sess, struct download *p,
 			 * the block boundary in this buffer.
 			 */
 			clipsz = p->holesz - (p->fdpos % p->holesz);
-			if (clipsz <= writesz)
-				p->holechk = true;
-			if (clipsz == 0)
+			if (clipsz == 0 || clipsz == p->holesz)
 				clipsz = (size_t)-1;
+			if (clipsz <= writesz || clipsz == (size_t)-1)
+				p->holechk = true;
 		}
 
 		/*
@@ -568,12 +585,13 @@ buf_copy_chunk(struct sess *sess, struct download *p,
 	clipsz = MINIMUM(clipsz, writesz);
 	assert(clipsz != 0);
 	if (is_hole) {
-		if (lseek(p->fd, clipsz, SEEK_CUR) == -1) {
-			ERR("%s: lseek", p->fname);
+		if (p->holestart == -1)
+			p->holestart = p->fdpos;
+	} else {
+		if (p->holestart != -1)
+			buf_flush_holes(sess, p);
+		if (!downloader_write(sess, p, writebuf, clipsz))
 			return false;
-		}
-	} else if (!downloader_write(sess, p, writebuf, clipsz)) {
-		return false;
 	}
 
 	/*
@@ -683,6 +701,13 @@ buf_copy(const char *buf, size_t sz, struct download *p, struct sess *sess)
 
 		curst++;
 	}
+
+	/*
+	 * If the caller is explicitly trying to flush the buffer, then we want
+	 * to go ahead and advance past any remaining holes in the file.
+	 */
+	if (buf == NULL && p->holestart != -1)
+		buf_flush_holes(sess, p);
 
 	return 1;
 }
