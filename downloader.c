@@ -1915,8 +1915,9 @@ again:
 		 * If this is our second shot at a file and it still doesn't
 		 * match, we'll just give up.
 		 */
-		WARNX("%s: hash does not match, %s redo", p->fname,
+		WARNX1("%s: hash does not match, %s redo", p->fname,
 		    (f->flstate & FLIST_REDO) != 0 ? "will not" : "will");
+
 		if ((f->flstate & FLIST_REDO) != 0) {
 			f->flstate |= FLIST_FAILED;
 			goto out;
