@@ -143,6 +143,9 @@ itemize_changes(const struct sess *sess, const struct stat *st, const struct fli
 		}
 	}
 
+	if (st->st_size != f->st.size && S_ISREG(f->st.mode))
+		iflags |= IFLAG_SIZE;
+
 	if (sess->opts->preserve_uids && st->st_uid != f->st.uid &&
 	    f->st.uid != (uid_t)(-1) && superuser)
 		iflags |= IFLAG_OWNER;
@@ -1388,6 +1391,8 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		return 2;
 	}
 
+	f->iflags |= itemize_changes(sess, st, f);
+
 	if (sess->role->append) {
 		if (st->st_size >= f->st.size) {
 			LOG1("Skip append '%s'", f->path);
@@ -1395,8 +1400,6 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 		}
 		return 2;
 	}
-
-	f->iflags |= itemize_changes(sess, st, f);
 
 	if (sess->itemize) {
 		/*
@@ -1434,8 +1437,6 @@ check_file(int rootfd, struct flist *f, struct stat *st,
 			}
 			return 1;
 		}
-	} else {
-		f->iflags |= IFLAG_SIZE;
 	}
 
 	/* file needs attention */
