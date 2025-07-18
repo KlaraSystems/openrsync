@@ -2009,6 +2009,20 @@ upload_next_phase(struct upload *p, struct sess *sess, int fdout)
 	p->idx = 0;
 	p->phase++;
 	p->csumlen = CSUM_LENGTH_PHASE2;
+
+	if (p->phase != PHASE_REDO)
+		return;
+
+	/*
+	 * Reset the iflags when we're entering the redo phase; we don't want
+	 * to end up with a weird and invalid combination with flags carried
+	 * over from the previous attempt.
+	 */
+	for (size_t idx = 0; idx < p->flsz; idx++) {
+		if ((p->fl[idx].flstate & FLIST_REDO) == 0)
+			continue;
+		p->fl[idx].iflags = 0;
+	}
 }
 
 /*
@@ -2278,6 +2292,7 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 				continue;
 			if (sess->opts->relative && sess->opts->noimpdirs)
 				createdirs(u);
+
 			if (S_ISDIR(u->fl[u->idx].st.mode))
 				c = pre_dir(u, sess);
 			else if (S_ISLNK(u->fl[u->idx].st.mode))
@@ -2293,6 +2308,14 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 				c = pre_sock(u, sess);
 			else
 				c = 0;
+
+			/*
+			 * In the redo phase specifically, the file is no longer
+			 * new by definition of the fact that we're redoing the
+			 * transfer.
+			 */
+			if ((u->fl[u->idx].flstate & FLIST_REDO) != 0)
+				u->fl[u->idx].iflags &= ~IFLAG_NEW;
 
 			if (c < 0) {
 				u->fl[u->idx].flstate |= FLIST_FAILED;
