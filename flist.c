@@ -2849,41 +2849,6 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		if (ent->fts_info == FTS_NS)
 			continue;
 
-		/* Skip subdirs of dotdir that are top-level dirs, to prevent
-		 * visiting them more than once (once via ${root}/./topdir,
-		 * and once via ${root}/topdir).  We'll prefer to traverse top
-		 * dirs via the latter path, which also allows us to determine
-		 * the directory name needed for "deleting in ${topdir}"
-		 * messages.
-		 */
-		if (have_dotdir) {
-			bool found = false;
-
-			for (j = 0; j < skipc; ++j) {
-				if (strcmp(ent->fts_path, skipv[j]) == 0) {
-					fts_set(fts, ent, FTS_SKIP);
-					found = true;
-					break;
-				}
-			}
-
-			if (found)
-				continue;
-		}
-
-		/* Determine the basename of the top-level dir that we're
-		 * currently traversing, to be used for "deleting in ${topdir}"
-		 * messages.
-		 */
-		if (verbose > 1 && ent->fts_info == FTS_D) {
-			for (j = 0; j < cargvs; ++j) {
-				if (strcmp(ent->fts_path, cargv[j]) == 0) {
-					topdir = cargv[j] + stripdir;
-					break;
-				}
-			}
-		}
-
 		/*
 		 * skip_post indicates that we just skipped recursing into this
 		 * dir, so we should also not consider it for deletion (which is
@@ -2892,6 +2857,41 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		if (skip_post && ent->fts_info == FTS_DP) {
 			skip_post = 0;
 			continue;
+		}
+
+		/*
+		 * Skip subdirs of ${root}/. that are also top-level dirs.
+		 * This prevents visiting them more than once (i.e., once
+		 * via ${root}/./topdir and once via ${root}/topdir).  We'll
+		 * prefer to traverse top dirs via the latter path, which
+		 * also allows us to determine the directory name needed
+		 * for "deleting in ${topdir}" messages.
+		 */
+		if (ent->fts_info == FTS_D) {
+			for (j = 0; j < skipc; ++j) {
+				if (strcmp(ent->fts_path, skipv[j]) == 0) {
+					fts_set(fts, ent, FTS_SKIP);
+					skip_post = 1;
+					break;
+				}
+			}
+
+			if (skip_post)
+				continue;
+		}
+
+		/*
+		 * Determine the name of the top-level directory that we're
+		 * currently traversing, to be used for "deleting in ${topdir}"
+		 * messages.
+		 */
+		if (ent->fts_info == FTS_D) {
+			for (j = 0; j < cargvs; ++j) {
+				if (strcmp(ent->fts_path, cargv[j]) == 0) {
+					topdir = cargv[j];
+					break;
+				}
+			}
 		}
 
 		/*
@@ -2996,7 +2996,14 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		f->wpath = f->path + stripdir;
 		flist_assert_wpath_len(f->wpath);
 		flist_copy_stat(f, ent->fts_statp);
-		f->link = topdir ? strdup(topdir) : NULL;
+
+		assert(topdir != NULL);
+		f->link = strdup(topdir + stripdir);
+		if (f->link == NULL) {
+			ERR("strdup");
+			goto out;
+		}
+
 		errno = 0;
 	}
 
@@ -3113,22 +3120,41 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 	}
 
 	/* Note: The only fields in fl[*] guaranteed to be valid are:
-	 * path, wpath, link, and st as initialized by flist_gen_dels().
+	 * path, wpath, st, and link (as initialized by flist_gen_dels()).
 	 */
 	for (i = begin; i != end; i += inc) {
 		if (sess->itemize || verbose > 0) {
-			const char *fmt = "*deleting %s\n";
 			const char *path = fl[i].wpath;
+			const char *fmt;
 
+			/* Append a "/" to the "deleting ..." message
+			 * format if the file is a directory:
+			 */
 			if (S_ISDIR(fl[i].st.mode))
 				fmt = "*deleting %s/\n";
+			else
+				fmt = "*deleting %s\n";
+
+			/* Suppress the leading "*" from the "deleting ..."
+			 * message format if not itemizing:
+			 */
 			if (!sess->itemize)
 				fmt++;
 
+			/* Strip all redundant leading "./" from the path:
+			 */
 			while (strncmp(path, "./", 2) == 0 && path[2] != '\0')
 				path += 2;
 
-			if (fl[i].link) {
+			/* Print "deleting in <topdir>" once for each unique
+			 * top-level directory specified as a top-level dir
+			 * in the flist (and hence scanned by flist_gen_dels()).
+			 * So, irrespective of fl[]'s order by file type, print
+			 * "deleting in <topdir>" exactly once for any given
+			 * topdir, before any "deleting <file>" messages are
+			 * printed for files within that top-level directory.
+			 */
+			if (fl[i].link && verbose > 1) {
 				if (i == begin ||
 				    strcmp(fl[i].link, fl[i - inc].link) != 0) {
 					LOG0("deleting in %s", fl[i].link);

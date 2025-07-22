@@ -404,7 +404,7 @@ struct	flist {
 	int		 pdfd; /* dirfd for partial */
 	const char	*wpath; /* "working" path for receiver */
 	struct flstat	 st; /* file information */
-	char		*link; /* symlink target, hlink name, or NULL */
+	char		*link; /* symlink target, hlink name, topdir, or NULL */
 	unsigned char    md[MD4_DIGEST_LENGTH]; /* MD4 hash for --checksum */
 	int32_t		 iflags; /* Itemize flags */
 	enum name_basis	 basis; /* name basis */
