@@ -2735,9 +2735,11 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		return 0;
 	}
 
-	if ((skipv = calloc(cargvs + 1, sizeof(char *))) == NULL) {
-		ERR("calloc");
-		return 0;
+	if (have_dotdir) {
+		if ((skipv = calloc(cargvs + 1, sizeof(char *))) == NULL) {
+			ERR("calloc");
+			return 0;
+		}
 	}
 
 	for (i = j = 0; i < wflsz && j < cargvs; i++) {
@@ -2868,6 +2870,8 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 		 * for "deleting in ${topdir}" messages.
 		 */
 		if (ent->fts_info == FTS_D) {
+			assert(skip_post == 0);
+
 			for (j = 0; j < skipc; ++j) {
 				if (strcmp(ent->fts_path, skipv[j]) == 0) {
 					fts_set(fts, ent, FTS_SKIP);
@@ -3021,10 +3025,10 @@ flist_gen_dels(struct sess *sess, const char *root, struct flist **fl,
 out:
 	if (fts != NULL)
 		fts_close(fts);
-	for (i = 0; i < cargvs; i++) {
+	for (i = 0; i < cargvs; i++)
 		free(cargv[i]);
+	for (i = 0; i < skipc; i++)
 		free(skipv[i]);
-	}
 	free(cargv);
 	free(skipv);
 	hdestroy();
@@ -3154,10 +3158,10 @@ flist_del(struct sess *sess, int root, const struct flist *fl, size_t flsz)
 			 * topdir, before any "deleting <file>" messages are
 			 * printed for files within that top-level directory.
 			 */
-			if (fl[i].link && verbose > 1) {
+			if (fl[i].link) {
 				if (i == begin ||
 				    strcmp(fl[i].link, fl[i - inc].link) != 0) {
-					LOG0("deleting in %s", fl[i].link);
+					LOG2("deleting in %s", fl[i].link);
 				}
 			}
 
