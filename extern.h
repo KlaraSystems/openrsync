@@ -875,6 +875,7 @@ extern volatile struct fmap	*fmap_trapped, *fmap_trapped_prev;
 extern sigjmp_buf		 fmap_signal_env;
 
 struct fmap	*fmap_open(const char *, int, size_t);
+bool		 fmap_access_valid(struct fmap *, off_t, size_t);
 void		*fmap_data(struct fmap *, off_t, size_t);
 size_t		 fmap_size(struct fmap *);
 enum fmap_type	 fmap_type(struct fmap *);

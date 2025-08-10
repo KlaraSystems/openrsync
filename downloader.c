@@ -989,15 +989,29 @@ protocol_token_ff_compress(struct sess *sess, struct download *p, size_t tok)
 	sz = (tok == p->blk.blksz - 1 && p->blk.rem) ? p->blk.rem : p->blk.len;
 	assert(sz);
 	if (p->map == NULL) {
-		ERRX("no map file");
-		return TOKEN_ERROR;
-	}
-	off = tok * p->blk.len;
-
-	if (!fmap_trap(p->map)) {
+		WARNX1("no map file (removed or truncated)");
 		p->state = DOWNLOAD_FLUSH_REMOTE;
 		return TOKEN_NEXT;
 	}
+
+	off = tok * p->blk.len;
+	if (!fmap_access_valid(p->map, off, sz)) {
+		/*
+		 * We can easily have a mismatch here: the uploader sends our
+		 * initial file information, and the downloader independently
+		 * opens the file and maps it  Nothing stops the file from
+		 * changing in between the two, so we have to cope with
+		 * possibilities like this and trigger redo.
+		 */
+		WARNX1("%s: block at %lld outside of local file sized %zu",
+		    p->fname, off, fmap_size(p->map));
+		p->state = DOWNLOAD_FLUSH_REMOTE;
+		return TOKEN_NEXT;
+	} else if (!fmap_trap(p->map)) {
+		p->state = DOWNLOAD_FLUSH_REMOTE;
+		return TOKEN_NEXT;
+	}
+
 	buf = fmap_data(p->map, off, sz);
 
 	if (!decompress_reinit()) {
@@ -1088,15 +1102,29 @@ protocol_token_ff(struct sess *sess, struct download *p, size_t tok)
 	sz = (tok == p->blk.blksz - 1 && p->blk.rem) ? p->blk.rem : p->blk.len;
 	assert(sz);
 	if (p->map == NULL) {
-		ERRX("no map file");
-		return TOKEN_ERROR;
-	}
-	off = tok * p->blk.len;
-
-	if (!fmap_trap(p->map)) {
+		WARNX1("no map file (removed or truncated)");
 		p->state = DOWNLOAD_FLUSH_REMOTE;
 		return TOKEN_NEXT;
 	}
+
+	off = tok * p->blk.len;
+	if (!fmap_access_valid(p->map, off, sz)) {
+		/*
+		 * We can easily have a mismatch here: the uploader sends our
+		 * initial file information, and the downloader independently
+		 * opens the file and maps it  Nothing stops the file from
+		 * changing in between the two, so we have to cope with
+		 * possibilities like this and trigger redo.
+		 */
+		WARNX1("%s: block at %lld outside of local file sized %zu",
+		    p->fname, off, fmap_size(p->map));
+		p->state = DOWNLOAD_FLUSH_REMOTE;
+		return TOKEN_NEXT;
+	} else if (!fmap_trap(p->map)) {
+		p->state = DOWNLOAD_FLUSH_REMOTE;
+		return TOKEN_NEXT;
+	}
+
 	buf = fmap_data(p->map, off, sz);
 
 	/*
@@ -1898,19 +1926,20 @@ again:
 	assert(tokres == TOKEN_EOF);
 
 	/*
-	 * Make sure our resulting MD4 hashes match.
-	 * FIXME: if the MD4 hashes don't match, then our file has
-	 * changed out from under us.
-	 * This should require us to re-run the sequence in another
-	 * phase.
+	 * Make sure our resulting MD4 hashes match.  If they do not, then our
+	 * file has changed out from under us or we hit a non-fatal error and
+	 * just let the sender continue doing its thing to avoid causing
+	 * problems.  We'll flag the file for redo and try it again.
+	 *
+	 * We avoid the hash comparison for DOWNLOAD_FLUSH_REMOTE just to avoid
+	 * the remote chance we found a collision in our truncated contents.
 	 */
-
 	MD4_Final(ourmd, &p->ctx);
-
 	if (!io_read_buf(sess, p->fdin, md, MD4_DIGEST_LENGTH)) {
 		ERRX1("io_read_buf");
 		goto out;
-	} else if (memcmp(md, ourmd, MD4_DIGEST_LENGTH)) {
+	} else if (p->state == DOWNLOAD_FLUSH_REMOTE ||
+	    memcmp(md, ourmd, MD4_DIGEST_LENGTH)) {
 		/*
 		 * If this is our second shot at a file and it still doesn't
 		 * match, we'll just give up.
@@ -1919,6 +1948,7 @@ again:
 		    (f->flstate & FLIST_REDO) != 0 ? "will not" : "will");
 
 		if ((f->flstate & FLIST_REDO) != 0) {
+			sess->total_errors++;
 			f->flstate |= FLIST_FAILED;
 			goto out;
 		}
