@@ -2518,12 +2518,31 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 		do {
 			msz = pread(*fileinfd, mbuf, blk.len, offs);
 			if ((size_t)msz != blk.len && (size_t)msz != blk.rem) {
-				ERR("pread");
+				if (msz == -1) {
+					ERR("pread");
+				} else {
+					u->fl[u->idx].iflags = IFLAG_NEW |
+					    IFLAG_TRANSFER;
+					WARNX1(
+					    "%s: destination file truncated; falling back to whole file transfer",
+						u->fl[u->idx].path);
+				}
 				close(*fileinfd);
 				*fileinfd = -1;
 				free(mbuf);
 				free(blk.blks);
-				return -1;
+				blk.blks = NULL;
+				blk.blksz = 0;
+
+				if (msz == -1)
+					return -1;
+
+				/*
+				 * We can still do this file, but it seems to
+				 * have changed out from underneath us.  We'll
+				 * treat it as a --whole-file to be safe.
+				 */
+				goto skipmap;
 			}
 			init_blk(&blk.blks[i], &blk, offs, i, mbuf, sess);
 			offs += blk.len;
@@ -2610,7 +2629,12 @@ rsync_uploader(struct upload *u, struct sess *sess, int revents,
 	io_buffer_int(u->buf, &pos, u->bufsz, (int)blk.csum);
 	io_buffer_int(u->buf, &pos, u->bufsz, (int)blk.rem);
 
-	if (!sess->role->append && !sess->opts->whole_file) {
+	/*
+	 * Error cases above may leave us without a blk.blks, in which case we
+	 * intend to operate as if --whole-file were specified.
+	 */
+	if (!sess->role->append && !sess->opts->whole_file &&
+	    blk.blks != NULL) {
 		for (i = 0; i < blk.blksz; i++) {
 			io_buffer_int(u->buf, &pos, u->bufsz,
 				      blk.blks[i].chksum_short);
