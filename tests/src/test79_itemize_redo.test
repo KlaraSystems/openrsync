@@ -79,8 +79,12 @@ if [ "$rc" -ne 23 ]; then
 	exit 1
 fi
 
-grep '>f\.s\.\.\.\.\. file' log > log.files
-lines=$(cat log.files | wc -l | tr -d '[[:space:]]')
+# We still want a good error if it didn't exist, so capture a grep failure.
+if ! grep '>f\.s\.\.\.\.\. file' log > log.files; then
+	lines=0
+else
+	lines=$(cat log.files | wc -l | tr -d '[[:space:]]')
+fi
 
 if [ "$lines" -ne 2 ]; then
 	1>&2 echo "Itemization flags did not seem to reflect file existence with new size in both phases"
