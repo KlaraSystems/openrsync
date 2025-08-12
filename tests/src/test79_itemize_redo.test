@@ -79,8 +79,10 @@ if [ "$rc" -ne 23 ]; then
 	exit 1
 fi
 
-# We still want a good error if it didn't exist, so capture a grep failure.
-if ! grep '>f\.s\.\.\.\.\. file' log > log.files; then
+# We still want a good error if it didn't exist, so capture a grep failure.  We
+# give some wiggle room in the exact iflags because the test may sometimes run
+# fast enough that the timestamp isn't out-of-date, but other times it is.
+if ! grep '>f\.s[t.]\.\.\.\. file' log > log.files; then
 	lines=0
 else
 	lines=$(cat log.files | wc -l | tr -d '[[:space:]]')
