@@ -1795,7 +1795,8 @@ basedir:
 				*endp-- = '\0';
 			}
 
-			if (parse_rule(partial_dir, RULE_EXCLUDE, 0) == -1) {
+			if (partial_dir[0] != '/' &&
+			    parse_rule(partial_dir, RULE_EXCLUDE, 0) == -1) {
 				errx(ERR_SYNTAX, "syntax error in exclude: %s",
 				    partial_dir);
 			}
