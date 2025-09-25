@@ -1469,7 +1469,15 @@ pre_file_check_altdir(struct sess *sess, const struct upload *p,
 
 	f->iflags = 0;
 	x = check_file(dfd, f, st, sess, hl, is_partialdir);
-	if (x == 0) {
+	if (x == 0 && is_partialdir) {
+		/*
+		 * For --partial-dir, we don't want to dirty up check_file()
+		 * with extra logic, but we don't really want to be OK with the
+		 * quick check.  Something could be wrong if it's still in the
+		 * --partial-dir, so we'll avoid calling it up-to-date.
+		 */
+		x = 1;
+	} else if (x == 0) {
 		/* found a match */
 		if (rc >= 0) {
 			/* found better match, delete file in rootfd */
