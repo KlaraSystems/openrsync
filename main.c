@@ -267,6 +267,8 @@ fargs_parse(size_t argc, char *argv[], struct opts *opts)
 		sinkarg = argc - 1;
 		f->sourcesz = 0;
 	} else {
+		if (argc == 1)
+			opts->list_only = 2;
 		sinkarg = argc;
 		f->sourcesz = 1;
 	}
