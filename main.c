@@ -2155,7 +2155,7 @@ main(int argc, char *argv[])
 		/* Implied --list-only */
 		if (fargs->sink == NULL) {
 			assert(fargs->mode == FARGS_RECEIVER);
-			opts.list_only = 1;
+			assert(opts.list_only != 0);
 			fargs->sink = strdup(".");
 			if (fargs->sink == NULL)
 				errx(ERR_NOMEM, NULL);
