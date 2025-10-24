@@ -285,6 +285,13 @@ download_cleanup_partial_dir(struct sess *sess, struct download *p,
 	struct stat st;
 	int ret;
 
+	/*
+	 * We don't cleanup partial paths that were specified as absolute
+	 * paths; those are assumed to be managed by the system / someone else.
+	 */
+	if (sess->opts->partial_dir[0] == '/')
+		return;
+
 	partial_dir = download_partial_path(sess, f, partial_reldir,
 	    sizeof(partial_reldir));
 	ret = fstatat(p->rootfd, partial_dir, &st, AT_SYMLINK_NOFOLLOW);
@@ -316,6 +323,10 @@ download_cleanup_partial(struct sess *sess, struct download *p)
 
 	f = &p->fl[p->idx];
 	if (p->fd == -1) {
+		/*
+		 * If we resumed from a partial dir and the transfer did
+		 * finish, then we'll cleanup the partial dir now.
+		 */
 		if (f->pdfd >= 0)
 			download_cleanup_partial_dir(sess, p, f);
 		return 1;
