@@ -1786,19 +1786,25 @@ basedir:
 
 		/* XXX Samba rsync would normalize this path a little better. */
 		partial_dir = opts.partial_dir;
-		if (partial_dir[0] == '\0' || strcmp(partial_dir, ".") == 0) {
-			free(opts.partial_dir);
-			opts.partial_dir = NULL;
-		} else {
+		if (partial_dir[0] != '\0') {
 			char *endp;
 
 			endp = &partial_dir[strlen(partial_dir) - 1];
 			while (endp > partial_dir && *(endp - 1) == '/') {
 				*endp-- = '\0';
 			}
+		}
 
-			if (partial_dir[0] != '/' &&
-			    parse_rule(partial_dir, RULE_EXCLUDE, 0) == -1) {
+		/*
+		 * If it's empty or cwd after normalization, we don't need to
+		 * keep it around.  Otherwise, we add an exclusion rule if it
+		 * isn't an absolute path.
+		 */
+		if (partial_dir[0] == '\0' || strcmp(partial_dir, ".") == 0) {
+			free(opts.partial_dir);
+			opts.partial_dir = NULL;
+		} else if (partial_dir[0] != '/') {
+			if (parse_rule(partial_dir, RULE_EXCLUDE, 0) == -1) {
 				errx(ERR_SYNTAX, "syntax error in exclude: %s",
 				    partial_dir);
 			}
