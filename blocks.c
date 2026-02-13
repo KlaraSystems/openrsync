@@ -305,7 +305,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 			 * the sender should have skipped the file if it shrank
 			 * before we mapped it.
 			 */
-			assert((off_t)st->mapsz >= blks->size);
+			assert(st->mapsz >= blks->size);
 			st->offs = blks->size;
 			last = st->offs;
 			goto append;
@@ -386,7 +386,7 @@ blk_match(struct sess *sess, const struct blkset *blks,
 		st->dirty = st->total = st->mapsz;
 		sess->total_unmatched += st->mapsz;
 
-		LOG4("%s: flushing whole file %zu B",
+		LOG4("%s: flushing whole file %llu B",
 		    path, st->mapsz);
 	}
 
