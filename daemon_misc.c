@@ -1305,9 +1305,10 @@ daemon_normalize_paths(const char *module, int argc, char *argv[])
 int
 daemon_open_logfile(struct sess *sess, const char *logfile, bool printerr)
 {
-	struct daemon_role *role;
+#ifdef __APPLE__
+	struct daemon_role *role = (void *)sess->role;
+#endif
 
-	role = (void *)sess->role;
 	if (logfile != NULL && *logfile == '\0')
 		logfile = NULL;
 	if (logfile != NULL) {

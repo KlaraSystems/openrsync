@@ -213,7 +213,7 @@ token_ff_compressed(struct sess *sess, struct send_up *up, size_t tok,
 	assert(up->stat.map != NULL);
 
 	off = up->stat.curpos;
-	assert(sz == up->cur->blks->len || sz == up->stat.mapsz - off);
+	assert(sz == up->cur->blks->len || (off_t)sz == up->stat.mapsz - off);
 
 	if (!fmap_trap(up->stat.map)) {
 		sess->total_errors++;
@@ -1742,7 +1742,7 @@ rsync_sender(struct sess *sess, int fdin,
 				    &wbuf, &wbufsz, &wbufmax, fl.flp);
 			}
 
-			if (curidx != -1) {
+			if (curidx != (size_t)-1) {
 				curfl = &fl.flp[curidx];
 				rsync_progress(sess, curfl->st.size,
 				    up.stat.curpos,
