@@ -300,7 +300,7 @@ fmap_buf_slide(struct fmap *fm, off_t offset, size_t datasz)
 	if (offset > fm->dataoff && offset < (off_t)(fm->dataoff + fm->datasz)) {
 		off_t clip = offset - fm->dataoff;
 
-		assert(clip < (off_t)SIZE_MAX);
+		assert((size_t)clip <= fm->datasz);
 		/* Clip the first part we won't use, then adjust. */
 		memmove(fm->buf, fm->buf + clip, fm->datasz - clip);
 
